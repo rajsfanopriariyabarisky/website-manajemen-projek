@@ -86,7 +86,8 @@ $progressPercent = $totalTasks > 0 ? round(($completedTasks / $totalTasks) * 100
             <div>
                 <h1 class="text-xl font-bold text-slate-900 tracking-wide">PT. CIPTA TEKNOLOGI CENDEKIA</h1>
                 <p class="text-xs text-slate-500 mt-1">IT Consulting, Enterprise Software Development & Operational Workspace</p>
-                <p class="text-[11px] text-slate-400 mt-0.5">Jl. Raya CTC No. 88, Jakarta | Email: contact@ptctc.com</p>
+                <p class="text-[11px] text-slate-400 mt-0.5">Perumahan Cahaya Garuda Residence Kav. 31, Bojongsari, Kota Depok, Jawa Barat</p>
+                <p class="text-[11px] font-sans text-slate-500">Email: ciptateknologicendekia@gmail.com | Telp : 087785699136</p>
             </div>
             <div class="text-right">
                 <span class="inline-block bg-slate-100 border border-slate-200 px-3 py-1 rounded-full text-xs font-bold text-slate-700">

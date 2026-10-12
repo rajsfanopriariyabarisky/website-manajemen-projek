@@ -63,7 +63,7 @@ $tahunAngka = date('Y', $tglMulaiStamp);
             .no-print { display: none !important; }
             body { background: white !important; padding: 0 !important; color: #000 !important; }
             .print-container { box-shadow: none !important; border: none !important; width: 100% !important; max-width: 100% !important; padding: 0 !important; }
-            .page-break { page-break-before: always; }
+            .avoid-break { page-break-inside: avoid; }
         }
         body { font-family: 'Times New Roman', Times, serif; line-height: 1.6; }
     </style>
@@ -83,16 +83,15 @@ $tahunAngka = date('Y', $tglMulaiStamp);
     <!-- Halaman Dokumen Perjanjian -->
     <div class="max-w-4xl mx-auto bg-white p-14 rounded-lg shadow-xl border border-slate-200 print-container text-justify">
         
-        <!-- Kop Surat Perusahaan -->
+        <!-- Kop Surat Perusahaan dengan Logo Gambar Asli -->
         <div class="flex items-center justify-between border-b-4 border-double border-emerald-900 pb-5 mb-8">
             <div class="flex items-center gap-4">
-                <div class="w-14 h-14 bg-emerald-800 text-white flex items-center justify-center font-sans font-bold text-2xl rounded-lg border-2 border-emerald-600">
-                    CTC
-                </div>
+                <img src="/website%20manajemen%20projek/assets/images/logo.jpg" alt="Logo PT CTC" class="w-16 h-16 object-cover rounded-md">
                 <div>
                     <h1 class="text-xl font-bold tracking-wider text-emerald-950 uppercase font-sans">PT. CIPTA TEKNOLOGI CENDEKIA</h1>
-                    <p class="text-xs font-sans text-slate-600">IT Consulting, Enterprise Software Development & Digital Transformation</p>
-                    <p class="text-[11px] font-sans text-slate-500">Gedung CTC Tower, Lt. 8, Jl. Jend. Sudirman Kav. 52-53, Jakarta Selatan | Telp: (021) 555-8888 | www.ctc.co.id</p>
+                    <p class="text-xs font-sans text-slate-600">Enterprise IT Solution, Software Engineering & Digital Transformation</p>
+                    <p class="text-[11px] font-sans text-slate-500">Perumahan Cahaya Garuda Residence Kav. 31, Bojongsari, Kota Depok, Jawa Barat | Telp: +62 87785699136 | www.ctc-nusantara.com</p>
+                    <p class="text-[11px] font-sans text-slate-500">Email: ciptateknologicendekia@gmail.com</p>
                 </div>
             </div>
         </div>
@@ -113,7 +112,7 @@ $tahunAngka = date('Y', $tglMulaiStamp);
         <div class="text-xs space-y-3 mb-6 pl-4 border-l-2 border-emerald-800 font-sans bg-slate-50/50 p-3 rounded">
             <div>
                 <p class="font-bold text-slate-900">I. PT. CIPTA TEKNOLOGI CENDEKIA</p>
-                <p class="text-slate-600">Berkedudukan di Jakarta Selatan, bertindak untuk dan atas nama perseroan sebagai Penyedia Layanan Teknologi Informasi, selanjutnya dalam Perjanjian ini disebut sebagai <strong>PIHAK PERTAMA</strong>.</p>
+                <p class="text-slate-600">Berkedudukan di Jakarta, bertindak untuk dan atas nama perseroan sebagai Penyedia Layanan Teknologi Informasi, selanjutnya dalam Perjanjian ini disebut sebagai <strong>PIHAK PERTAMA</strong>.</p>
             </div>
             <div>
                 <p class="font-bold text-slate-900">II. <?= strtoupper(htmlspecialchars($contract['klien'])) ?></p>
@@ -133,7 +132,7 @@ $tahunAngka = date('Y', $tglMulaiStamp);
                 <h4 class="font-bold text-center uppercase tracking-wider mb-1">PASAL 1<br>RUANG LINGKUP PEKERJAAN (SCOPE OF WORK)</h4>
                 <ol class="list-decimal pl-5 space-y-1">
                     <li>PIHAK KEDUA memberikan pekerjaan kepada PIHAK PERTAMA dan PIHAK PERTAMA menerima penunjukan tersebut untuk melaksanakan pengerjaan proyek <strong><?= htmlspecialchars($contract['nama_projek']) ?></strong>.</li>
-                    <li>Ruang lingkup pekerjaan mencakup Analisis Kebutuhan (*Requirement Analysis*), Perancangan Arsitektur & UI/UX, Pemrograman (*Software Development*), Pengujian Sistem (*System Testing & QA*), Implementasi Server, serta Pelatihan (*User Training*).</li>
+                    <li>Ruang lingkup pekerjaan mencakup Analisis Kebutuhan (*Requirement Analysis*), Perancangan Arsitektur & UI/UX, Pemrograman (*Software Development*), Pengujian Sistem (*QA & Testing*), Deploy Server, serta Pelatihan (*User Training*).</li>
                 </ol>
             </div>
 
@@ -153,13 +152,13 @@ $tahunAngka = date('Y', $tglMulaiStamp);
                     <li>Total Nilai Perjanjian Pekerjaan ini adalah sebesar <strong>Rp <?= number_format($contract['nilai_kontrak'], 0, ',', '.') ?>,-</strong> (<em><?= terbilang($contract['nilai_kontrak']) ?> Rupiah</em>), belum termasuk Pajak Pertambahan Nilai (PPN 11%).</li>
                     <li>Pembayaran dilakukan secara bertahap melalui transfer bank ke rekening resmi PIHAK PERTAMA:
                         <ul class="list-disc pl-5 mt-1 font-mono text-[11px]">
-                            <li>Bank / Rekening : Bank Mandiri KCP Sudirman / 122-00-0988771-0</li>
+                            <li>Bank / Rekening : BCA / 686-0460155</li>
                             <li>Atas Nama : PT CIPTA TEKNOLOGI CENDEKIA</li>
                         </ul>
                     </li>
                     <li>Tahapan pembayaran (*Termin*) disepakati sebagai berikut:
                         <ul class="list-disc pl-5 mt-1">
-                            <li><strong>Termin I (DP 50%):</strong> Sebesar Rp <?= number_format($contract['nilai_kontrak'] * 0.5, 0, ',', '.') ?>,- dibayarkan paling lambat 7 (tujuh) hari kerja setelah penandatanganan Perjanjian ini.</li>
+                            <li><strong>Termin I (DP 50%):</strong> Sebesar Rp <?= number_format($contract['nilai_kontrak'] * 0.5, 0, ',', '.') ?>,- dibayarkan paling lambat 7 (tujuh) hari kerja setelah penandatanganan SPK.</li>
                             <li><strong>Termin II (Pelunasan 50%):</strong> Sebesar Rp <?= number_format($contract['nilai_kontrak'] * 0.5, 0, ',', '.') ?>,- dibayarkan setelah seluruh pekerjaan selesai dan ditandatanganinya Berita Acara Serah Terima (BAST).</li>
                         </ul>
                     </li>
@@ -168,26 +167,42 @@ $tahunAngka = date('Y', $tglMulaiStamp);
 
             <!-- PASAL 4 -->
             <div>
-                <h4 class="font-bold text-center uppercase tracking-wider mb-1">PASAL 4<br>HAK KEKAYAAN INTELEKTUAL & KERAHASIAAN (NDA)</h4>
+                <h4 class="font-bold text-center uppercase tracking-wider mb-1">PASAL 4<br>PERUBAHAN LINGKUP PEKERJAAN (CHANGE REQUEST)</h4>
+                <p class="pl-2">
+                    Apabila PIHAK KEDUA mengajukan perubahan atau penambahan fitur di luar dokumen Spesifikasi Kebutuhan Sistem (SRS) yang telah disepakati, maka hal tersebut wajib dituangkan dalam Adendum Kontrak tersendiri dan dapat dikenakan biaya tambahan (*Change Request Fee*).
+                </p>
+            </div>
+
+            <!-- PASAL 5 -->
+            <div>
+                <h4 class="font-bold text-center uppercase tracking-wider mb-1">PASAL 5<br>HAK KEKAYAAN INTELEKTUAL & KERAHASIAAN (NDA)</h4>
                 <ol class="list-decimal pl-5 space-y-1">
                     <li>Seluruh Hak Kekayaan Intelektual, *Source Code*, dan Hak Cipta atas sistem yang dikembangkan akan sepenuhnya menjadi milik PIHAK KEDUA setelah PIHAK KEDUA melunasi seluruh kewajiban pembayaran.</li>
                     <li>PARA PIHAK sepakat untuk menjaga kerahasiaan (*Non-Disclosure*) seluruh data, informasi bisnis, dan infrastruktur teknis yang diperoleh selama pelaksanaan kerja sama ini.</li>
                 </ol>
             </div>
 
-            <!-- PASAL 5 -->
+            <!-- PASAL 6 -->
             <div>
-                <h4 class="font-bold text-center uppercase tracking-wider mb-1">PASAL 5<br>GARANSI, MAINTENANCE & SLA</h4>
+                <h4 class="font-bold text-center uppercase tracking-wider mb-1">PASAL 6<br>GARANSI, MAINTENANCE & SLA</h4>
                 <p class="pl-2">
                     PIHAK PERTAMA memberikan garansi pemeliharaan sistem (*System Maintenance & Bug Fixing*) selama <strong>3 (tiga) bulan</strong> terhitung sejak tanggal Penandatanganan Berita Acara Serah Terima (BAST) tanpa dikenakan biaya tambahan.
                 </p>
             </div>
 
-            <!-- PASAL 6 -->
+            <!-- PASAL 7 -->
             <div>
-                <h4 class="font-bold text-center uppercase tracking-wider mb-1">PASAL 6<br>PENYELESAIAN PERSELISIHAN</h4>
+                <h4 class="font-bold text-center uppercase tracking-wider mb-1">PASAL 7<br>KEADAAN MEMAKSA (FORCE MAJEURE)</h4>
                 <p class="pl-2">
-                    Apabila terjadi perselisihan di kemudian hari terkait pelaksanaan Perjanjian ini, PARA PIHAK sepakat untuk menyelesaikannya secara musyawarah untuk mufakat. Apabila tidak tercapai mufakat, maka penyelesaian akan dilakukan melalui Pengadilan Negeri Jakarta Selatan.
+                    PARA PIHAK dibebaskan dari tanggung jawab atas keterlambatan atau kegagalan dalam memenuhi kewajiban yang disebabkan oleh keadaan di luar kendali yang wajar (*Force Majeure*), seperti bencana alam, wabah, huru-hara, peperangan, serta kebijakan pemerintah di bidang moneter/teknologi.
+                </p>
+            </div>
+
+            <!-- PASAL 8 -->
+            <div>
+                <h4 class="font-bold text-center uppercase tracking-wider mb-1">PASAL 8<br>PENYELESAIAN PERSELISIHAN</h4>
+                <p class="pl-2">
+                    Apabila terjadi perselisihan terkait pelaksanaan Perjanjian ini, PARA PIHAK sepakat untuk menyelesaikannya secara musyawarah untuk mufakat. Apabila musyawarah tidak mencapai mufakat, maka penyelesaian akan dilakukan melalui Pengadilan Negeri Jakarta Selatan.
                 </p>
             </div>
 
@@ -199,7 +214,7 @@ $tahunAngka = date('Y', $tglMulaiStamp);
         </p>
 
         <!-- Area Tanda Tangan & Meterai -->
-        <div class="grid grid-cols-2 text-center text-xs font-sans mt-10">
+        <div class="grid grid-cols-2 text-center text-xs font-sans mt-10 avoid-break">
             <div>
                 <p class="font-bold text-slate-900">PIHAK PERTAMA</p>
                 <p class="text-slate-500 font-semibold">PT. CIPTA TEKNOLOGI CENDEKIA</p>

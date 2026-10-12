@@ -57,7 +57,7 @@ $stmt_count->execute($params);
 $total_rows = $stmt_count->fetchColumn();
 $total_pages = ceil($total_rows / $limit);
 
-// Query Data Tasks (Menarik drive_link, progress_notes, revision_notes sesuai modul projects)
+// Query Data Tasks
 $query = "
     SELECT t.*, 
            p.nama_projek, 
@@ -76,32 +76,76 @@ $query = "
 
 $stmt = $pdo->prepare($query);
 $stmt->execute($params);
-$tasks =$stmt->fetchAll();
+$tasks = $stmt->fetchAll();
 
-// Data Master Karyawan & Stats
-$users =$pdo->query("SELECT * FROM users ORDER BY nama ASC")->fetchAll();
-$totalTasks =$pdo->query("SELECT COUNT(*) FROM tasks")->fetchColumn();
-$urgentTasks =$pdo->query("SELECT COUNT(*) FROM tasks WHERE prioritas = 'Urgent' AND status != 'Done'")->fetchColumn();
-$completedTasks =$pdo->query("SELECT COUNT(*) FROM tasks WHERE status = 'Done'")->fetchColumn();
-$inProgressTasks =$pdo->query("SELECT COUNT(*) FROM tasks WHERE status = 'In Progress'")->fetchColumn();
+// Fetch Data Proyek untuk Gantt Chart
+$projectsGanttRaw = $pdo->query("
+    SELECT p.*, 
+           COALESCE(c.durasi_bulan, 3) AS durasi_bulan
+    FROM projects p
+    LEFT JOIN contracts c ON p.id = c.project_id
+    ORDER BY p.id DESC
+")->fetchAll();
+
+// Query hanya kolom yang PASTI ADA di tabel tasks
+$allTasksStmt = $pdo->query("SELECT id, project_id, status, deadline FROM tasks");
+$allTasks = $allTasksStmt->fetchAll();
+
+$projectsGantt = [];
+foreach ($projectsGanttRaw as $p) {
+    $pId = $p['id'];
+    $pStart = (!empty($p['tanggal_mulai'])) ? new DateTime($p['tanggal_mulai']) : new DateTime();
+    
+    $pTasks = array_filter($allTasks, fn($tk) => $tk['project_id'] == $pId);
+    
+    $weekStatusMap = [];
+    
+    foreach ($pTasks as $tk) {
+        if (!empty($tk['deadline'])) {
+            $taskDeadline = new DateTime($tk['deadline']);
+            $diffDays = (int)$pStart->diff($taskDeadline)->format("%r%a");
+            $targetWeek = max(1, (int)ceil(($diffDays + 1) / 7));
+            
+            if (!isset($weekStatusMap[$targetWeek])) {
+                $weekStatusMap[$targetWeek] = [];
+            }
+            $weekStatusMap[$targetWeek][] = strtolower($tk['status']);
+        }
+    }
+    
+    $p['week_status_map'] = $weekStatusMap;
+    $projectsGantt[] = $p;
+}
+
+// Master Karyawan & Stats
+$users = $pdo->query("SELECT * FROM users ORDER BY nama ASC")->fetchAll();
+$totalTasks = $pdo->query("SELECT COUNT(*) FROM tasks")->fetchColumn();
+$urgentTasks = $pdo->query("SELECT COUNT(*) FROM tasks WHERE prioritas = 'Urgent' AND status != 'Done'")->fetchColumn();
+$completedTasks = $pdo->query("SELECT COUNT(*) FROM tasks WHERE status = 'Done'")->fetchColumn();
+$inProgressTasks = $pdo->query("SELECT COUNT(*) FROM tasks WHERE status = 'In Progress'")->fetchColumn();
 
 function getPaginationUrl($pageNum) {
-    $params =$_GET;
-    $params['page'] =$pageNum;
+    $params = $_GET;
+    $params['page'] = $pageNum;
     return '?' . http_build_query($params);
 }
 ?>
 
-<main class="flex-1 p-4 md:p-8 overflow-y-auto bg-slate-50 relative">
+<main class="flex-1 p-4 md:p-8 overflow-y-auto bg-slate-50 relative font-sans">
+    
     <!-- Top Header Bar -->
-    <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
+    <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
         <div>
             <div class="flex items-center gap-2 text-emerald-700 font-semibold text-xs tracking-wider uppercase mb-1">
                 <i class="fa-solid fa-circle text-[8px]"></i> Modul 2
             </div>
             <h2 class="text-2xl font-bold text-slate-800">Workload & Priority Hub</h2>
-            <p class="text-slate-500 text-sm">Monitoring tugas prioritas harian karyawan PT. CTC & update status pengerjaan</p>
+            <p class="text-slate-500 text-xs mt-0.5">Monitoring tugas prioritas harian karyawan PT. CTC & update status pengerjaan</p>
         </div>
+
+        <button onclick="openGanttModal()" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold transition shadow-md flex items-center justify-center gap-2 shrink-0">
+            <i class="fa-solid fa-chart-gantt text-emerald-400"></i> Lihat Gantt Chart Interactive
+        </button>
     </div>
 
     <!-- Stats Bar -->
@@ -161,7 +205,7 @@ function getPaginationUrl($pageNum) {
                     <label class="text-xs font-bold text-slate-500 uppercase">Karyawan:</label>
                     <select name="user_id" onchange="this.form.submit()" class="px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer">
                         <option value="All" <?= $filter_user === 'All' ? 'selected' : '' ?>>Semua Karyawan</option>
-                        <?php foreach ($users as$u): ?>
+                        <?php foreach ($users as $u): ?>
                             <option value="<?= $u['id'] ?>" <?= $filter_user == $u['id'] ? 'selected' : '' ?>><?= htmlspecialchars($u['nama']) ?></option>
                         <?php endforeach; ?>
                     </select>
@@ -176,7 +220,7 @@ function getPaginationUrl($pageNum) {
                     </select>
                 </div>
 
-                <?php if ($filter_status !== 'All' ||$filter_user !== 'All' || $search !== '' ||$sort !== 'priority'): ?>
+                <?php if ($filter_status !== 'All' || $filter_user !== 'All' || $search !== '' || $sort !== 'priority'): ?>
                     <a href="index.php" class="text-xs text-red-500 hover:text-red-700 font-semibold ml-auto lg:ml-0 flex items-center gap-1 transition">
                         <i class="fa-solid fa-xmark"></i> Reset
                     </a>
@@ -194,10 +238,9 @@ function getPaginationUrl($pageNum) {
                 <p class="text-sm text-slate-400 mt-1">Atur ulang kata kunci atau filter pencarian Anda.</p>
             </div>
         <?php else: ?>
-            <?php foreach ($tasks as$t): ?>
+            <?php foreach ($tasks as $t): ?>
                 <div onclick="openTaskDrawer(<?= htmlspecialchars(json_encode($t), ENT_QUOTES, 'UTF-8') ?>)" class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-emerald-500/40 transition cursor-pointer flex flex-col justify-between group">
                     <div>
-                        <!-- Card Header -->
                         <div class="flex justify-between items-start mb-3">
                             <span class="px-2.5 py-1 text-[10px] font-bold uppercase rounded-lg tracking-wider
                                 <?php
@@ -216,7 +259,6 @@ function getPaginationUrl($pageNum) {
                             </span>
                         </div>
 
-                        <!-- Task Name & Project Info -->
                         <h4 class="font-bold text-slate-800 text-base mb-1 line-clamp-2 group-hover:text-emerald-700 transition"><?= htmlspecialchars($t['nama_tugas']) ?></h4>
                         
                         <p class="text-xs text-emerald-700 font-semibold mb-4 flex items-center gap-1.5">
@@ -224,7 +266,6 @@ function getPaginationUrl($pageNum) {
                             <span class="truncate max-w-[200px]"><?= htmlspecialchars($t['nama_projek']) ?></span>
                         </p>
 
-                        <!-- Karyawan Info -->
                         <div class="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100 mb-4">
                             <div class="flex items-center gap-2.5">
                                 <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shadow-sm">
@@ -241,7 +282,6 @@ function getPaginationUrl($pageNum) {
                         </div>
                     </div>
 
-                    <!-- Status Update Form -->
                     <div class="pt-3 border-t border-slate-100 flex items-center justify-between" onclick="event.stopPropagation()">
                         <span class="text-xs font-semibold text-slate-400">Status:</span>
                         <form action="update.php" method="POST" class="inline-block">
@@ -271,7 +311,7 @@ function getPaginationUrl($pageNum) {
     <?php if ($total_pages > 1): ?>
         <div class="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
             <p class="text-xs text-slate-500 font-medium">
-                Menampilkan <span class="font-bold text-slate-800"><?= min($offset + 1,$total_rows) ?></span> - <span class="font-bold text-slate-800"><?= min($offset + $limit,$total_rows) ?></span> dari <span class="font-bold text-slate-800"><?= $total_rows ?></span> tugas
+                Menampilkan <span class="font-bold text-slate-800"><?= min($offset + 1, $total_rows) ?></span> - <span class="font-bold text-slate-800"><?= min($offset + $limit, $total_rows) ?></span> dari <span class="font-bold text-slate-800"><?= $total_rows ?></span> tugas
             </p>
 
             <div class="flex items-center gap-1.5">
@@ -308,11 +348,97 @@ function getPaginationUrl($pageNum) {
 
 </main>
 
+<!-- MODAL POP-UP GANTT CHART INTERACTIVE -->
+<div id="ganttModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-5xl shadow-2xl overflow-hidden relative flex flex-col max-h-[92vh]">
+        
+        <div class="px-6 py-4 bg-emerald-950 text-white flex justify-between items-center shrink-0">
+            <div>
+                <h3 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-chart-gantt text-emerald-400"></i> Gantt Chart & Status Progress Realtime
+                </h3>
+                <p class="text-xs text-emerald-300 mt-0.5">Pantau estimasi jadwal, progres modul, dan indikator minggu pengerjaan</p>
+            </div>
+            <button onclick="closeGanttModal()" class="text-emerald-300 hover:text-white transition">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+
+        <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 shrink-0">
+            <div class="flex flex-1 items-center gap-2">
+                <div class="relative flex-1">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input type="text" id="ganttSearchInput" onkeyup="filterGanttProjects()" placeholder="Cari nama proyek..." class="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-semibold text-slate-700">
+                </div>
+                <select id="ganttStatusFilter" onchange="filterGanttProjects()" class="px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 shrink-0">
+                    <option value="ALL">Semua Status Proyek</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Completed">Completed</option>
+                    <option value="On Hold">On Hold</option>
+                </select>
+            </div>
+
+            <div class="flex items-center gap-2 shrink-0">
+                <button onclick="exportGanttExcel()" class="px-3.5 py-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-emerald-300">
+                    <i class="fa-solid fa-file-excel text-emerald-700"></i> Export Excel
+                </button>
+                <button onclick="printGanttPDF()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-md flex items-center gap-1.5">
+                    <i class="fa-solid fa-print"></i> Cetak PDF / Print
+                </button>
+            </div>
+        </div>
+
+        <div class="p-6 overflow-y-auto space-y-5 flex-1">
+            
+            <div class="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <label class="text-xs font-bold text-slate-600 uppercase shrink-0">Pilih Proyek Target:</label>
+                <select id="ganttProjectSelect" onchange="renderGanttChart()" class="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-bold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    <?php foreach ($projectsGantt as$pG): ?>
+                        <option value="<?= $pG['id'] ?>" 
+                                data-nama="<?= htmlspecialchars($pG['nama_projek']) ?>"
+                                data-klien="<?= htmlspecialchars($pG['klien']) ?>"
+                                data-status="<?= htmlspecialchars($pG['status']) ?>"
+                                data-start="<?= $pG['tanggal_mulai'] ?>"
+                                data-durasi="<?= $pG['durasi_bulan'] ?>"
+                                data-tasksmap='<?= json_encode($pG['week_status_map']) ?>'>
+                            <?= htmlspecialchars($pG['nama_projek']) ?> (Klien: <?= htmlspecialchars($pG['klien']) ?>) - [<?=$pG['status'] ?>]
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <!-- Legend Warna Keterangan Status -->
+            <div class="flex flex-wrap items-center justify-between text-[11px] font-bold text-slate-600 bg-slate-100/70 px-4 py-2 rounded-xl border border-slate-200">
+                <div class="flex items-center gap-4 flex-wrap">
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-emerald-600 inline-block"></span> Selesai (Done)</span>
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-blue-600 inline-block"></span> Sedang Dikerjakan</span>
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-amber-500 inline-block"></span> Terlambat / Warning</span>
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-slate-800 inline-block"></span> Rencana Pengerjaan</span>
+                </div>
+                <div class="flex items-center gap-1 text-emerald-800 font-extrabold">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span> Garis Hijau: Minggu Aktif Saat Ini
+                </div>
+            </div>
+
+            <div id="ganttTableContainer" class="overflow-x-auto border border-slate-300 rounded-xl bg-white">
+                <!-- Render Gantt Chart JS -->
+            </div>
+
+        </div>
+
+        <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center text-xs shrink-0">
+            <span class="text-slate-500 font-medium">Standardization SPK BAST Document PT. CTC</span>
+            <button onclick="closeGanttModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold transition">
+                Tutup Window
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- SLIDE-OVER DRAWER DETAIL TUGAS & GOOGLE DRIVE -->
 <div id="drawerOverlay" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden opacity-0 transition-opacity duration-300" onclick="closeTaskDrawer()"></div>
 
 <div id="taskDrawer" class="fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col justify-between overflow-y-auto">
-    <!-- Header Drawer -->
     <div class="p-6 bg-slate-900 text-white flex justify-between items-start">
         <div>
             <span id="drawerPriority" class="px-2.5 py-0.5 text-[10px] font-bold uppercase rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 mb-2 inline-block">
@@ -328,10 +454,7 @@ function getPaginationUrl($pageNum) {
         </button>
     </div>
 
-    <!-- Body Drawer -->
     <div class="p-6 space-y-6 flex-1">
-        
-        <!-- Status & Deadline Quick Badge -->
         <div class="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
             <div>
                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Status Modul</span>
@@ -343,7 +466,6 @@ function getPaginationUrl($pageNum) {
             </div>
         </div>
 
-        <!-- Penanggung Jawab Karyawan -->
         <div>
             <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Penanggung Jawab</h4>
             <div class="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200 shadow-sm">
@@ -357,7 +479,6 @@ function getPaginationUrl($pageNum) {
             </div>
         </div>
 
-        <!-- Google Drive Deliverables (Diambil dari drive_link DB) -->
         <div>
             <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Lampiran Google Drive</h4>
             <div id="drawerDriveBox" class="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200/60 flex items-center justify-between">
@@ -374,7 +495,6 @@ function getPaginationUrl($pageNum) {
             </div>
         </div>
 
-        <!-- Catatan Progress & Revisi -->
         <div class="space-y-3">
             <div>
                 <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Laporan Karyawan</h4>
@@ -390,10 +510,8 @@ function getPaginationUrl($pageNum) {
                 </div>
             </div>
         </div>
-
     </div>
 
-    <!-- Footer Drawer -->
     <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
         <a id="drawerProjectLink" href="#" class="text-xs text-emerald-700 hover:underline font-bold flex items-center gap-1">
             <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i> Buka Proyek
@@ -404,13 +522,191 @@ function getPaginationUrl($pageNum) {
     </div>
 </div>
 
-<!-- JavaScript Interaktivitas Drawer -->
 <script>
+function openGanttModal() {
+    document.getElementById('ganttModal').classList.remove('hidden');
+    renderGanttChart();
+}
+
+function closeGanttModal() {
+    document.getElementById('ganttModal').classList.add('hidden');
+}
+
+function filterGanttProjects() {
+    const searchVal = document.getElementById('ganttSearchInput').value.toLowerCase();
+    const statusVal = document.getElementById('ganttStatusFilter').value;
+    const select = document.getElementById('ganttProjectSelect');
+    const options = select.getElementsByTagName('option');
+
+    let firstIndex = -1;
+
+    for (let i = 0; i < options.length; i++) {
+        const text = options[i].text.toLowerCase();
+        const pStatus = options[i].getAttribute('data-status') || '';
+
+        const matchSearch = text.includes(searchVal);
+        const matchStatus = (statusVal === 'ALL' || pStatus === statusVal);
+
+        if (matchSearch && matchStatus) {
+            options[i].style.display = "";
+            if (firstIndex === -1) firstIndex = i;
+        } else {
+            options[i].style.display = "none";
+        }
+    }
+
+    if (firstIndex !== -1) {
+        select.selectedIndex = firstIndex;
+        renderGanttChart();
+    }
+}
+
+function renderGanttChart() {
+    const select = document.getElementById('ganttProjectSelect');
+    if (!select || select.options.length === 0) return;
+
+    const opt = select.options[select.selectedIndex];
+    const namaProjek = opt.getAttribute('data-nama');
+    const startDateStr = opt.getAttribute('data-start');
+    const durasiBulan = parseInt(opt.getAttribute('data-durasi')) || 3;
+    const tasksMapRaw = opt.getAttribute('data-tasksmap');
+    
+    let weekTasksMap = {};
+    try {
+        weekTasksMap = JSON.parse(tasksMapRaw) || {};
+    } catch(e) {
+        weekTasksMap = {};
+    }
+
+    const totalMinggu = durasiBulan * 4;
+
+    // HITUNG MINGGU AKTIF SAAT INI (GARIS HIJAU)
+    let currentWeek = -1;
+    if (startDateStr) {
+        const startDate = new Date(startDateStr);
+        const today = new Date();
+        const diffTime = today - startDate;
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        if (diffDays >= 0) {
+            currentWeek = Math.floor(diffDays / 7) + 1;
+        }
+    }
+
+    const phases = [
+        {
+            fase: "Fase 1: Inisiasi & UI/UX Design",
+            deskripsi: "Analisis kebutuhan, PM-AAS, desain UI/UX, dan arsitektur database.",
+            weeks: [1, 2]
+        },
+        {
+            fase: "Fase 2: Core Development & API Integration",
+            deskripsi: "Development Aplikasi, Core Logic & Integrasi API Sistem.",
+            weeks: Array.from({length: Math.max(1, Math.floor(totalMinggu * 0.35))}, (_, i) => i + 3)
+        },
+        {
+            fase: "Fase 3: Algoritma & Modul Spesifik",
+            deskripsi: "Implementasi Modul Spesifik, Algoritma, dan Fitur Khusus.",
+            weeks: Array.from({length: Math.max(1, Math.floor(totalMinggu * 0.25))}, (_, i) => i + Math.floor(totalMinggu * 0.5) + 1)
+        },
+        {
+            fase: "Fase 4: Testing, QA & Bug Fixing",
+            deskripsi: "Pengujian fungsi, integrasi Web Dashboard Admin, dan bug fixing.",
+            weeks: [totalMinggu - 1]
+        },
+        {
+            fase: "Fase 5: UAT, Training & Deployment Go-Live",
+            deskripsi: "UAT bersama Klien, Pelatihan, & Deployment Go-Live.",
+            weeks: [totalMinggu]
+        }
+    ];
+
+    let html = `
+        <div class="p-3 bg-slate-100 border-b border-slate-300 font-bold text-xs text-slate-800 flex justify-between items-center">
+            <span>PROYEKSI & JADWAL PELAKSANAAN PROYEK "${namaProjek.toUpperCase()}"</span>
+            <span class="text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded font-mono text-[11px]">Durasi: ${durasiBulan} Bulan (${totalMinggu} Minggu)</span>
+        </div>
+        <table class="w-full text-left border-collapse text-xs">
+            <thead>
+                <tr class="bg-slate-200 text-slate-700 uppercase font-bold border-b border-slate-300">
+                    <th class="p-2.5 border-r border-slate-300 w-1/4">Tahapan Pekerjaan</th>
+                    <th class="p-2.5 border-r border-slate-300 w-2/5">Deskripsi</th>
+    `;
+
+    for (let m = 1; m <= totalMinggu; m++) {
+        const isCurrent = (m === currentWeek);
+        html += `<th class="p-2 text-center border-r border-slate-300 text-[10px] ${isCurrent ? 'bg-emerald-600 text-white font-black' : 'bg-slate-100'}" title="${isCurrent ? 'Minggu Aktif Saat Ini' : ''}">M${m}</th>`;
+    }
+
+    html += `</tr></thead><tbody class="divide-y divide-slate-200">`;
+
+    phases.forEach((p) => {
+        html += `
+            <tr class="hover:bg-slate-50 transition">
+                <td class="p-2.5 font-bold text-slate-800 border-r border-slate-300">${p.fase}</td>
+                <td class="p-2.5 text-slate-600 text-[11px] border-r border-slate-300">${p.deskripsi}</td>
+        `;
+
+        for (let m = 1; m <= totalMinggu; m++) {
+            const isScheduleFilled = p.weeks.includes(m);
+            const isCurrent = (m === currentWeek);
+            const weekTasks = weekTasksMap[m] || [];
+
+            let blockBg = "bg-slate-900"; 
+            let titleText = "Minggu M" + m + ": Jadwal Rencana Pengerjaan";
+
+            if (isScheduleFilled) {
+                if (weekTasks.length > 0) {
+                    const isAllDone = weekTasks.every(st => st === 'done');
+                    const hasInProgress = weekTasks.some(st => st === 'in progress' || st === 'ready for review');
+
+                    if (isAllDone) {
+                        blockBg = "bg-emerald-600"; 
+                        titleText = "Minggu M" + m + ": Semua Modul Selesai (Done)";
+                    } else if (hasInProgress) {
+                        blockBg = "bg-blue-600 animate-pulse"; 
+                        titleText = "Minggu M" + m + ": Sedang Dikerjakan (In Progress)";
+                    } else if (m < currentWeek) {
+                        blockBg = "bg-amber-500"; 
+                        titleText = "Minggu M" + m + ": Peringatan Keterlambatan!";
+                    }
+                } else if (m < currentWeek) {
+                    blockBg = "bg-amber-500"; 
+                }
+            }
+
+            html += `
+                <td class="p-1 text-center border-r border-slate-300 ${isCurrent ? 'bg-emerald-50/80 border-x-2 border-x-emerald-500' : ''}">
+                    ${isScheduleFilled ? `<div class="w-4 h-4 ${blockBg} rounded mx-auto shadow-sm" title="${titleText}"></div>` : ''}
+                </td>
+            `;
+        }
+
+        html += `</tr>`;
+    });
+
+    html += `</tbody></table>`;
+
+    document.getElementById('ganttTableContainer').innerHTML = html;
+}
+
+function exportGanttExcel() {
+    const select = document.getElementById('ganttProjectSelect');
+    if (!select || select.options.length === 0) return;
+    const projectId = select.value;
+    window.location.href = `export_excel.php?project_id=${projectId}`;
+}
+
+function printGanttPDF() {
+    const select = document.getElementById('ganttProjectSelect');
+    if (!select || select.options.length === 0) return;
+    const projectId = select.value;
+    window.open(`print_pdf.php?project_id=${projectId}`, '_blank');
+}
+
 function openTaskDrawer(task) {
     const overlay = document.getElementById('drawerOverlay');
     const drawer = document.getElementById('taskDrawer');
 
-    // Populate Data Utama
     document.getElementById('drawerTaskTitle').innerText = task.nama_tugas;
     document.getElementById('drawerProjectName').querySelector('span').innerText = task.nama_projek + ' (' + task.klien + ')';
     document.getElementById('drawerPriority').innerText = task.prioritas;
@@ -420,10 +716,8 @@ function openTaskDrawer(task) {
     document.getElementById('drawerRole').innerText = task.jabatan;
     document.getElementById('drawerAvatar').innerText = task.nama_karyawan.charAt(0).toUpperCase();
 
-    // Link Proyek ke Modul Detail
     document.getElementById('drawerProjectLink').href = `../projects/detail.php?id=${task.project_id}`;
 
-    // Google Drive Link (Sesuai kolom drive_link DB)
     const driveBtn = document.getElementById('driveButton');
     const driveText = document.getElementById('drawerDriveText');
     if (task.drive_link && task.drive_link.trim() !== '') {
@@ -435,7 +729,6 @@ function openTaskDrawer(task) {
         driveText.innerText = "Belum ada link drive terlampir";
     }
 
-    // Progress Notes & Revision Notes
     document.getElementById('drawerProgressNotes').innerText = (task.progress_notes && task.progress_notes.trim() !== '') 
         ? '"' + task.progress_notes + '"' 
         : 'Belum ada catatan pengerjaan.';
@@ -448,7 +741,6 @@ function openTaskDrawer(task) {
         revSec.classList.add('hidden');
     }
 
-    // Show Drawer
     overlay.classList.remove('hidden');
     setTimeout(() => {
         overlay.classList.remove('opacity-0');

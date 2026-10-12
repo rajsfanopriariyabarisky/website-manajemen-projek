@@ -18,20 +18,89 @@ if (!$project) {
     exit;
 }
 
-// Hitung Durasi Pengerjaan (Default 12 Minggu / 3 Bulan jika tidak ada)
+// Otomatis Ambil Kategori RAB dari Database Proyek (Hasil Input Modal)
+$kategoriRAB = $project['kategori_rab'] ?? 'Website';
+$totalBudget = $project['budget'];
+
+// Hitung Durasi Pengerjaan
 $tglMulai = new DateTime($project['tanggal_mulai']);
 $tglSelesai = new DateTime($project['deadline']);
 $interval = $tglMulai->diff($tglSelesai);
 $durasiBulan = max(1, $interval->m + ($interval->y * 12));
 $durasiMinggu = $durasiBulan * 4;
 
-// Auto-Calculate RAB berdasarkan Properti Budget Proyek (Standar Porsi Alokasi IT)
-$totalBudget = $project['budget'];
-$rab1 = round($totalBudget * 0.15); // UI/UX & Cloud DB Setup (15%)
-$rab2 = round($totalBudget * 0.40); // Core App Development (40%)
-$rab3 = round($totalBudget * 0.15); // Offline Sync & API Integration (15%)
-$rab4 = round($totalBudget * 0.20); // Web Admin & Super Dashboard (20%)
-$rab5 = $totalBudget - ($rab1 + $rab2 + $rab3 + $rab4); // UAT & Deployment (10%)
+// Logika Penentuan Komponen RAB Otomatis Sesuai Inputan Proyek
+$rabItems = [];
+
+switch ($kategoriRAB) {
+    case 'IoT':
+        $rab1 = round($totalBudget * 0.25);
+        $rab2 = round($totalBudget * 0.30);
+        $rab3 = round($totalBudget * 0.20);
+        $rab4 = round($totalBudget * 0.15);
+        $rab5 = $totalBudget - ($rab1 + $rab2 + $rab3 + $rab4);
+        
+        $rabItems = [
+            ['komponen' => 'Hardware & Sensor Procurement', 'deskripsi' => 'Pengadaan Modul Sensor, Mikrokontroler, & Komponen IoT', 'biaya' => $rab1],
+            ['komponen' => 'Firmware & Embedded System Coding', 'deskripsi' => 'Pengkodean Logika Hardware, Calibrating Sensor, & Local Logic', 'biaya' => $rab2],
+            ['komponen' => 'IoT Gateway & Cloud Telemetry', 'deskripsi' => 'Integrasi Protokol MQTT/HTTP, Cloud Server, & Data Ingestion', 'biaya' => $rab3],
+            ['komponen' => 'Monitoring Dashboard & Control Hub', 'deskripsi' => 'Pengembangan Dashboard Real-time Monitoring & Remote Actuator', 'biaya' => $rab4],
+            ['komponen' => 'Field Testing, Calibration & Deployment', 'deskripsi' => 'Pengujian Lapangan, Kalibrasi Alat, & User Training', 'biaya' => $rab5],
+        ];
+        break;
+
+    case 'Mobile':
+        $rab1 = round($totalBudget * 0.20);
+        $rab2 = round($totalBudget * 0.35);
+        $rab3 = round($totalBudget * 0.20);
+        $rab4 = round($totalBudget * 0.15);
+        $rab5 = $totalBudget - ($rab1 + $rab2 + $rab3 + $rab4);
+
+        $rabItems = [
+            ['komponen' => 'Cross-Platform UI/UX Mobile Design', 'deskripsi' => 'Wireframing, Mobile Prototype, & Adaptive Mobile UI', 'biaya' => $rab1],
+            ['komponen' => 'Mobile Core Application (Android & iOS)', 'deskripsi' => 'Pengkodean Aplikasi Mobile Front-End & Local State Management', 'biaya' => $rab2],
+            ['komponen' => 'Backend API & Cloud Server Sync', 'deskripsi' => 'Restful API Service, Database Cloud, & Push Notification Engine', 'biaya' => $rab3],
+            ['komponen' => 'App Store & Play Store Publishing', 'deskripsi' => 'Setup Developer Account, Store Compliance, & Release Management', 'biaya' => $rab4],
+            ['komponen' => 'Mobile Security & Quality Assurance', 'deskripsi' => 'Encryption Hardening, Compatibility Testing, & User Training', 'biaya' => $rab5],
+        ];
+        break;
+
+    case 'Custom':
+        if (!empty($project['rab_custom_data'])) {
+            $rawCustom = json_decode($project['rab_custom_data'], true);
+            foreach ($rawCustom as $item) {
+                $pVal = (float)($item['persen'] ?? 0);
+                $biayaCalc = round(($pVal / 100) * $totalBudget);
+                $rabItems[] = [
+                    'komponen'  => $item['komponen'],
+                    'deskripsi' => $item['deskripsi'],
+                    'biaya'     => $biayaCalc
+                ];
+            }
+        } else {
+            $rabItems = [
+                ['komponen' => 'Pengembangan Sistem Spesifik', 'deskripsi' => 'Pengerjaan Modul Khusus Sesuai Kebutuhan Klien', 'biaya' => $totalBudget]
+            ];
+        }
+        break;
+
+    case 'Website':
+    default:
+        $rab1 = round($totalBudget * 0.15);
+        $rab2 = round($totalBudget * 0.40);
+        $rab3 = round($totalBudget * 0.15);
+        $rab4 = round($totalBudget * 0.20);
+        $rab5 = $totalBudget - ($rab1 + $rab2 + $rab3 + $rab4);
+
+        $rabItems = [
+            ['komponen' => 'Setup Arsitektur, UI/UX & Cloud DB', 'deskripsi' => 'Perancangan Wireframe UI/UX, Struktur Data, & Server Setup', 'biaya' => $rab1],
+            ['komponen' => 'Pengembangan Engine & Core Application', 'deskripsi' => 'Pengkodean Modul Utama Proyek ' . htmlspecialchars($project['nama_projek']), 'biaya' => $rab2],
+            ['komponen' => 'Integrasi API & Framework Engine', 'deskripsi' => 'Konektivitas Layanan API, Enkripsi Security, & Gateway System', 'biaya' => $rab3],
+            ['komponen' => 'Web Admin & Executive Dashboard', 'deskripsi' => 'Monitoring Real-Time Operasional, Analytics Data & Reporting Hub', 'biaya' => $rab4],
+            ['komponen' => 'Testing, Deployment & User Training', 'deskripsi' => 'User Acceptance Testing (UAT), Cloud Deployment & Documentation', 'biaya' => $rab5],
+        ];
+        break;
+}
 
 // Auto Generate Nomor Surat Penawaran
 function bulanRomawi($bulan) {
@@ -89,7 +158,7 @@ function terbilang($angka) {
         <div class="border-b-4 border-double border-emerald-900 pb-4 mb-6">
             <h1 class="text-xl font-bold tracking-wider text-emerald-950 font-sans uppercase">PT. CIPTA TEKNOLOGI CENDEKIA</h1>
             <p class="text-xs font-sans text-slate-600 font-bold">IT Solution, Software Development & Enterprise System Engineering</p>
-            <p class="text-[11px] font-sans text-slate-500">Gedung CTC Tower, Lt. 8, Jl. Jend. Sudirman, Jakarta | Email: info@ctc-nusantara.com | Website: https://ctc-nusantara.com/</p>
+            <p class="text-[11px] font-sans text-slate-500">Perumahan Cahaya Garuda Residence Kav. 31, Bojongsari, Kota Depok, Jawa Barat | ciptateknologicendekia@gmail.com | Website: https://ctc-nusantara.com/</p>
         </div>
 
         <!-- Meta Surat Penawaran -->
@@ -132,7 +201,7 @@ function terbilang($angka) {
             <div>
                 <p class="font-bold text-emerald-900">A. Front-End Application & User Interface</p>
                 <ul class="list-disc pl-5 space-y-1 mt-1">
-                    <li>Design UI/UX interaktif berbasis standar pengerjaan web/mobile modern.</li>
+                    <li>Design UI/UX interaktif berbasis standar pengerjaan platform <?= htmlspecialchars($kategoriRAB) ?> modern.</li>
                     <li>Modul operasional utama sesuai alur kerja bisnis <?= htmlspecialchars($project['klien']) ?>.</li>
                     <li>Integrasi fitur pencarian, filter data, serta navigasi responsif multi-device.</li>
                 </ul>
@@ -149,7 +218,7 @@ function terbilang($angka) {
             </div>
         </div>
 
-        <!-- RAB Table Terkalkulasi Otomatis -->
+        <!-- RAB Table OTOMATIS Membaca Inputan Proyek -->
         <div class="text-xs mb-6">
             <h3 class="font-bold text-sm text-slate-900 border-b border-slate-200 pb-1 mb-3 uppercase">2. RINCIAN ANGGARAN BIAYA (RAB)</h3>
             <table class="w-full border-collapse border border-slate-300 font-sans text-xs">
@@ -162,36 +231,17 @@ function terbilang($angka) {
                     </tr>
                 </thead>
                 <tbody>
-                    <tr>
-                        <td class="border border-slate-300 p-2 text-center">1</td>
-                        <td class="border border-slate-300 p-2 font-bold">Setup Arsitektur, UI/UX & Cloud DB</td>
-                        <td class="border border-slate-300 p-2">Perancangan Wireframe UI/UX, Struktur Data, & Server Setup</td>
-                        <td class="border border-slate-300 p-2 text-right font-mono"><?= number_format($rab1, 0, ',', '.') ?></td>
-                    </tr>
-                    <tr>
-                        <td class="border border-slate-300 p-2 text-center">2</td>
-                        <td class="border border-slate-300 p-2 font-bold">Pengembangan Engine & Core Application</td>
-                        <td class="border border-slate-300 p-2">Pengkodean Modul Utama Proyek <?= htmlspecialchars($project['nama_projek']) ?></td>
-                        <td class="border border-slate-300 p-2 text-right font-mono"><?= number_format($rab2, 0, ',', '.') ?></td>
-                    </tr>
-                    <tr>
-                        <td class="border border-slate-300 p-2 text-center">3</td>
-                        <td class="border border-slate-300 p-2 font-bold">Integrasi API & Framework Engine</td>
-                        <td class="border border-slate-300 p-2">Konektivitas Layanan API, Enkripsi Security, & Gateway System</td>
-                        <td class="border border-slate-300 p-2 text-right font-mono"><?= number_format($rab3, 0, ',', '.') ?></td>
-                    </tr>
-                    <tr>
-                        <td class="border border-slate-300 p-2 text-center">4</td>
-                        <td class="border border-slate-300 p-2 font-bold">Web Admin & Executive Dashboard</td>
-                        <td class="border border-slate-300 p-2">Monitoring Real-Time Operasional, Analytics Data & Reporting Hub</td>
-                        <td class="border border-slate-300 p-2 text-right font-mono"><?= number_format($rab4, 0, ',', '.') ?></td>
-                    </tr>
-                    <tr>
-                        <td class="border border-slate-300 p-2 text-center">5</td>
-                        <td class="border border-slate-300 p-2 font-bold">Testing, Deployment & User Training</td>
-                        <td class="border border-slate-300 p-2">User Acceptance Testing (UAT), Cloud Deployment & Documentation</td>
-                        <td class="border border-slate-300 p-2 text-right font-mono"><?= number_format($rab5, 0, ',', '.') ?></td>
-                    </tr>
+                    <?php 
+                    $no = 1;
+                    foreach ($rabItems as $item): 
+                    ?>
+                        <tr>
+                            <td class="border border-slate-300 p-2 text-center"><?= $no++ ?></td>
+                            <td class="border border-slate-300 p-2 font-bold"><?= htmlspecialchars($item['komponen']) ?></td>
+                            <td class="border border-slate-300 p-2"><?= htmlspecialchars($item['deskripsi']) ?></td>
+                            <td class="border border-slate-300 p-2 text-right font-mono"><?= number_format($item['biaya'], 0, ',', '.') ?></td>
+                        </tr>
+                    <?php endforeach; ?>
                     <tr class="font-bold bg-slate-100">
                         <td colspan="3" class="border border-slate-300 p-2 text-right">TOTAL INVESTASI (Eksklusif PPN)</td>
                         <td class="border border-slate-300 p-2 text-right font-mono text-emerald-800">Rp <?= number_format($totalBudget, 0, ',', '.') ?></td>
@@ -211,7 +261,7 @@ function terbilang($angka) {
                     <p class="text-slate-500 font-semibold"><?= htmlspecialchars($project['klien']) ?></p>
                     <div class="h-20 my-2 flex items-center justify-center text-slate-300 italic">[Tanda Tangan & Stempel]</div>
                     <p class="font-bold underline">[ Direksi / Perwakilan Resmi ]</p>
-                    <p class="text-[10px] text-slate-500"><?= htmlspecialchars($project['klien']) ?></p>
+                    <p class="text-[10px] text-slate-500 font-medium mt-0.5"><?= htmlspecialchars($project['klien']) ?></p>
                 </div>
 
                 <div>
@@ -219,7 +269,7 @@ function terbilang($angka) {
                     <p class="text-slate-500 font-semibold">PT. Cipta Teknologi Cendekia</p>
                     <div class="h-20 my-2 flex items-center justify-center text-slate-300 italic">[Tanda Tangan & Stempel]</div>
                     <p class="font-bold underline">[ Project Director / Consultant ]</p>
-                    <p class="text-[10px] text-slate-500">PT. Cipta Teknologi Cendekia</p>
+                    <p class="text-[10px] text-slate-500 font-medium mt-0.5">PT. Cipta Teknologi Cendekia</p>
                 </div>
             </div>
         </div>
