@@ -13,23 +13,40 @@ $stmt = $pdo->prepare("SELECT * FROM projects WHERE id = ?");
 $stmt->execute([$project_id]);
 $project = $stmt->fetch();
 
+// Fallback: Jika tidak ada di tabel projects, cek di tabel proposals
 if (!$project) {
-    header("Location: index.php");
-    exit;
+    $stmtProp = $pdo->prepare("SELECT * FROM proposals WHERE id = ?");
+    $stmtProp->execute([$project_id]);
+    $prop = $stmtProp->fetch();
+
+    if ($prop) {
+        $project = [
+            'id' => $prop['id'],
+            'nama_projek' => $prop['title'],
+            'klien' => $prop['client_name'],
+            'budget' => $prop['nilai_penawaran'],
+            'tanggal_mulai' => $prop['created_at'],
+            'deadline' => date('Y-m-d', strtotime('+30 days', strtotime($prop['created_at']))),
+            'kategori_rab' => 'Website'
+        ];
+    } else {
+        header("Location: index.php");
+        exit;
+    }
 }
 
-// Otomatis Ambil Kategori RAB dari Database Proyek (Hasil Input Modal)
+// Otomatis Ambil Kategori RAB
 $kategoriRAB = $project['kategori_rab'] ?? 'Website';
-$totalBudget = $project['budget'];
+$totalBudget = $project['budget'] ?? 0;
 
 // Hitung Durasi Pengerjaan
-$tglMulai = new DateTime($project['tanggal_mulai']);
-$tglSelesai = new DateTime($project['deadline']);
+$tglMulai = new DateTime($project['tanggal_mulai'] ?? 'now');
+$tglSelesai = new DateTime($project['deadline'] ?? '+30 days');
 $interval = $tglMulai->diff($tglSelesai);
 $durasiBulan = max(1, $interval->m + ($interval->y * 12));
 $durasiMinggu = $durasiBulan * 4;
 
-// Logika Penentuan Komponen RAB Otomatis Sesuai Inputan Proyek
+// Penentuan Komponen RAB
 $rabItems = [];
 
 switch ($kategoriRAB) {
@@ -102,7 +119,7 @@ switch ($kategoriRAB) {
         break;
 }
 
-// Auto Generate Nomor Surat Penawaran
+// Auto Generate Nomor Surat
 function bulanRomawi($bulan) {
     $map = [1 => 'I', 2 => 'II', 3 => 'III', 4 => 'IV', 5 => 'V', 6 => 'VI', 7 => 'VII', 8 => 'VIII', 9 => 'IX', 10 => 'X', 11 => 'XI', 12 => 'XII'];
     return $map[(int)$bulan] ?? 'I';
@@ -183,7 +200,7 @@ function terbilang($angka) {
             Sistem ini dirancang khusus berbasis arsitektur modern, aman, dan dapat diandalkan untuk meningkatkan efisiensi operasional bisnis mitra secara terukur. Total nilai investasi komersial pengembangan sistem ini adalah sebesar <strong>Rp <?= number_format($totalBudget, 0, ',', '.') ?>,-</strong> (<em><?= terbilang($totalBudget) ?> Rupiah</em>) dengan estimasi durasi pengerjaan selama <strong><?= $durasiMinggu ?> Minggu (<?= $durasiBulan ?> Bulan)</strong>.
         </p>
 
-        <!-- Executive Summary Dinamis -->
+        <!-- Executive Summary -->
         <div class="bg-slate-50 p-4 border-l-4 border-emerald-800 text-xs mb-6 font-sans">
             <h3 class="font-bold text-slate-900 mb-2 uppercase">RINGKASAN EKSEKUTIF (EXECUTIVE SUMMARY)</h3>
             <p class="mb-2">Pengembangan sistem <strong><?= htmlspecialchars($project['nama_projek']) ?></strong> berfokus pada 3 Pilar Utama Keunggulan Teknologi:</p>
@@ -194,7 +211,7 @@ function terbilang($angka) {
             </ol>
         </div>
 
-        <!-- Scope of Work Dinamis -->
+        <!-- Scope of Work -->
         <div class="text-xs mb-6 space-y-3">
             <h3 class="font-bold text-sm text-slate-900 border-b border-slate-200 pb-1 uppercase">1. RUANG LINGKUP PEKERJAAN (SCOPE OF WORK)</h3>
             
@@ -218,7 +235,7 @@ function terbilang($angka) {
             </div>
         </div>
 
-        <!-- RAB Table OTOMATIS Membaca Inputan Proyek -->
+        <!-- RAB Table -->
         <div class="text-xs mb-6">
             <h3 class="font-bold text-sm text-slate-900 border-b border-slate-200 pb-1 mb-3 uppercase">2. RINCIAN ANGGARAN BIAYA (RAB)</h3>
             <table class="w-full border-collapse border border-slate-300 font-sans text-xs">

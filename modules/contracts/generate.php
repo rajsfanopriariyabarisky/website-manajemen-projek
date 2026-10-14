@@ -57,7 +57,7 @@ require_once __DIR__ . '/../../includes/header.php';
 require_once __DIR__ . '/../../includes/sidebar.php';
 ?>
 
-<main class="flex-1 p-4 md:p-8 overflow-y-auto bg-slate-50 min-h-screen w-full">
+<main class="flex-1 p-4 md:p-8 overflow-y-auto bg-slate-50 min-h-screen w-full font-sans">
     
     <!-- Top Bar -->
     <div class="mb-6">
@@ -70,7 +70,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
     <?php if ($error): ?>
         <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-xs font-semibold mb-6 shadow-sm">
-            <i class="fa-solid fa-triangle-exclamation mr-1"></i> <?= $error ?>
+            <i class="fa-solid fa-triangle-exclamation mr-1"></i> <?= htmlspecialchars($error) ?>
         </div>
     <?php endif; ?>
 

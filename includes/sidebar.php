@@ -1,6 +1,17 @@
 <?php
 $baseUrl = "http://localhost/website%20manajemen%20projek";
 $currentScript = $_SERVER['SCRIPT_NAME'];
+
+// Hitung Requirement Klien bertipe 'Pending' untuk Badge Counter
+$pendingReqCount = 0;
+if (isset($pdo)) {
+    try {
+        $stmtPendingReq = $pdo->query("SELECT COUNT(*) FROM client_requirements WHERE status = 'Pending'");
+        $pendingReqCount = (int) $stmtPendingReq->fetchColumn();
+    } catch (Exception $e) {
+        $pendingReqCount = 0;
+    }
+}
 ?>
 <style>
     /* Custom Scrollbar Sidebar */
@@ -153,6 +164,26 @@ $currentScript = $_SERVER['SCRIPT_NAME'];
                 <div class="category-divider hidden"></div>
                 <div class="space-y-1">
                     
+                    <!-- MENU BARU: CLIENT REQUIREMENTS -->
+                    <a href="<?= $baseUrl ?>/modules/requirements/index.php" class="nav-item-link relative group flex items-center justify-between px-3.5 py-2.5 rounded-xl font-semibold text-xs border <?= strpos($currentScript, '/requirements/') !== false ? 'bg-emerald-600 border-emerald-500/80 text-white shadow-lg shadow-emerald-600/35' : 'border-transparent text-emerald-100/80 hover:bg-white/5 hover:text-white hover:border-white/10' ?>">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <i class="nav-icon fa-solid fa-inbox w-4 text-center text-sm <?= strpos($currentScript, '/requirements/') !== false ? 'text-white' : 'text-emerald-400' ?>"></i>
+                            <span class="sidebar-text-group truncate">Client Requirements</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <?php if ($pendingReqCount > 0): ?>
+                                <span class="sidebar-text-group px-2 py-0.5 text-[10px] font-extrabold bg-red-500 text-white rounded-full shadow-md animate-pulse">
+                                    <?= $pendingReqCount ?>
+                                </span>
+                            <?php elseif (strpos($currentScript, '/requirements/') !== false): ?>
+                                <span class="sidebar-text-group w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+                            <?php endif; ?>
+                        </div>
+                        <div class="sidebar-tooltip hidden absolute left-full ml-3 px-3 py-1.5 bg-slate-900 border border-slate-700 text-white text-xs font-extrabold rounded-xl shadow-2xl whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50">
+                            Client Requirements <?= $pendingReqCount > 0 ? "({$pendingReqCount})" : '' ?>
+                        </div>
+                    </a>
+
                     <a href="<?= $baseUrl ?>/modules/proposals/index.php" class="nav-item-link relative group flex items-center justify-between px-3.5 py-2.5 rounded-xl font-semibold text-xs border <?= strpos($currentScript, '/proposals/') !== false ? 'bg-emerald-600 border-emerald-500/80 text-white shadow-lg shadow-emerald-600/35' : 'border-transparent text-emerald-100/80 hover:bg-white/5 hover:text-white hover:border-white/10' ?>">
                         <div class="flex items-center gap-3 min-w-0">
                             <i class="nav-icon fa-solid fa-file-signature w-4 text-center text-sm <?= strpos($currentScript, '/proposals/') !== false ? 'text-white' : 'text-emerald-400' ?>"></i>

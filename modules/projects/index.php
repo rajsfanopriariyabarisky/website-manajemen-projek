@@ -8,15 +8,23 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
+// Menangkap Data Auto-Fill jika dipicu dari Convert to Project
+$req_id      = intval($_GET['req_id'] ?? 0);
+$auto_title  = trim($_GET['title'] ?? '');
+$auto_client = trim($_GET['client_name'] ?? '');
+$auto_budget = floatval($_GET['budget'] ?? 0);
+$open_modal  = isset($_GET['convert_req']);
+
 // Handle Tambah Proyek Baru
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_project'])) {
     $nama_projek   = trim($_POST['nama_projek']);
     $klien         = trim($_POST['klien']);
     $budget        = $_POST['budget'] ?? 0;
-    $status        = $_POST['status'] ?? 'On Hold';
+    $status        = $_POST['status'] ?? 'In Progress';
     $kategori_rab  = $_POST['kategori_rab'] ?? 'Website';
     $durasi_bulan  = max(1, (int)($_POST['durasi_bulan'] ?? 3));
     $tanggal_mulai = $_POST['tanggal_mulai'] ?? date('Y-m-d');
+    $origin_req_id = intval($_POST['origin_req_id'] ?? 0);
     
     // Hitung tanggal deadline berdasarkan durasi bulan
     $deadline = date('Y-m-d', strtotime("+$durasi_bulan months", strtotime($tanggal_mulai)));
@@ -44,15 +52,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_project'])) {
     }
 
     if (!empty($nama_projek) && !empty($klien)) {
-        // Insert data Proyek
+        // 1. Insert data Proyek Baru
         $stmtIns = $pdo->prepare("INSERT INTO projects (nama_projek, klien, budget, status, kategori_rab, rab_custom_data, tanggal_mulai, deadline) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
         $stmtIns->execute([$nama_projek, $klien, $budget, $status, $kategori_rab, $rab_custom_json, $tanggal_mulai, $deadline]);
         $newProjectId = $pdo->lastInsertId();
 
-        // Auto-create draf Kontrak untuk menyimpan durasi_bulan (Digunakan oleh Gantt Chart Matriks)
+        // 2. Auto-create draf Kontrak
         $nomorKontrak = sprintf("%03d", $newProjectId) . "/CTC-SPK/" . date('m/Y');
         $stmtContract = $pdo->prepare("INSERT INTO contracts (project_id, nomor_kontrak, durasi_bulan, tanggal_mulai, tanggal_selesai, nilai_kontrak) VALUES (?, ?, ?, ?, ?, ?)");
         $stmtContract->execute([$newProjectId, $nomorKontrak, $durasi_bulan, $tanggal_mulai, $deadline, $budget]);
+
+        // 3. Auto-update status Requirement ke 'Deal / Accepted'
+        if ($origin_req_id > 0) {
+            $stmtUpdReq = $pdo->prepare("UPDATE client_requirements SET status = 'Deal / Accepted' WHERE id = ?");
+            $stmtUpdReq->execute([$origin_req_id]);
+
+            // Pesan otomatis di Lobi Chat
+            $stmtChatSys = $pdo->prepare("INSERT INTO deal_chats (requirement_id, sender_type, sender_name, message) VALUES (?, 'admin', 'System CTC', ?)");
+            $stmtChatSys->execute([$origin_req_id, "Requirement resmi disetujui & dikonversi menjadi Proyek Aktif: [ {$nama_projek} ]"]);
+        }
 
         header("Location: index.php?msg=created");
         exit;
@@ -61,15 +79,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_project'])) {
 
 // Handle Hapus Proyek
 if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
-    $projId =$_GET['id'];
-    $stmtDel =$pdo->prepare("DELETE FROM projects WHERE id = ?");
+    $projId = $_GET['id'];
+    $stmtDel = $pdo->prepare("DELETE FROM projects WHERE id = ?");
     $stmtDel->execute([$projId]);
     header("Location: index.php?msg=deleted");
     exit;
 }
 
 // Fetch Daftar Proyek
-$stmtProjects =$pdo->query("
+$stmtProjects = $pdo->query("
     SELECT p.*, 
            COALESCE(c.durasi_bulan, 3) AS durasi_bulan,
            COUNT(t.id) AS total_tasks,
@@ -81,16 +99,16 @@ $stmtProjects =$pdo->query("
     GROUP BY p.id
     ORDER BY p.created_at DESC
 ");
-$projects =$stmtProjects->fetchAll();
+$projects = $stmtProjects->fetchAll();
 
 // Kalkulasi Ringkasan Metric Proyek
-$totalProjectCount = count($projects);$inProgressCount   = 0;
+$totalProjectCount = count($projects);
+$inProgressCount   = 0;
 $completedCount    = 0;
 
-foreach ($projects as$pr) {
-    if ($pr['status'] === 'In Progress') {$inProgressCount++;
-    } elseif ($pr['status'] === 'Completed') {$completedCount++;
-    }
+foreach ($projects as $pr) {
+    if ($pr['status'] === 'In Progress') {$inProgressCount++; }
+    elseif ($pr['status'] === 'Completed') {$completedCount++; }
 }
 
 require_once __DIR__ . '/../../includes/header.php';
@@ -128,7 +146,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
         <!-- Metric Counter Badges & Action Button -->
         <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-start lg:justify-end">
-            <!-- Widget Total Proyek Tracker -->
             <div class="flex items-center gap-3 bg-slate-50 border border-slate-200/90 p-2 px-3.5 rounded-xl text-xs font-bold shrink-0">
                 <div class="flex items-center gap-2 pr-3 border-r border-slate-200">
                     <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
@@ -153,7 +170,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     <!-- Alert Notifications -->
     <?php if (isset($_GET['msg']) &&$_GET['msg'] === 'created'): ?>
         <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-2xl text-xs font-bold mb-6 flex items-center gap-2.5 shadow-sm">
-            <i class="fa-solid fa-circle-check text-base text-emerald-600"></i> Proyek baru berhasil ditambahkan ke dalam portofolio!
+            <i class="fa-solid fa-circle-check text-base text-emerald-600"></i> Proyek baru berhasil ditambahkan & status requirement diperbarui menjadi Deal!
         </div>
     <?php elseif (isset($_GET['msg']) &&$_GET['msg'] === 'deleted'): ?>
         <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-2xl text-xs font-bold mb-6 flex items-center gap-2.5 shadow-sm">
@@ -198,7 +215,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     $compT  =$p['completed_tasks'] ?? 0;
                     $progressPct =$totalT > 0 ? round(($compT / $totalT) * 100) : 0;
 
-                    // Hitung Selisih Hari Deadline untuk Fitur Urgent Alert (H-7)
                     $todayTime    = new DateTime();$deadlineTime = new DateTime($p['deadline']);$intervalDays = (int)$todayTime->diff($deadlineTime)->format("%r%a");
                     $isUrgent     = ($intervalDays <= 7 &&$p['status'] !== 'Completed');
                 ?>
@@ -222,7 +238,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                     <?= htmlspecialchars($p['status']) ?>
                                 </span>
                                 <span class="px-2 py-0.5 text-[9px] font-extrabold rounded-md bg-slate-100 text-slate-600 border border-slate-200">
-                                    <?= htmlspecialchars($p['durasi_bulan']) ?> Bulan (<?=$p['durasi_bulan'] * 4 ?> Minggu)
+                                    <?= htmlspecialchars($p['durasi_bulan']) ?> Bulan
                                 </span>
                             </div>
 
@@ -272,6 +288,10 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                 </span>
                             </div>
                         </div>
+
+                        <a href="../proposals/print_proposal.php?project_id=<?= $p['id'] ?>" target="_blank" class="w-full mb-3 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition text-center flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-file-signature text-emerald-400"></i> Cetak Surat Penawaran PDF
+                        </a>
                     </div>
 
                     <!-- Card Footer & H-7 Urgent Bell Alert -->
@@ -300,10 +320,16 @@ require_once __DIR__ . '/../../includes/sidebar.php';
         <?php endif; ?>
     </div>
 
+    <!-- Paginasi Interaktif (1, 2, 3...) -->
+    <div class="flex flex-col sm:flex-row justify-between items-center gap-3 pt-6 mt-6 border-t border-slate-200/80 text-xs">
+        <span class="text-slate-500 font-bold text-[11px]" id="paginationInfo">Menampilkan 0 data</span>
+        <div class="flex items-center gap-1" id="paginationControls"></div>
+    </div>
+
 </main>
 
 <!-- Modal Pop-Up Tambah Proyek Baru -->
-<div id="addProjectModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
+<div id="addProjectModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 <?= $open_modal ? '' : 'hidden' ?> flex items-center justify-center p-4 overflow-y-auto">
     <div class="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative my-8">
         <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
             <h3 class="font-black text-slate-800 text-base flex items-center gap-2">
@@ -316,34 +342,34 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
         <form action="" method="POST" onsubmit="return validateCustomRabSubmit()" class="space-y-4">
             <input type="hidden" name="add_project" value="1">
+            <input type="hidden" name="origin_req_id" value="<?= $req_id ?>">
 
             <div>
                 <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Nama Proyek *</label>
-                <input type="text" name="nama_projek" required placeholder="Contoh: Landing Page FanTravel" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none font-bold">
+                <input type="text" name="nama_projek" value="<?= htmlspecialchars($auto_title) ?>" required placeholder="Contoh: Landing Page FanTravel" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none font-bold">
             </div>
 
             <div>
                 <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Nama Klien *</label>
-                <input type="text" name="klien" required placeholder="Contoh: PT. FV Travel Indonesia" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none font-bold">
+                <input type="text" name="klien" value="<?= htmlspecialchars($auto_client) ?>" required placeholder="Contoh: PT. FV Travel Indonesia" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none font-bold">
             </div>
 
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Nilai Budget (Rp) *</label>
-                    <input type="number" name="budget" id="projectBudgetInput" required placeholder="100000000" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none font-mono font-bold">
+                    <input type="number" name="budget" id="projectBudgetInput" value="<?= $auto_budget > 0 ?$auto_budget : '' ?>" required placeholder="100000000" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none font-mono font-bold">
                 </div>
 
                 <div>
                     <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Status Proyek *</label>
                     <select name="status" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs bg-white font-extrabold text-slate-700 focus:outline-none">
-                        <option value="On Hold" selected>On Hold (Ditunda)</option>
-                        <option value="In Progress">In Progress (Berjalan)</option>
+                        <option value="In Progress" selected>In Progress (Berjalan)</option>
+                        <option value="On Hold">On Hold (Ditunda)</option>
                         <option value="Completed">Completed (Selesai)</option>
                     </select>
                 </div>
             </div>
 
-            <!-- Selection Jenis / Kategori RAB -->
             <div>
                 <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Kategori & Template RAB *</label>
                 <select name="kategori_rab" id="kategoriRabSelect" onchange="toggleCustomRabSection()" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs bg-white font-extrabold text-slate-700 focus:outline-none">
@@ -354,7 +380,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 </select>
             </div>
 
-            <!-- Section Dynamic Custom RAB Input (% Persen) -->
             <div id="customRabSection" class="hidden bg-slate-50 border border-slate-200/80 p-3.5 rounded-xl space-y-3">
                 <div class="flex justify-between items-center border-b border-slate-200/80 pb-2">
                     <div>
@@ -385,7 +410,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 </div>
             </div>
 
-            <!-- Input Durasi & Tanggal Mulai Proyek -->
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Durasi Proyek (Bulan) *</label>
@@ -411,6 +435,14 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 </div>
 
 <script>
+const cardsPerPage = 6; // Jumlah card proyek per halaman
+let currentPage = 1;
+let filteredCards = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    filterProjects();
+});
+
 function openAddProjectModal() {
     document.getElementById('addProjectModal').classList.remove('hidden');
 }
@@ -478,24 +510,74 @@ function validateCustomRabSubmit() {
     return true;
 }
 
+// Live Search & Filter Proyek
 function filterProjects() {
     const searchVal = document.getElementById('projectSearchInput').value.toLowerCase();
     const statusVal = document.getElementById('statusFilterSelect').value;
-    const cards = document.querySelectorAll('.project-card');
+    const allCards  = Array.from(document.querySelectorAll('.project-card'));
 
-    cards.forEach(card => {
+    filteredCards = allCards.filter(card => {
         const searchData = card.getAttribute('data-search') || '';
         const statusData = card.getAttribute('data-status') || '';
 
         const matchesSearch = searchData.includes(searchVal);
         const matchesStatus = (statusVal === 'all') || (statusData === statusVal);
 
-        if (matchesSearch && matchesStatus) {
-            card.classList.remove('hidden');
-        } else {
-            card.classList.add('hidden');
-        }
+        return matchesSearch && matchesStatus;
     });
+
+    currentPage = 1;
+    renderPagination();
+}
+
+// Render Paginasi Interaktif (1, 2, 3...)
+function renderPagination() {
+    const allCards = document.querySelectorAll('.project-card');
+    allCards.forEach(card => card.style.display = 'none');
+
+    const totalItems = filteredCards.length;
+    const totalPages = Math.ceil(totalItems / cardsPerPage) || 1;
+
+    const startIdx = (currentPage - 1) * cardsPerPage;
+    const endIdx   = startIdx + cardsPerPage;
+
+    filteredCards.slice(startIdx, endIdx).forEach(card => {
+        card.style.display = 'flex';
+    });
+
+    const displayStart = totalItems === 0 ? 0 : startIdx + 1;
+    const displayEnd   = Math.min(endIdx, totalItems);
+    document.getElementById('paginationInfo').innerText = `Menampilkan ${displayStart}-${displayEnd} dari ${totalItems} proyek`;
+
+    const controls = document.getElementById('paginationControls');
+    controls.innerHTML = '';
+
+    if (totalPages <= 1) return;
+
+    // Previous Button
+    const prevBtn = document.createElement('button');
+    prevBtn.innerHTML = '<i class="fa-solid fa-chevron-left"></i>';
+    prevBtn.className = `btn-press px-2.5 py-1 rounded-lg font-bold ${currentPage === 1 ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
+    prevBtn.disabled = currentPage === 1;
+    prevBtn.onclick = () => { if(currentPage > 1) { currentPage--; renderPagination(); } };
+    controls.appendChild(prevBtn);
+
+    // Page Numbers (1, 2, 3...)
+    for (let i = 1; i <= totalPages; i++) {
+        const pageBtn = document.createElement('button');
+        pageBtn.innerText = i;
+        pageBtn.className = `btn-press px-3 py-1 rounded-lg font-bold ${i === currentPage ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
+        pageBtn.onclick = () => { currentPage = i; renderPagination(); };
+        controls.appendChild(pageBtn);
+    }
+
+    // Next Button
+    const nextBtn = document.createElement('button');
+    nextBtn.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
+    nextBtn.className = `btn-press px-2.5 py-1 rounded-lg font-bold ${currentPage === totalPages ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
+    nextBtn.disabled = currentPage === totalPages;
+    nextBtn.onclick = () => { if(currentPage < totalPages) { currentPage--; renderPagination(); } };
+    controls.appendChild(nextBtn);
 }
 </script>
 

@@ -28,19 +28,42 @@ function logProjectActivity($pdo, $project_id, $user_id, $nama_user, $aktivitas,
     $stmt->execute([$project_id, $user_id, $nama_user, $aktivitas, $tipe]);
 }
 
-// 1. Handle Update Data Proyek
+// 1. Handle Update Data Proyek (Termasuk Kategori RAB & Custom RAB)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_project'])) {
-    $nama_projek = trim($_POST['nama_projek']);
-    $klien       = trim($_POST['klien']);
-    $budget      = $_POST['budget'] ?? 0;
-    $status      = $_POST['status'];
-    $deadline    = $_POST['deadline'];
+    $nama_projek  = trim($_POST['nama_projek']);
+    $klien        = trim($_POST['klien']);
+    $budget       = $_POST['budget'] ?? 0;
+    $status       = $_POST['status'];
+    $deadline     = $_POST['deadline'];
+    $kategori_rab = $_POST['kategori_rab'] ?? 'Website';
+
+    // Olah Custom RAB jika kategori RAB = Custom
+    $rab_custom_json = null;
+    if ($kategori_rab === 'Custom' && isset($_POST['custom_komponen'])) {
+        $custom_items = [];
+        $komponens  = $_POST['custom_komponen'];
+        $deskripsis = $_POST['custom_deskripsi'];
+        $persens    = $_POST['custom_persen'];
+
+        for ($i = 0; $i < count($komponens); $i++) {
+            if (!empty(trim($komponens[$i]))) {
+                $pVal = (float)($persens[$i] ?? 0);
+                $custom_items[] = [
+                    'komponen'  => trim($komponens[$i]),
+                    'deskripsi' => trim($deskripsis[$i] ?? ''),
+                    'persen'    => $pVal,
+                    'biaya'     => round(($pVal / 100) * $budget)
+                ];
+            }
+        }
+        $rab_custom_json = json_encode($custom_items);
+    }
 
     if (!empty($nama_projek) && !empty($klien)) {
-        $stmtUp = $pdo->prepare("UPDATE projects SET nama_projek = ?, klien = ?, budget = ?, status = ?, deadline = ? WHERE id = ?");
-        $stmtUp->execute([$nama_projek, $klien, $budget, $status, $deadline, $id]);
+        $stmtUp = $pdo->prepare("UPDATE projects SET nama_projek = ?, klien = ?, budget = ?, status = ?, deadline = ?, kategori_rab = ?, rab_custom_data = ? WHERE id = ?");
+        $stmtUp->execute([$nama_projek, $klien, $budget, $status, $deadline, $kategori_rab, $rab_custom_json, $id]);
 
-        logProjectActivity($pdo, $id, $current_user_id, $current_user_nama, "Memperbarui konfigurasi & status proyek menjadi '$status'", 'info');
+        logProjectActivity($pdo, $id, $current_user_id, $current_user_nama, "Memperbarui konfigurasi proyek, status '$status' & Kategori RAB '$kategori_rab'", 'info');
 
         header("Location: detail.php?id=" . $id . "&msg=project_updated");
         exit;
@@ -177,6 +200,12 @@ foreach ($allTasks as $tk) {
 
 $progressPercent = $totalTasks > 0 ? round(($completedTasks / $totalTasks) * 100) : 0;
 
+// Parse existing Custom RAB Data if any
+$existingCustomRab = [];
+if (!empty($project['rab_custom_data'])) {
+    $existingCustomRab = json_decode($project['rab_custom_data'], true) ?? [];
+}
+
 require_once __DIR__ . '/../../includes/header.php';
 require_once __DIR__ . '/../../includes/sidebar.php';
 ?>
@@ -204,7 +233,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     }
 </style>
 
-<main class="flex-1 p-4 md:p-8 overflow-y-auto bg-[#f8fafc] min-h-screen w-full min-w-0">
+<main class="flex-1 p-4 md:p-8 overflow-y-auto bg-[#f8fafc] min-h-screen w-full min-w-0 font-sans">
     
     <!-- Top Navigation Bar -->
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -219,7 +248,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     <!-- Alert Notifications -->
     <?php if (isset($_GET['msg']) && $_GET['msg'] === 'project_updated'): ?>
         <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3.5 rounded-2xl text-xs font-bold mb-6 flex items-center gap-2.5 shadow-sm">
-            <i class="fa-solid fa-circle-check text-base text-emerald-600"></i> Konfigurasi & milestone proyek berhasil diperbarui!
+            <i class="fa-solid fa-circle-check text-base text-emerald-600"></i> Konfigurasi, Kategori RAB & milestone proyek berhasil diperbarui!
         </div>
     <?php elseif (isset($_GET['msg']) && $_GET['msg'] === 'task_added'): ?>
         <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3.5 rounded-2xl text-xs font-bold mb-6 flex items-center gap-2.5 shadow-sm">
@@ -252,6 +281,11 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                         ?>">
                         <i class="fa-solid fa-circle text-[6px] mr-1.5 align-middle"></i><?= htmlspecialchars($project['status']) ?>
                     </span>
+
+                    <span class="px-3 py-1 rounded-lg text-[10px] uppercase font-black bg-indigo-50 text-indigo-700 border border-indigo-200 tracking-wider">
+                        RAB: <?= htmlspecialchars($project['kategori_rab'] ?? 'Website') ?>
+                    </span>
+
                     <span class="text-xs text-slate-500 font-bold flex items-center gap-1.5 bg-slate-50 px-3 py-1 rounded-lg border border-slate-200/80">
                         <i class="fa-regular fa-calendar-check text-emerald-600"></i> Target Deadline: <strong class="text-slate-800 font-extrabold"><?= date('d M Y', strtotime($project['deadline'])) ?></strong>
                     </span>
@@ -279,6 +313,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 </div>
             </div>
 
+            <!-- TOMBOL DIKEMBALIKAN KELAPORAN PDF ORIGINAL -->
             <div class="flex items-center gap-2 shrink-0">
                 <button onclick="openEditProjectModal()" class="btn-press px-4 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300/80 rounded-xl text-xs font-extrabold transition shadow-sm flex items-center justify-center gap-2">
                     <i class="fa-regular fa-pen-to-square"></i> Konfigurasi Proyek
@@ -303,7 +338,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     <!-- Grid Layout Utama -->
     <div class="flex flex-col xl:flex-row gap-6 w-full min-w-0">
         
-        <!-- SEKSI KIRI: FORM ALOKASIKAN MODUL BARU (LENGKAP DENGAN SEARCH & FILTER DIVISI TIM) -->
+        <!-- SEKSI KIRI: FORM ALOKASIKAN MODUL BARU -->
         <div class="w-full xl:w-80 shrink-0">
             <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-sm sticky top-6">
                 <h3 class="font-black text-slate-800 text-xs uppercase tracking-wider mb-4 flex items-center gap-2 pb-3 border-b border-slate-100">
@@ -318,11 +353,9 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                         <input type="text" name="nama_tugas" required placeholder="Contoh: Development Core Engine" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none">
                     </div>
                     
-                    <!-- AREA SELECTION TIM PELAKSANA DENGAN SEARCH & FILTER DIVISI -->
                     <div>
                         <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Pilih Tim Pelaksana (Multi-Select) *</label>
                         
-                        <!-- Search Bar & Dropdown Filter Divisi -->
                         <div class="space-y-1.5 mb-2">
                             <div class="relative">
                                 <input type="text" id="userSearchInput" onkeyup="filterUserList()" placeholder="Cari nama karyawan..." class="input-glow w-full px-3 py-1.5 pl-8 rounded-lg border border-slate-200 text-[11px] font-medium focus:outline-none">
@@ -337,7 +370,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                             </select>
                         </div>
 
-                        <!-- List Scroll Karyawan -->
                         <div class="max-h-48 overflow-y-auto border border-slate-200 rounded-xl p-2 space-y-1 bg-slate-50/80" id="userListContainer">
                             <?php foreach ($users as $u): ?>
                                 <?php 
@@ -384,7 +416,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
         <div class="flex-1 min-w-0">
             <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-sm">
                 
-                <!-- HEADER SEKSI MANAJEMEN MODUL & QC -->
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 mb-4 border-b border-slate-100">
                     <div class="min-w-0">
                         <h3 class="font-black text-slate-900 text-base sm:text-lg flex items-center gap-2.5 whitespace-nowrap">
@@ -393,7 +424,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                         <p class="text-xs text-slate-400 mt-0.5 truncate font-medium">Monitoring komunikasi progress dan verifikasi hasil pengerjaan tim</p>
                     </div>
 
-                    <!-- Search Bar & Status Filter -->
                     <div class="flex items-center gap-2.5 shrink-0 flex-wrap sm:flex-nowrap w-full sm:w-auto">
                         <div class="relative w-full sm:w-48">
                             <input type="text" id="taskSearchInput" onkeyup="filterTasks()" placeholder="Cari modul / tim..." class="input-glow w-full px-3.5 py-2 pl-9 rounded-xl border border-slate-200 text-xs focus:outline-none font-medium">
@@ -410,7 +440,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     </div>
                 </div>
 
-                <!-- TABLE LAYOUT UTAMA DENGAN ADA KOLOM PRIORITAS -->
                 <div class="overflow-x-auto w-full">
                     <table class="w-full text-left text-xs text-slate-600 border-collapse min-w-[720px]" id="tasksTable">
                         <thead class="uppercase bg-slate-50 text-slate-500 font-black border-b border-slate-200 text-[10px] tracking-wider">
@@ -441,7 +470,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                         $hasNote = !empty($t['progress_notes']);
                                         $hasRev  = !empty($t['revision_notes']);
 
-                                        // Cek Keterlambatan Deadline
                                         $taskDeadlineTS = strtotime($t['deadline']);
                                         $isOverdue = ($taskDeadlineTS < $todayTimestamp) && ($stLower !== 'done');
                                         
@@ -452,7 +480,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                     ?>
                                     <tr class="task-row hover:bg-slate-50/80 transition align-middle <?= $isOverdue ? 'overdue-row' : '' ?>" data-status="<?= htmlspecialchars($t['status']) ?>">
                                         
-                                        <!-- Modul & Laporan -->
                                         <td class="py-3.5 px-3.5">
                                             <div class="font-extrabold text-slate-900 text-sm task-title flex items-center gap-1.5">
                                                 <?php if ($isOverdue): ?>
@@ -482,7 +509,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                             </div>
                                         </td>
 
-                                        <!-- Prioritas Modul -->
                                         <td class="py-3.5 px-3.5 text-center shrink-0">
                                             <span class="px-2 py-0.5 rounded-md text-[9px] font-black uppercase inline-block border tracking-wider whitespace-nowrap
                                                 <?php
@@ -497,7 +523,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                             </span>
                                         </td>
 
-                                        <!-- Tim Pelaksana -->
                                         <td class="py-3.5 px-3.5">
                                             <div class="flex flex-col gap-1 task-assignees">
                                                 <?php foreach ($assignees as $asg): ?>
@@ -508,7 +533,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                             </div>
                                         </td>
 
-                                        <!-- Status Modul -->
                                         <td class="py-3.5 px-3.5 text-center shrink-0">
                                             <span class="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase inline-block border tracking-wide whitespace-nowrap
                                                 <?php
@@ -523,7 +547,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                             </span>
                                         </td>
 
-                                        <!-- Deliverables Link -->
                                         <td class="py-3.5 px-3.5 text-center shrink-0">
                                             <?php if (!empty($t['drive_link'])): ?>
                                                 <a href="<?= htmlspecialchars($t['drive_link']) ?>" target="_blank" class="btn-press px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-bold border border-emerald-200 transition inline-flex items-center gap-1 shadow-sm whitespace-nowrap">
@@ -534,7 +557,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                             <?php endif; ?>
                                         </td>
 
-                                        <!-- Verifikasi PM / QC -->
                                         <td class="py-3.5 px-3.5 text-center shrink-0">
                                             <?php if ($stLower === 'done'): ?>
                                                 <span class="text-emerald-600 font-black text-xs inline-flex items-center gap-1 whitespace-nowrap"><i class="fa-solid fa-circle-check"></i> Approved</span>
@@ -556,7 +578,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     </table>
                 </div>
 
-                <!-- PAGINASI INTERAKTIF (1, 2, 3...) -->
                 <div class="flex flex-col sm:flex-row justify-between items-center gap-3 pt-4 mt-4 border-t border-slate-100 text-xs">
                     <span class="text-slate-500 font-bold text-[11px]" id="paginationInfo">Menampilkan 0 data</span>
                     <div class="flex items-center gap-1" id="paginationControls"></div>
@@ -619,9 +640,9 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     </div>
 </div>
 
-<!-- Modal EDIT Detail Proyek -->
-<div id="editProjectModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+<!-- MODAL EDIT DETAIL PROYEK & KATEGORI RAB -->
+<div id="editProjectModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-2xl relative my-8">
         <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
             <h3 class="font-black text-slate-800 text-base flex items-center gap-2">
                 <i class="fa-regular fa-pen-to-square text-amber-500"></i> Edit Detail & Status Proyek
@@ -631,7 +652,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             </button>
         </div>
 
-        <form action="" method="POST" class="space-y-4">
+        <form action="" method="POST" onsubmit="return validateEditCustomRabSubmit()" class="space-y-4">
             <input type="hidden" name="update_project" value="1">
 
             <div>
@@ -641,6 +662,66 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     <option value="On Hold" <?= $project['status'] === 'On Hold' ? 'selected' : '' ?>>On Hold (Ditunda sementara)</option>
                     <option value="Completed" <?= $project['status'] === 'Completed' ? 'selected' : '' ?>>Completed (Selesai)</option>
                 </select>
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Kategori & Template RAB *</label>
+                <select name="kategori_rab" id="editKategoriRabSelect" onchange="toggleEditCustomRabSection()" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs bg-white font-extrabold text-slate-700 focus:outline-none">
+                    <option value="Website" <?= ($project['kategori_rab'] ?? '') === 'Website' ? 'selected' : '' ?>>RAB Website (Auto-Calculate)</option>
+                    <option value="IoT" <?= ($project['kategori_rab'] ?? '') === 'IoT' ? 'selected' : '' ?>>RAB IoT Hardware & Cloud (Auto-Calculate)</option>
+                    <option value="Mobile" <?= ($project['kategori_rab'] ?? '') === 'Mobile' ? 'selected' : '' ?>>RAB Mobile App Android/iOS (Auto-Calculate)</option>
+                    <option value="Custom" <?= ($project['kategori_rab'] ?? '') === 'Custom' ? 'selected' : '' ?>>Custom RAB (Input Manual Komponen & % Persen)</option>
+                </select>
+            </div>
+
+            <!-- SECTION DYNAMIC CUSTOM RAB (UNTUK EDITING) -->
+            <div id="editCustomRabSection" class="<?= ($project['kategori_rab'] ?? '') === 'Custom' ? '' : 'hidden' ?> bg-slate-50 border border-slate-200/80 p-3.5 rounded-xl space-y-3">
+                <div class="flex justify-between items-center border-b border-slate-200/80 pb-2">
+                    <div>
+                        <span class="text-[10px] font-black uppercase text-emerald-800 block">Rincian Custom RAB (%)</span>
+                        <span class="text-[9px] font-bold text-slate-400">Total alokasi persen harus tepat 100%</span>
+                    </div>
+                    <button type="button" onclick="addEditCustomRabRow()" class="text-[10px] font-black text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-2 py-1 rounded-lg transition">
+                        + Tambah Baris
+                    </button>
+                </div>
+
+                <div id="editCustomRabRows" class="space-y-2">
+                    <?php if (!empty($existingCustomRab)): ?>
+                        <?php foreach ($existingCustomRab as $cr): ?>
+                            <div class="grid grid-cols-12 gap-1.5 items-center edit-custom-rab-row">
+                                <input type="text" name="custom_komponen[]" value="<?= htmlspecialchars($cr['komponen'] ?? '') ?>" placeholder="Komponen" class="col-span-4 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none">
+                                <input type="text" name="custom_deskripsi[]" value="<?= htmlspecialchars($cr['deskripsi'] ?? '') ?>" placeholder="Deskripsi/Output" class="col-span-4 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium focus:outline-none">
+                                <div class="col-span-3 flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1.5">
+                                    <input type="number" name="custom_persen[]" value="<?= $cr['persen'] ?? 0 ?>" step="0.1" min="0" max="100" oninput="calculateEditCustomPercentageTotal()" placeholder="0" class="w-full text-xs font-mono font-bold focus:outline-none edit-custom-persen-input">
+                                    <span class="text-xs font-black text-slate-400 ml-0.5">%</span>
+                                </div>
+                                <button type="button" onclick="this.parentElement.remove(); calculateEditCustomPercentageTotal();" class="col-span-1 text-red-500 hover:text-red-700 font-bold text-center text-xs">
+                                    &times;
+                                </button>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="grid grid-cols-12 gap-1.5 items-center edit-custom-rab-row">
+                            <input type="text" name="custom_komponen[]" placeholder="Komponen" class="col-span-4 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none">
+                            <input type="text" name="custom_deskripsi[]" placeholder="Deskripsi/Output" class="col-span-4 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium focus:outline-none">
+                            <div class="col-span-3 flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1.5">
+                                <input type="number" name="custom_persen[]" step="0.1" min="0" max="100" oninput="calculateEditCustomPercentageTotal()" placeholder="0" class="w-full text-xs font-mono font-bold focus:outline-none edit-custom-persen-input">
+                                <span class="text-xs font-black text-slate-400 ml-0.5">%</span>
+                            </div>
+                            <button type="button" onclick="this.parentElement.remove(); calculateEditCustomPercentageTotal();" class="col-span-1 text-red-500 hover:text-red-700 font-bold text-center text-xs">
+                                &times;
+                            </button>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+                <div class="flex justify-between items-center pt-2 border-t border-slate-200/80 text-xs font-black">
+                    <span class="text-slate-500 text-[10px] uppercase">Total Persentase:</span>
+                    <span id="editTotalPersenBadge" class="px-2 py-0.5 rounded-md bg-amber-100 text-amber-700 text-xs font-mono">
+                        0% / 100%
+                    </span>
+                </div>
             </div>
 
             <div>
@@ -701,6 +782,67 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 </div>
 
 <script>
+// Toggle & Calculation untuk Custom RAB di Edit Modal
+function toggleEditCustomRabSection() {
+    const val = document.getElementById('editKategoriRabSelect').value;
+    const sec = document.getElementById('editCustomRabSection');
+    if (val === 'Custom') {
+        sec.classList.remove('hidden');
+        calculateEditCustomPercentageTotal();
+    } else {
+        sec.classList.add('hidden');
+    }
+}
+
+function addEditCustomRabRow() {
+    const container = document.getElementById('editCustomRabRows');
+    const newRow = document.createElement('div');
+    newRow.className = 'grid grid-cols-12 gap-1.5 items-center edit-custom-rab-row';
+    newRow.innerHTML = `
+        <input type="text" name="custom_komponen[]" placeholder="Komponen" class="col-span-4 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none">
+        <input type="text" name="custom_deskripsi[]" placeholder="Deskripsi/Output" class="col-span-4 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium focus:outline-none">
+        <div class="col-span-3 flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1.5">
+            <input type="number" name="custom_persen[]" step="0.1" min="0" max="100" oninput="calculateEditCustomPercentageTotal()" placeholder="0" class="w-full text-xs font-mono font-bold focus:outline-none edit-custom-persen-input">
+            <span class="text-xs font-black text-slate-400 ml-0.5">%</span>
+        </div>
+        <button type="button" onclick="this.parentElement.remove(); calculateEditCustomPercentageTotal();" class="col-span-1 text-red-500 hover:text-red-700 font-bold text-center text-xs">
+            &times;
+        </button>
+    `;
+    container.appendChild(newRow);
+    calculateEditCustomPercentageTotal();
+}
+
+function calculateEditCustomPercentageTotal() {
+    let total = 0;
+    document.querySelectorAll('.edit-custom-persen-input').forEach(input => {
+        total += parseFloat(input.value) || 0;
+    });
+
+    const badge = document.getElementById('editTotalPersenBadge');
+    if (badge) {
+        badge.innerText = `${total.toFixed(1)}% / 100%`;
+        if (Math.abs(total - 100) < 0.01) {
+            badge.className = "px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 text-xs font-mono font-bold";
+        } else {
+            badge.className = "px-2 py-0.5 rounded-md bg-red-100 text-red-700 text-xs font-mono font-bold";
+        }
+    }
+    return total;
+}
+
+function validateEditCustomRabSubmit() {
+    const val = document.getElementById('editKategoriRabSelect').value;
+    if (val === 'Custom') {
+        const totalPct = calculateEditCustomPercentageTotal();
+        if (Math.abs(totalPct - 100) > 0.01) {
+            alert(`Total persentase Custom RAB saat ini ${totalPct.toFixed(1)}%. Total harus pas 100% agar tidak ada selisih budget!`);
+            return false;
+        }
+    }
+    return true;
+}
+
 // Filter Live Search Nama & Divisi Karyawan
 function filterUserList() {
     const searchVal = document.getElementById('userSearchInput').value.toLowerCase();
@@ -725,7 +867,10 @@ function filterUserList() {
 }
 
 // Modal Toggles
-function openEditProjectModal() { document.getElementById('editProjectModal').classList.remove('hidden'); }
+function openEditProjectModal() { 
+    document.getElementById('editProjectModal').classList.remove('hidden');
+    calculateEditCustomPercentageTotal();
+}
 function closeEditProjectModal() { document.getElementById('editProjectModal').classList.add('hidden'); }
 
 function openRevisionModal(taskId, title) {

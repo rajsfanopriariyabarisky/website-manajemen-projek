@@ -9,9 +9,11 @@ if (!$id) {
 
 // Fetch data detail kontrak
 $stmt = $pdo->prepare("
-    SELECT c.*, p.nama_projek, p.klien 
+    SELECT c.*, 
+           COALESCE(p.nama_projek, 'Kontrak Mandiri / Pengajuan') as nama_projek, 
+           COALESCE(p.klien, '-') as klien 
     FROM contracts c
-    JOIN projects p ON c.project_id = p.id
+    LEFT JOIN projects p ON c.project_id = p.id
     WHERE c.id = ?
 ");
 $stmt->execute([$id]);
@@ -44,7 +46,7 @@ $bulanIndo = [
     7 => 'Juli', 8 => 'Agustus', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'
 ];
 
-$tglMulaiStamp = strtotime($contract['tanggal_mulai']);
+$tglMulaiStamp = !empty($contract['tanggal_mulai']) ? strtotime($contract['tanggal_mulai']) : strtotime($contract['created_at']);
 $namaHari = $hariIndo[date('l', $tglMulaiStamp)];
 $tglAngka = date('j', $tglMulaiStamp);
 $namaBulan = $bulanIndo[(int)date('n', $tglMulaiStamp)];
@@ -83,10 +85,10 @@ $tahunAngka = date('Y', $tglMulaiStamp);
     <!-- Halaman Dokumen Perjanjian -->
     <div class="max-w-4xl mx-auto bg-white p-14 rounded-lg shadow-xl border border-slate-200 print-container text-justify">
         
-        <!-- Kop Surat Perusahaan dengan Logo Gambar Asli -->
+        <!-- Kop Surat Perusahaan -->
         <div class="flex items-center justify-between border-b-4 border-double border-emerald-900 pb-5 mb-8">
             <div class="flex items-center gap-4">
-                <img src="/website%20manajemen%20projek/assets/images/logo.jpg" alt="Logo PT CTC" class="w-16 h-16 object-cover rounded-md">
+                <img src="/website%20manajemen%20projek/assets/images/logo.jpg" alt="Logo PT CTC" class="w-16 h-16 object-cover rounded-md" onerror="this.style.display='none'">
                 <div>
                     <h1 class="text-xl font-bold tracking-wider text-emerald-950 uppercase font-sans">PT. CIPTA TEKNOLOGI CENDEKIA</h1>
                     <p class="text-xs font-sans text-slate-600">Enterprise IT Solution, Software Engineering & Digital Transformation</p>
@@ -141,7 +143,7 @@ $tahunAngka = date('Y', $tglMulaiStamp);
                 <h4 class="font-bold text-center uppercase tracking-wider mb-1">PASAL 2<br>JANGKA WAKTU PELAKSANAAN</h4>
                 <ol class="list-decimal pl-5 space-y-1">
                     <li>Pekerjaan sebagaimana dimaksud dalam Pasal 1 dilaksanakan dalam jangka waktu <strong><?= $contract['durasi_bulan'] ?> (<?= terbilang($contract['durasi_bulan']) ?>) Bulan</strong> kalender.</li>
-                    <li>Jangka waktu pelaksanaan terhitung efektif mulai tanggal <strong><?= date('d', strtotime($contract['tanggal_mulai'])) ?> <?= $bulanIndo[(int)date('n', strtotime($contract['tanggal_mulai']))] ?> <?= date('Y', strtotime($contract['tanggal_mulai'])) ?></strong> sampai dengan tanggal <strong><?= date('d', strtotime($contract['tanggal_selesai'])) ?> <?= $bulanIndo[(int)date('n', strtotime($contract['tanggal_selesai']))] ?> <?= date('Y', strtotime($contract['tanggal_selesai'])) ?></strong>.</li>
+                    <li>Jangka waktu pelaksanaan terhitung efektif mulai tanggal <strong><?= !empty($contract['tanggal_mulai']) ? date('d', strtotime($contract['tanggal_mulai'])) . ' ' . $bulanIndo[(int)date('n', strtotime($contract['tanggal_mulai']))] . ' ' . date('Y', strtotime($contract['tanggal_mulai'])) : '-' ?></strong> sampai dengan tanggal <strong><?= !empty($contract['tanggal_selesai']) ? date('d', strtotime($contract['tanggal_selesai'])) . ' ' . $bulanIndo[(int)date('n', strtotime($contract['tanggal_selesai']))] . ' ' . date('Y', strtotime($contract['tanggal_selesai'])) : '-' ?></strong>.</li>
                 </ol>
             </div>
 

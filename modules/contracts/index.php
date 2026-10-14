@@ -3,8 +3,8 @@ require_once __DIR__ . '/../../config/database.php';
 
 // Handle Hapus Kontrak
 if (isset($_GET['delete'])) {
-    $delete_id = $_GET['delete'];
-    $stmtDel = $pdo->prepare("DELETE FROM contracts WHERE id = ?");
+    $delete_id =$_GET['delete'];
+    $stmtDel =$pdo->prepare("DELETE FROM contracts WHERE id = ?");
     $stmtDel->execute([$delete_id]);
     header("Location: index.php");
     exit;
@@ -13,17 +13,34 @@ if (isset($_GET['delete'])) {
 require_once __DIR__ . '/../../includes/header.php';
 require_once __DIR__ . '/../../includes/sidebar.php';
 
+// Pastikan struktur tabel contracts siap
+$pdo->exec("
+    CREATE TABLE IF NOT EXISTS `contracts` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `project_id` INT NULL,
+        `nomor_kontrak` VARCHAR(100) NOT NULL,
+        `tanggal_mulai` DATE NULL,
+        `tanggal_selesai` DATE NULL,
+        `durasi_bulan` INT DEFAULT 1,
+        `nilai_kontrak` DECIMAL(15,2) DEFAULT 0.00,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+");
+
 // Fetch semua kontrak yang tersimpan
-$stmt = $pdo->query("
-    SELECT c.*, p.nama_projek, p.klien, p.budget 
+$stmt =$pdo->query("
+    SELECT c.*, 
+           COALESCE(p.nama_projek, 'Kontrak Mandiri / Pengajuan') as nama_projek, 
+           COALESCE(p.klien, '-') as klien, 
+           COALESCE(p.budget, c.nilai_kontrak) as budget 
     FROM contracts c
-    JOIN projects p ON c.project_id = p.id
+    LEFT JOIN projects p ON c.project_id = p.id
     ORDER BY c.created_at DESC
 ");
-$contracts = $stmt->fetchAll();
+$contracts =$stmt->fetchAll();
 ?>
 
-<main class="flex-1 p-8 overflow-y-auto bg-slate-50">
+<main class="flex-1 p-8 overflow-y-auto bg-slate-50 min-w-0 font-sans">
     <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-8">
         <div>
             <div class="flex items-center gap-2 text-emerald-700 font-semibold text-xs tracking-wider uppercase mb-1">
@@ -60,7 +77,7 @@ $contracts = $stmt->fetchAll();
                             </td>
                         </tr>
                     <?php else: ?>
-                        <?php foreach ($contracts as $c): ?>
+                        <?php foreach ($contracts as$c): ?>
                             <tr class="hover:bg-slate-50 transition">
                                 <td class="px-4 py-4 font-mono text-xs font-bold text-slate-800"><?= htmlspecialchars($c['nomor_kontrak']) ?></td>
                                 <td class="px-4 py-4">
@@ -69,7 +86,9 @@ $contracts = $stmt->fetchAll();
                                 </td>
                                 <td class="px-4 py-4 text-xs text-slate-600">
                                     <span class="font-bold text-emerald-700"><?= $c['durasi_bulan'] ?> Bulan</span>
-                                    <span class="block text-[10px] text-slate-400"><?= date('d/m/Y', strtotime($c['tanggal_mulai'])) ?> s/d <?= date('d/m/Y', strtotime($c['tanggal_selesai'])) ?></span>
+                                    <span class="block text-[10px] text-slate-400">
+                                        <?= !empty($c['tanggal_mulai']) ? date('d/m/Y', strtotime($c['tanggal_mulai'])) : '-' ?> s/d <?= !empty($c['tanggal_selesai']) ? date('d/m/Y', strtotime($c['tanggal_selesai'])) : '-' ?>
+                                    </span>
                                 </td>
                                 <td class="px-4 py-4 text-right font-bold text-slate-800">
                                     Rp <?= number_format($c['nilai_kontrak'], 0, ',', '.') ?>
