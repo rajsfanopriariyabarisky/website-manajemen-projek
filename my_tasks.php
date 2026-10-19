@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_progress'])) {
     $progress_notes = trim($_POST['progress_notes']);
     $drive_link     = trim($_POST['drive_link']);
 
-    // Validasi Tugas Karyawan: Mendukung Cek di task_assignees maupun user_id/assigned_to
+    // Validasi Tugas Karyawan
     $stmtCheck = $pdo->prepare("
         SELECT t.id, t.project_id, t.nama_tugas, t.status AS status_lama 
         FROM tasks t 
@@ -83,19 +83,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_progress'])) {
     }
 }
 
-// Fetch Daftar Tugas Khusus Karyawan Ini (Mendukung Relasi Multi-User task_assignees)
+// Fetch Daftar Tugas Khusus Karyawan Ini
 $stmtMyTasks = $pdo->prepare("
     SELECT DISTINCT t.*, p.nama_projek, p.klien 
     FROM tasks t
     JOIN projects p ON t.project_id = p.id
     LEFT JOIN task_assignees ta ON t.id = ta.task_id
     WHERE t.user_id = ? OR t.assigned_to = ? OR ta.user_id = ?
-    ORDER BY p.nama_projek ASC, FIELD(t.status, 'In Progress', 'Ready for Review', 'To Do', 'Done'), t.deadline ASC
+    ORDER BY p.nama_projek ASC, FIELD(t.prioritas, 'Urgent', 'High', 'Medium', 'Low'), FIELD(t.status, 'In Progress', 'Ready for Review', 'To Do', 'Done'), t.deadline ASC
 ");
 $stmtMyTasks->execute([$user_id, $user_id, $user_id]);
 $myTasks = $stmtMyTasks->fetchAll();
 
-// Map Anggota Tim Terlibat untuk Setiap Tugas (Transparansi Rekan Tim)
+// Map Anggota Tim Terlibat
 $taskAssigneesMap = [];
 $taskIds = array_column($myTasks, 'id');
 if (!empty($taskIds)) {
@@ -114,7 +114,7 @@ if (!empty($taskIds)) {
     }
 }
 
-// Map File Terunggah per Task dari project_files
+// Map File Terunggah per Task
 $taskFilesMap = [];
 if (!empty($taskIds)) {
     $inQuery = implode(',', array_fill(0, count($taskIds), '?'));
@@ -126,7 +126,7 @@ if (!empty($taskIds)) {
     }
 }
 
-// Kelompokkan Tugas berdasarkan Proyek (Project Sectioning)
+// Kelompokkan Tugas berdasarkan Proyek & Hitung Statistik
 $projectsWithTasks = [];
 $todayDate = date('Y-m-d');
 $countAll = count($myTasks);
@@ -142,19 +142,28 @@ foreach ($myTasks as $tk) {
             'project_id'   => $pId,
             'nama_projek'  => $tk['nama_projek'],
             'klien'        => $tk['klien'],
-            'tasks'        => []
+            'tasks'        => [],
+            'urgent_count' => 0 // Counter tugas urgent per proyek
         ];
     }
     $projectsWithTasks[$pId]['tasks'][] = $tk;
 
-    // Hitung Statistik
     $st = strtolower($tk['status']);
+    $prio = strtolower($tk['prioritas']);
+
     if ($st === 'in progress') $countInProgress++;
     elseif ($st === 'ready for review') $countReview++;
     elseif ($st === 'done') $countDone++;
 
     if (strtotime($tk['deadline']) < strtotime($todayDate) && $st !== 'done') {
         $countOverdue++;
+    }
+
+    // Hitung berapa tugas URGENT/HIGH/DEADLINE HARI INI yang belum selesai di proyek ini
+    if ($st !== 'done' && $st !== 'ready for review') {
+        if ($prio === 'urgent' || $prio === 'high' || $tk['deadline'] === $todayDate) {
+            $projectsWithTasks[$pId]['urgent_count']++;
+        }
     }
 }
 ?>
@@ -164,26 +173,28 @@ foreach ($myTasks as $tk) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Portal Penugasan Tim - PT. CTC</title>
+    
+    <!-- FAVICON LOGO CTC -->
+    <link rel="icon" type="image/jpg" href="assets/images/logo.jpg">
+    <link rel="shortcut icon" type="image/jpg" href="assets/images/logo.jpg">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* Custom scrollbar halus */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-        /* Stat cards hover */
         .stat-card {
-            transition: transform .25s cubic-bezier(.22,.68,0,1), box-shadow .25s ease, border-color .25s ease;
+            transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
         }
         .stat-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 22px -10px rgba(15,23,42,.12);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 18px -6px rgba(15,23,42,.08);
             border-color: rgba(16,185,129,.4);
         }
 
-        /* Buttons & Tabs */
         .btn-press { transition: transform .15s ease, background-color .2s ease; }
         .btn-press:active { transform: scale(.96); }
 
@@ -191,38 +202,49 @@ foreach ($myTasks as $tk) {
         .status-tab.active-tab {
             background: #065f46;
             color: #ffffff;
-            box-shadow: 0 4px 12px -3px rgba(5,150,105,.4);
+            box-shadow: 0 4px 12px -3px rgba(5,150,105,.3);
         }
 
-        /* Inputs */
         .input-glow { transition: box-shadow .2s ease, border-color .2s ease; }
         .input-glow:focus {
             border-color: #10b981;
             box-shadow: 0 0 0 3px rgba(16,185,129,.15);
         }
 
-        /* Chevron rotasi animasi */
-        .chevron-icon { transition: transform .25s cubic-bezier(.22,.68,0,1); }
+        .chevron-icon { transition: transform .25s ease; }
+
+        @keyframes bellRing {
+            0%, 100% { transform: rotate(0deg); }
+            20%, 60% { transform: rotate(14deg); }
+            40%, 80% { transform: rotate(-14deg); }
+        }
+        .bell-shake { animation: bellRing 1.2s infinite ease-in-out; display: inline-block; }
     </style>
 </head>
-<body class="bg-[#f8fafc] text-slate-800 min-h-screen font-sans antialiased selection:bg-emerald-600 selection:text-white">
+<body class="bg-[#f8fafc] text-slate-800 min-h-screen font-sans antialiased selection:bg-emerald-600 selection:text-white relative overflow-x-hidden">
 
-    <!-- ================= TOPBAR ================= -->
-    <header class="sticky top-0 z-50 bg-gradient-to-r from-emerald-950 via-emerald-900 to-emerald-950 text-white shadow-lg border-b border-emerald-800/60 backdrop-blur">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex justify-between items-center gap-3">
+    <!-- WATERMARK LOGO CTC DI BACKGROUND PUTIH -->
+    <div class="fixed inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden">
+        <img src="assets/images/logo.jpg" alt="CTC Watermark" class="w-[700px] max-w-[85vw] h-auto object-contain opacity-[0.10] mix-blend-multiply">
+    </div>
+
+    <!-- TOPBAR HEADER -->
+    <header class="sticky top-0 z-50 bg-gradient-to-r from-emerald-950 via-emerald-900 to-emerald-950 text-white shadow-md border-b border-emerald-800/60 backdrop-blur">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-2.5 flex justify-between items-center gap-3">
+            
             <div class="flex items-center gap-3 min-w-0">
-                <div class="w-10 h-10 shrink-0 bg-gradient-to-br from-emerald-400 to-emerald-600 text-white rounded-xl flex items-center justify-center shadow-md">
-                    <i class="fa-solid fa-list-check text-sm"></i>
+                <div class="w-9 h-9 shrink-0 bg-white/10 border border-white/20 p-1 rounded-xl flex items-center justify-center shadow-sm">
+                    <img src="assets/images/logo.jpg" alt="Logo CTC" class="w-full h-full object-contain rounded-lg">
                 </div>
                 <div class="min-w-0">
-                    <h1 class="font-black text-[13px] sm:text-sm tracking-wide leading-tight truncate">PT. CIPTA TEKNOLOGI CENDEKIA</h1>
-                    <span class="text-[11px] text-emerald-300/90 font-medium hidden sm:block">Workspace Penugasan Tim Teknis</span>
+                    <h1 class="font-black text-xs sm:text-sm tracking-wide leading-tight truncate">PT. CIPTA TEKNOLOGI CENDEKIA</h1>
+                    <span class="text-[10px] text-emerald-300/90 font-bold block">Workspace Penugasan Tim Teknis</span>
                 </div>
             </div>
 
             <div class="flex items-center gap-2 sm:gap-3 shrink-0">
-                <div class="hidden md:flex items-center gap-2.5 pl-1 pr-3 py-1.5 bg-white/10 border border-white/15 rounded-xl">
-                    <div class="w-7 h-7 rounded-lg bg-emerald-500/30 border border-emerald-400/30 flex items-center justify-center text-[11px] font-black text-emerald-200 uppercase">
+                <div class="hidden md:flex items-center gap-2 pl-1 pr-3 py-1 bg-white/10 border border-white/15 rounded-xl">
+                    <div class="w-6 h-6 rounded-lg bg-emerald-500/30 border border-emerald-400/30 flex items-center justify-center text-[10px] font-black text-emerald-200 uppercase">
                         <?= strtoupper(substr($user_nama, 0, 1)) ?>
                     </div>
                     <div class="leading-tight">
@@ -232,233 +254,260 @@ foreach ($myTasks as $tk) {
                 </div>
 
                 <?php if (strtolower($user_role) === 'admin'): ?>
-                    <a href="modules/projects/index.php" class="btn-press text-[11px] bg-white/10 hover:bg-white/20 border border-white/20 text-white px-3 py-2 rounded-xl flex items-center gap-1.5 font-bold">
+                    <a href="modules/projects/index.php" class="btn-press text-[11px] bg-white/10 hover:bg-white/20 border border-white/20 text-white px-3 py-1.5 rounded-xl flex items-center gap-1.5 font-extrabold">
                         <i class="fa-solid fa-gauge text-emerald-300"></i><span class="hidden sm:inline">Panel Admin</span>
                     </a>
                 <?php endif; ?>
 
-                <a href="logout.php" class="btn-press text-[11px] bg-red-500/80 hover:bg-red-500 text-white px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-sm font-bold">
+                <a href="logout.php" class="btn-press text-[11px] bg-red-600/80 hover:bg-red-600 text-white px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm font-extrabold">
                     <i class="fa-solid fa-right-from-bracket"></i><span class="hidden sm:inline">Keluar</span>
                 </a>
             </div>
         </div>
     </header>
 
-    <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+    <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 relative z-10">
 
-        <!-- ================= PAGE HEADER & LIVE SEARCH ================= -->
-        <div class="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <!-- PAGE HEADER & SEARCH BAR -->
+        <div class="mb-5 flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
-                <div class="flex items-center gap-2 mb-1.5">
-                    <span class="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">Workspace Tim</span>
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="text-[9px] font-black uppercase tracking-[0.18em] text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-md">
+                        WORKSPACE TIM
+                    </span>
                 </div>
-                <h2 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Workload & Penugasan Saya</h2>
-                <p class="text-xs sm:text-sm text-slate-500 mt-1">Klik banner proyek di bawah untuk membuka detail modul tugas & kirim progress.</p>
+                <h2 class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Workload & Penugasan Saya</h2>
+                <p class="text-xs text-slate-500 font-medium mt-0.5">Klik banner proyek di bawah untuk membuka detail modul tugas & kirim progress.</p>
             </div>
 
-            <!-- Global Live Search Bar -->
+            <!-- Search Bar -->
             <div class="relative w-full md:w-72">
-                <input type="text" id="globalTaskSearch" onkeyup="applyCombinedFilters()" placeholder="Cari nama modul / proyek..." class="input-glow w-full px-3.5 py-2.5 pl-9 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none bg-white shadow-sm">
-                <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400 text-xs"></i>
+                <input type="text" id="globalTaskSearch" onkeyup="applyCombinedFilters()" placeholder="Cari nama modul / proyek..." class="input-glow w-full px-3.5 py-2 pl-9 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none bg-white shadow-2xs">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
             </div>
         </div>
 
-        <!-- ================= STAT CARDS ================= -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            <div class="stat-card bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm flex items-center gap-3.5 cursor-default">
-                <div class="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center text-sm shrink-0">
+        <!-- STAT CARDS -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+            <div class="stat-card bg-white rounded-2xl border border-slate-200/90 p-3.5 shadow-2xs flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center text-xs shrink-0">
                     <i class="fa-solid fa-layer-group"></i>
                 </div>
                 <div class="min-w-0">
-                    <span class="block text-xl font-black text-slate-900 leading-none"><?= $countAll ?></span>
-                    <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-1">Total Tugas</span>
+                    <span class="block text-lg font-black text-slate-900 leading-none"><?= $countAll ?></span>
+                    <span class="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mt-1">Total Tugas</span>
                 </div>
             </div>
 
-            <div class="stat-card bg-white rounded-2xl border border-blue-200/70 p-4 shadow-sm flex items-center gap-3.5 cursor-default">
-                <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-sm shrink-0">
+            <div class="stat-card bg-white rounded-2xl border border-blue-200/80 p-3.5 shadow-2xs flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-xs shrink-0">
                     <i class="fa-solid fa-spinner"></i>
                 </div>
                 <div class="min-w-0">
-                    <span class="block text-xl font-black text-blue-700 leading-none"><?= $countInProgress ?></span>
-                    <span class="block text-[10px] font-bold uppercase tracking-wider text-blue-400 mt-1">Dikerjakan</span>
+                    <span class="block text-lg font-black text-blue-700 leading-none"><?= $countInProgress ?></span>
+                    <span class="block text-[9px] font-extrabold uppercase tracking-wider text-blue-400 mt-1">Dikerjakan</span>
                 </div>
             </div>
 
-            <div class="stat-card bg-white rounded-2xl border border-purple-200/70 p-4 shadow-sm flex items-center gap-3.5 cursor-default">
-                <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-sm shrink-0">
+            <div class="stat-card bg-white rounded-2xl border border-purple-200/80 p-3.5 shadow-2xs flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-xs shrink-0">
                     <i class="fa-solid fa-magnifying-glass-chart"></i>
                 </div>
                 <div class="min-w-0">
-                    <span class="block text-xl font-black text-purple-700 leading-none"><?= $countReview ?></span>
-                    <span class="block text-[10px] font-bold uppercase tracking-wider text-purple-400 mt-1">Siap QC</span>
+                    <span class="block text-lg font-black text-purple-700 leading-none"><?= $countReview ?></span>
+                    <span class="block text-[9px] font-extrabold uppercase tracking-wider text-purple-400 mt-1">Siap QC</span>
                 </div>
             </div>
 
             <?php if ($countOverdue > 0): ?>
-            <div class="stat-card bg-white rounded-2xl border border-red-300 p-4 shadow-sm flex items-center gap-3.5 cursor-default">
-                <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center text-sm shrink-0">
+            <div class="stat-card bg-white rounded-2xl border border-red-300 p-3.5 shadow-2xs flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-red-50 text-red-600 flex items-center justify-center text-xs shrink-0">
                     <i class="fa-solid fa-triangle-exclamation"></i>
                 </div>
                 <div class="min-w-0">
-                    <span class="block text-xl font-black text-red-700 leading-none"><?= $countOverdue ?></span>
-                    <span class="block text-[10px] font-bold uppercase tracking-wider text-red-400 mt-1">Terlambat</span>
+                    <span class="block text-lg font-black text-red-700 leading-none"><?= $countOverdue ?></span>
+                    <span class="block text-[9px] font-extrabold uppercase tracking-wider text-red-400 mt-1">Terlambat</span>
                 </div>
             </div>
             <?php else: ?>
-            <div class="stat-card bg-white rounded-2xl border border-emerald-200/70 p-4 shadow-sm flex items-center gap-3.5 cursor-default">
-                <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm shrink-0">
+            <div class="stat-card bg-white rounded-2xl border border-emerald-200/80 p-3.5 shadow-2xs flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs shrink-0">
                     <i class="fa-solid fa-circle-check"></i>
                 </div>
                 <div class="min-w-0">
-                    <span class="block text-xl font-black text-emerald-700 leading-none"><?= $countDone ?></span>
-                    <span class="block text-[10px] font-bold uppercase tracking-wider text-emerald-400 mt-1">Selesai</span>
+                    <span class="block text-lg font-black text-emerald-700 leading-none"><?= $countDone ?></span>
+                    <span class="block text-[9px] font-extrabold uppercase tracking-wider text-emerald-400 mt-1">Selesai</span>
                 </div>
             </div>
             <?php endif; ?>
         </div>
 
-        <!-- ================= ALERT NOTIFICATION ================= -->
+        <!-- ALERT UPDATE STATUS -->
         <?php if (isset($_GET['msg']) && $_GET['msg'] === 'updated'): ?>
-            <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-2xl text-xs font-bold mb-6 flex items-center gap-2.5 shadow-sm">
-                <span class="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 text-[11px]">
+            <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-2xl text-xs font-bold mb-5 flex items-center gap-2.5 shadow-2xs">
+                <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 text-[10px]">
                     <i class="fa-solid fa-check"></i>
                 </span>
                 Progress pengerjaan & berkas berhasil dikirimkan ke Admin untuk ditinjau (QC)!
             </div>
         <?php endif; ?>
 
-        <!-- ================= STATUS FILTER TABS ================= -->
-        <div id="filterTabs" class="bg-white border border-slate-200/90 rounded-2xl p-1.5 mb-6 shadow-sm flex items-center gap-1 overflow-x-auto">
-            <button onclick="filterStatus('all')" class="status-tab active-tab px-4 py-2 rounded-xl text-[11px] font-extrabold whitespace-nowrap text-slate-500 hover:bg-slate-100" data-status-tab="all">
+        <!-- FILTER TABS -->
+        <div id="filterTabs" class="bg-white border border-slate-200/90 rounded-2xl p-1.5 mb-5 shadow-2xs flex items-center gap-1 overflow-x-auto">
+            <button onclick="filterStatus('all')" class="status-tab active-tab px-3.5 py-1.5 rounded-xl text-[11px] font-extrabold whitespace-nowrap text-slate-500 hover:bg-slate-100" data-status-tab="all">
                 Semua (<?= $countAll ?>)
             </button>
-            <button onclick="filterStatus('in_progress')" class="status-tab px-4 py-2 rounded-xl text-[11px] font-extrabold whitespace-nowrap text-slate-500 hover:bg-slate-100" data-status-tab="in_progress">
+            <button onclick="filterStatus('in_progress')" class="status-tab px-3.5 py-1.5 rounded-xl text-[11px] font-extrabold whitespace-nowrap text-slate-500 hover:bg-slate-100" data-status-tab="in_progress">
                 <i class="fa-solid fa-spinner mr-1 text-blue-600"></i>In Progress (<?= $countInProgress ?>)
             </button>
-            <button onclick="filterStatus('ready_for_review')" class="status-tab px-4 py-2 rounded-xl text-[11px] font-extrabold whitespace-nowrap text-slate-500 hover:bg-slate-100" data-status-tab="ready_for_review">
+            <button onclick="filterStatus('ready_for_review')" class="status-tab px-3.5 py-1.5 rounded-xl text-[11px] font-extrabold whitespace-nowrap text-slate-500 hover:bg-slate-100" data-status-tab="ready_for_review">
                 <i class="fa-solid fa-magnifying-glass-chart mr-1 text-purple-600"></i>Siap QC (<?= $countReview ?>)
             </button>
-            <button onclick="filterStatus('overdue')" class="status-tab px-4 py-2 rounded-xl text-[11px] font-extrabold whitespace-nowrap text-slate-500 hover:bg-slate-100" data-status-tab="overdue">
+            <button onclick="filterStatus('overdue')" class="status-tab px-3.5 py-1.5 rounded-xl text-[11px] font-extrabold whitespace-nowrap text-slate-500 hover:bg-slate-100" data-status-tab="overdue">
                 <i class="fa-solid fa-triangle-exclamation mr-1 text-red-500"></i>Terlambat (<?= $countOverdue ?>)
             </button>
-            <button onclick="filterStatus('done')" class="status-tab px-4 py-2 rounded-xl text-[11px] font-extrabold whitespace-nowrap text-slate-500 hover:bg-slate-100" data-status-tab="done">
+            <button onclick="filterStatus('done')" class="status-tab px-3.5 py-1.5 rounded-xl text-[11px] font-extrabold whitespace-nowrap text-slate-500 hover:bg-slate-100" data-status-tab="done">
                 <i class="fa-solid fa-circle-check mr-1 text-emerald-500"></i>Selesai (<?= $countDone ?>)
             </button>
         </div>
 
-        <!-- ================= LIST PROYEK (ACCORDION STYLE: RINGKAS & CLEAN) ================= -->
+        <!-- LIST PROYEK ACCORDION CONTAINER -->
         <div class="space-y-4" id="projectsContainer">
             <?php if (empty($projectsWithTasks)): ?>
-                <div class="bg-white border border-slate-200/90 rounded-2xl p-12 text-center shadow-sm">
-                    <div class="w-14 h-14 mx-auto mb-3 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">
+                <div class="bg-white border border-slate-200/90 rounded-2xl p-12 text-center shadow-2xs">
+                    <div class="w-12 h-12 mx-auto mb-3 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg">
                         <i class="fa-solid fa-clipboard-check"></i>
                     </div>
-                    <p class="font-bold text-slate-800 text-sm">Tidak ada modul tugas yang dialokasikan untuk Anda saat ini.</p>
+                    <p class="font-bold text-slate-800 text-xs">Tidak ada modul tugas yang dialokasikan untuk Anda saat ini.</p>
                 </div>
             <?php else: ?>
                 <?php foreach ($projectsWithTasks as $pId => $projectGroup): ?>
 
-                    <!-- WRAPPER ACCORDION PROYEK -->
-                    <div class="project-section bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden" data-project-id="<?= $pId ?>">
+                    <div class="project-section bg-white border border-slate-200/90 rounded-2xl shadow-2xs overflow-hidden" data-project-id="<?= $pId ?>">
 
-                        <!-- BANNER HEADER PROYEK (KLIK UNTUK BUKA/TUTUP DETAIL) -->
+                        <!-- ACCORDION HEADER BANNER -->
                         <div onclick="toggleAccordion('project-content-<?= $pId ?>', 'project-chevron-<?= $pId ?>')" 
                              class="p-4 sm:p-5 bg-slate-900 text-white cursor-pointer hover:bg-slate-800/95 transition flex items-center justify-between gap-4 select-none">
                             
-                            <div class="flex items-center gap-3.5 min-w-0">
-                                <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center text-base shrink-0">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center text-sm shrink-0">
                                     <i class="fa-solid fa-folder-open"></i>
                                 </div>
                                 <div class="min-w-0">
-                                    <span class="inline-block text-[9px] font-black uppercase tracking-[0.18em] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 mb-1">
-                                        Proyek
+                                    <span class="inline-block text-[8px] font-black uppercase tracking-[0.18em] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 mb-0.5">
+                                        PROYEK TIM
                                     </span>
-                                    <h3 class="text-sm sm:text-base font-extrabold text-white tracking-wide truncate">
+                                    <h3 class="text-xs sm:text-sm font-black text-white tracking-wide truncate">
                                         <?= htmlspecialchars($projectGroup['nama_projek']) ?>
                                     </h3>
                                 </div>
                             </div>
 
-                            <div class="flex items-center gap-2.5 shrink-0">
-                                <div class="bg-white/5 border border-white/10 text-slate-300 text-[11px] px-3 py-1.5 rounded-lg font-semibold hidden sm:flex items-center gap-2">
-                                    <i class="fa-solid fa-building text-emerald-400 text-[10px]"></i>
+                            <div class="flex items-center gap-2 sm:gap-2.5 shrink-0">
+                                <!-- BADGE LONCENG NOTIFIKASI URGENT DI UJUNG BANNER PROYEK -->
+                                <?php if ($projectGroup['urgent_count'] > 0): ?>
+                                    <span class="bg-red-600 text-white text-[9px] font-black px-2.5 py-1 rounded-lg border border-red-400/40 flex items-center gap-1.5 animate-pulse shadow-sm" title="Ada <?= $projectGroup['urgent_count'] ?> tugas urgent/deadline hari ini yang wajib dikerjakan!">
+                                        <i class="fa-solid fa-bell bell-shake text-amber-300 text-[9px]"></i>
+                                        <span>+<?= $projectGroup['urgent_count'] ?> Urgent</span>
+                                    </span>
+                                <?php endif; ?>
+
+                                <div class="bg-white/5 border border-white/10 text-slate-300 text-[10px] px-2.5 py-1 rounded-lg font-semibold hidden sm:flex items-center gap-1.5">
+                                    <i class="fa-solid fa-building text-emerald-400 text-[9px]"></i>
                                     <span class="text-slate-400">Klien:</span> <strong class="text-white"><?= htmlspecialchars($projectGroup['klien']) ?></strong>
                                 </div>
 
-                                <div class="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] px-3 py-1.5 rounded-lg font-bold">
+                                <div class="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] px-2.5 py-1 rounded-lg font-extrabold">
                                     <?= count($projectGroup['tasks']) ?> Modul
                                 </div>
 
-                                <div class="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center text-slate-300 text-xs chevron-icon" id="project-chevron-<?= $pId ?>">
+                                <div class="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center text-slate-300 text-[10px] chevron-icon" id="project-chevron-<?= $pId ?>">
                                     <i class="fa-solid fa-chevron-down"></i>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- BODY DETAIL TUGAS/MODUL (DEFAULT TERSEMBUNYI) -->
+                        <!-- BODY DETAIL TUGAS -->
                         <div id="project-content-<?= $pId ?>" class="hidden p-4 sm:p-5 border-t border-slate-100 bg-slate-50/50 space-y-4">
                             <?php foreach ($projectGroup['tasks'] as $task): ?>
                                 <?php
-                                    $stLower = strtolower($task['status']);
+                                    $stLower   = strtolower($task['status']);
+                                    $prioLower = strtolower($task['prioritas']);
                                     $statusClassKey = str_replace(' ', '_', $stLower);
-                                    $isOverdue = (strtotime($task['deadline']) < strtotime($todayDate)) && $stLower !== 'done';
-                                    $isDone = ($stLower === 'done');
-                                    $hasFiles = isset($taskFilesMap[$task['id']]) && !empty($taskFilesMap[$task['id']]);
+                                    
+                                    $isDone    = ($stLower === 'done');
+                                    $isPending = ($stLower !== 'done' && $stLower !== 'ready for review'); 
+                                    $isOverdue = (strtotime($task['deadline']) < strtotime($todayDate)) && !$isDone;
+                                    
+                                    $isNeedFocus = ($prioLower === 'urgent' || $prioLower === 'high' || $task['deadline'] === $todayDate) && $isPending;
+                                    
+                                    $hasFiles    = isset($taskFilesMap[$task['id']]) && !empty($taskFilesMap[$task['id']]);
                                     $teamMembers = $taskAssigneesMap[$task['id']] ?? [];
 
                                     $accentClass = 'bg-slate-300';
-                                    if ($stLower === 'in progress')       $accentClass = 'bg-blue-500';
-                                    elseif ($stLower === 'ready for review') $accentClass = 'bg-purple-500';
-                                    elseif ($stLower === 'done')          $accentClass = 'bg-emerald-500';
+                                    if ($isNeedFocus)$accentClass = 'bg-red-600';
+                                    elseif ($stLower === 'in progress')$accentClass = 'bg-blue-500';
+                                    elseif ($stLower === 'ready for review')$accentClass = 'bg-purple-500';
+                                    elseif ($stLower === 'done')$accentClass = 'bg-emerald-500';
                                 ?>
 
-                                <div class="task-card bg-white border border-slate-200/90 rounded-2xl shadow-sm overflow-hidden"
+                                <div class="task-card bg-white border rounded-2xl shadow-2xs overflow-hidden transition-all <?= $isNeedFocus ? 'border-red-500/80 shadow-md shadow-red-500/10' : 'border-slate-200/90' ?>"
                                      data-status="<?= $statusClassKey ?>"
                                      data-overdue="<?= $isOverdue ? 'true' : 'false' ?>"
-                                     data-search-title="<?= htmlspecialchars(strtolower($task['nama_tugas'] . ' ' . $projectGroup['nama_projek'])) ?>">
+                                     data-search-title="<?= htmlspecialchars(strtolower($task['nama_tugas'] . ' ' .$projectGroup['nama_projek'])) ?>">
 
                                     <div class="flex">
-                                        <div class="w-1.5 shrink-0 <?= $accentClass ?> <?= $isOverdue ? '!bg-red-500' : '' ?>"></div>
+                                        <div class="w-2 shrink-0 <?= $accentClass ?> <?= $isOverdue ? '!bg-red-600' : '' ?>"></div>
 
-                                        <div class="flex-1 p-4 sm:p-5">
+                                        <div class="flex-1 p-4 text-xs">
                                             <!-- Header Card -->
-                                            <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-3 mb-4">
-                                                <h4 class="text-sm sm:text-base font-extrabold text-slate-900 leading-snug flex-1">
+                                            <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-3 mb-3">
+                                                <h4 class="text-xs sm:text-sm font-black text-slate-900 leading-snug flex-1 flex items-center gap-2">
+                                                    <?php if ($isNeedFocus): ?>
+                                                        <span class="text-red-600 font-black text-xs" title="Perlu Pengerjaan Prioritas"><i class="fa-solid fa-circle-exclamation animate-pulse"></i></span>
+                                                    <?php endif; ?>
                                                     <?= htmlspecialchars($task['nama_tugas']) ?>
                                                 </h4>
 
-                                                <!-- Badges -->
                                                 <div class="flex flex-wrap items-center gap-2 shrink-0">
-                                                    <div class="px-3 py-1 rounded-lg text-[11px] font-extrabold flex items-center gap-1.5 border
+                                                    
+                                                    <?php if ($isNeedFocus): ?>
+                                                        <span class="px-2.5 py-1 bg-red-600 text-white font-black text-[9px] rounded-lg tracking-wider uppercase animate-pulse flex items-center gap-1 shadow-2xs">
+                                                            <i class="fa-solid fa-fire text-[8px]"></i> Wajib Dikerjakan
+                                                        </span>
+                                                    <?php endif; ?>
+
+                                                    <!-- Badge Deadline -->
+                                                    <div class="px-2.5 py-1 rounded-lg text-[10px] font-extrabold flex items-center gap-1.5 border
                                                         <?php
                                                             if ($isOverdue) {
                                                                 echo 'bg-red-600 text-white border-red-700';
+                                                            } elseif ($task['deadline'] ===$todayDate && !$isDone) {
+                                                                echo 'bg-amber-500 text-white border-amber-600 font-black';
                                                             } elseif ($isDone) {
                                                                 echo 'bg-slate-100 text-slate-500 border-slate-200';
                                                             } else {
-                                                                echo 'bg-amber-50 text-amber-800 border-amber-300';
+                                                                echo 'bg-slate-50 text-slate-700 border-slate-200';
                                                             }
                                                         ?>">
                                                         <i class="fa-regular fa-calendar-check"></i>
                                                         <span><?= date('d M Y', strtotime($task['deadline'])) ?></span>
-                                                        <?php if ($isOverdue): ?>
-                                                            <span class="text-[9px] uppercase font-black bg-white text-red-700 px-1.5 py-0.5 rounded">Terlambat</span>
-                                                        <?php endif; ?>
                                                     </div>
 
+                                                    <!-- Badge Prioritas -->
                                                     <span class="px-2.5 py-1 text-[9px] uppercase font-black rounded-lg border tracking-wide
                                                         <?php
                                                             switch($task['prioritas']) {
-                                                                case 'Urgent':
-                                                                case 'High': echo 'bg-red-50 text-red-600 border-red-200'; break;
-                                                                case 'Medium': echo 'bg-amber-50 text-amber-600 border-amber-200'; break;
+                                                                case 'Urgent': echo $isDone ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-red-100 text-red-700 border-red-300'; break;
+                                                                case 'High': echo $isDone ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-red-50 text-red-600 border-red-200'; break;
+                                                                case 'Medium': echo 'bg-amber-50 text-amber-700 border-amber-200'; break;
                                                                 default: echo 'bg-slate-100 text-slate-600 border-slate-200';
                                                             }
                                                         ?>">
                                                         <?= htmlspecialchars($task['prioritas']) ?>
                                                     </span>
 
+                                                    <!-- Badge Status -->
                                                     <span class="px-2.5 py-1 text-[9px] uppercase font-black rounded-lg border tracking-wide
                                                         <?php
                                                             switch($task['status']) {
@@ -473,21 +522,18 @@ foreach ($myTasks as $tk) {
                                                 </div>
                                             </div>
 
-                                            <!-- Anggota Tim Pengerjaan -->
+                                            <!-- Tim Terlibat -->
                                             <?php if (!empty($teamMembers)): ?>
-                                                <div class="mb-4 bg-slate-50/90 border border-slate-200/80 rounded-xl p-3">
-                                                    <span class="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block mb-1.5">
-                                                        <i class="fa-solid fa-users text-emerald-600 mr-1"></i> Tim Terlibat Pengerjaan Modul Ini:
+                                                <div class="mb-3 bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
+                                                    <span class="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block mb-1">
+                                                        <i class="fa-solid fa-users text-emerald-600 mr-1"></i> Tim Terlibat Pengerjaan:
                                                     </span>
                                                     <div class="flex flex-wrap gap-1.5">
-                                                        <?php foreach ($teamMembers as $tm): ?>
-                                                            <span class="px-2.5 py-1 bg-white rounded-lg border border-slate-200 text-[11px] font-bold text-slate-700 flex items-center gap-1.5 shadow-sm">
-                                                                <span class="w-4 h-4 rounded-full bg-emerald-100 text-emerald-800 text-[9px] font-black flex items-center justify-center">
-                                                                    <?= strtoupper(substr($tm['nama'], 0, 1)) ?>
-                                                                </span>
+                                                        <?php foreach ($teamMembers as$tm): ?>
+                                                            <span class="px-2 py-0.5 bg-white rounded-md border border-slate-200 text-[10px] font-bold text-slate-700 flex items-center gap-1 shadow-2xs">
                                                                 <?= htmlspecialchars($tm['nama']) ?>
-                                                                <?php if ($tm['user_id'] == $user_id): ?>
-                                                                    <span class="text-[9px] bg-emerald-100 text-emerald-800 px-1 rounded font-extrabold">(Anda)</span>
+                                                                <?php if ($tm['user_id'] ==$user_id): ?>
+                                                                    <span class="text-[8px] text-emerald-700 font-black">(Anda)</span>
                                                                 <?php endif; ?>
                                                             </span>
                                                         <?php endforeach; ?>
@@ -495,61 +541,23 @@ foreach ($myTasks as $tk) {
                                                 </div>
                                             <?php endif; ?>
 
-                                            <!-- Catatan Revisi dari PM -->
-                                            <?php if (!empty($task['revision_notes'])): ?>
-                                                <div class="bg-red-50 border border-red-200 rounded-xl p-3.5 mb-4 text-xs flex gap-2.5">
-                                                    <i class="fa-solid fa-triangle-exclamation text-red-500 mt-0.5 shrink-0"></i>
-                                                    <div>
-                                                        <span class="font-extrabold block text-red-800 mb-0.5">Catatan Instruksi Revisi PM:</span>
-                                                        <p class="leading-relaxed font-semibold text-red-900"><?= htmlspecialchars($task['revision_notes']) ?></p>
-                                                    </div>
-                                                </div>
-                                            <?php endif; ?>
-
-                                            <!-- Berkas Terlampir -->
-                                            <?php if ($hasFiles || !empty($task['drive_link'])): ?>
-                                                <div class="bg-slate-50 border border-slate-200/70 rounded-xl p-3.5 mb-4">
-                                                    <span class="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block mb-2">Deliverables / Berkas Terlampir</span>
-                                                    <div class="flex flex-wrap gap-2">
-                                                        <?php if (!empty($task['drive_link'])): ?>
-                                                            <a href="<?= htmlspecialchars($task['drive_link']) ?>" target="_blank"
-                                                                class="px-3 py-1.5 bg-white text-emerald-700 hover:bg-emerald-50 rounded-lg border border-emerald-200 text-[11px] font-bold flex items-center gap-1.5 shadow-sm transition">
-                                                                <i class="fa-brands fa-google-drive text-emerald-600"></i> Google Drive / Repo
-                                                            </a>
-                                                        <?php endif; ?>
-
-                                                        <?php if ($hasFiles): ?>
-                                                            <?php foreach ($taskFilesMap[$task['id']] as $file): ?>
-                                                                <a href="uploads/projects/<?= htmlspecialchars($file['file_path']) ?>" download="<?= htmlspecialchars($file['nama_file']) ?>"
-                                                                    class="px-3 py-1.5 bg-white text-slate-700 hover:bg-slate-50 rounded-lg border border-slate-200 text-[11px] font-bold flex items-center gap-1.5 shadow-sm max-w-full transition">
-                                                                    <i class="fa-solid fa-file-arrow-down text-slate-400 shrink-0"></i>
-                                                                    <span class="truncate max-w-[140px] sm:max-w-[200px]"><?= htmlspecialchars($file['nama_file']) ?></span>
-                                                                    <span class="text-[9px] text-slate-400 font-mono shrink-0">(<?= round($file['ukuran_file'] / 1024, 1) ?> KB)</span>
-                                                                </a>
-                                                            <?php endforeach; ?>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                </div>
-                                            <?php endif; ?>
-
-                                            <!-- Form Update / Read Only -->
+                                            <!-- Form Progress -->
                                             <?php if ($isDone): ?>
-                                                <div class="bg-emerald-50/80 border border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-3">
+                                                <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between gap-2">
                                                     <span class="text-xs font-bold text-emerald-800 flex items-center gap-2">
-                                                        <i class="fa-solid fa-circle-check text-emerald-600"></i>
-                                                        Pengerjaan modul telah disetujui (Approved) oleh Project Manager.
+                                                        <i class="fa-solid fa-circle-check text-emerald-600"></i> Modul telah disetujui (Approved) oleh Project Manager.
                                                     </span>
-                                                    <span class="text-[9px] bg-emerald-200/80 font-black px-2.5 py-1 rounded-lg text-emerald-900 uppercase shrink-0">Read Only</span>
+                                                    <span class="text-[9px] bg-emerald-200/80 font-black px-2 py-0.5 rounded text-emerald-900 uppercase">Selesai</span>
                                                 </div>
                                             <?php else: ?>
-                                                <form action="" method="POST" enctype="multipart/form-data" class="bg-slate-50/80 rounded-xl border border-slate-200/70 p-4 space-y-3.5">
+                                                <form action="" method="POST" enctype="multipart/form-data" class="bg-slate-50/80 rounded-xl border border-slate-200/80 p-3.5 space-y-3">
                                                     <input type="hidden" name="update_progress" value="1">
                                                     <input type="hidden" name="task_id" value="<?= $task['id'] ?>">
 
                                                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                                                         <div>
-                                                            <label class="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mb-1.5">Status Pengerjaan</label>
-                                                            <select name="status" class="input-glow w-full px-3 py-2.5 rounded-lg border border-slate-200 text-xs bg-white focus:outline-none font-bold text-slate-700">
+                                                            <label class="block text-[9px] font-extrabold uppercase text-slate-400 mb-1">Status Pengerjaan</label>
+                                                            <select name="status" class="input-glow w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:outline-none font-bold text-slate-800">
                                                                 <option value="To Do" <?= $task['status'] === 'To Do' ? 'selected' : '' ?>>To Do (Belum Dimulai)</option>
                                                                 <option value="In Progress" <?= $task['status'] === 'In Progress' ? 'selected' : '' ?>>In Progress (Sedang Dikerjakan)</option>
                                                                 <option value="Ready for Review" <?= $task['status'] === 'Ready for Review' ? 'selected' : '' ?>>Ready for Review (Siap Di-QC)</option>
@@ -557,33 +565,24 @@ foreach ($myTasks as $tk) {
                                                         </div>
 
                                                         <div>
-                                                            <label class="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mb-1.5">Link Google Drive / Repo</label>
-                                                            <div class="relative">
-                                                                <input type="url" name="drive_link" value="<?= htmlspecialchars($task['drive_link'] ?? '') ?>"
-                                                                    placeholder="https://drive.google.com/..."
-                                                                    class="input-glow w-full px-3 py-2.5 pl-8 rounded-lg border border-slate-200 text-xs focus:outline-none font-mono text-emerald-700 bg-white">
-                                                                <i class="fa-brands fa-google-drive absolute left-2.5 top-3 text-slate-400 text-xs"></i>
-                                                            </div>
+                                                            <label class="block text-[9px] font-extrabold uppercase text-slate-400 mb-1">Link Google Drive / Repo</label>
+                                                            <input type="url" name="drive_link" value="<?= htmlspecialchars($task['drive_link'] ?? '') ?>" placeholder="https://drive.google.com/..." class="input-glow w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none font-mono text-emerald-700 bg-white">
                                                         </div>
 
                                                         <div>
-                                                            <label class="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mb-1.5">Upload File Deliverable</label>
-                                                            <input type="file" name="task_file"
-                                                                class="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-[11px] text-slate-500 bg-white file:mr-2 file:py-1.5 file:px-2.5 file:rounded-md file:border-0 file:text-[10px] file:font-bold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100">
+                                                            <label class="block text-[9px] font-extrabold uppercase text-slate-400 mb-1">Upload File Deliverable</label>
+                                                            <input type="file" name="task_file" class="w-full text-[10px] text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-bold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100">
                                                         </div>
                                                     </div>
 
                                                     <div>
-                                                        <label class="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400 mb-1.5">Catatan Laporan Progress</label>
-                                                        <textarea name="progress_notes" rows="2"
-                                                            placeholder="Tuliskan ringkasan hasil kerja atau instruksi untuk Admin..."
-                                                            class="input-glow w-full px-3 py-2.5 rounded-lg border border-slate-200 text-xs focus:outline-none bg-white font-medium"><?= htmlspecialchars($task['progress_notes'] ?? '') ?></textarea>
+                                                        <label class="block text-[9px] font-extrabold uppercase text-slate-400 mb-1">Catatan Laporan Progress</label>
+                                                        <textarea name="progress_notes" rows="2" placeholder="Tulis ringkasan hasil kerja..." class="input-glow w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none bg-white font-medium"><?= htmlspecialchars($task['progress_notes'] ?? '') ?></textarea>
                                                     </div>
 
-                                                    <div class="flex justify-end pt-0.5">
-                                                        <button type="submit"
-                                                            class="btn-press px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-md shadow-emerald-600/20 flex items-center gap-2">
-                                                            <i class="fa-solid fa-paper-plane text-[10px]"></i> Kirim Progress & Deliverables
+                                                    <div class="flex justify-end pt-1">
+                                                        <button type="submit" class="btn-press px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-600/20 flex items-center gap-1.5 uppercase tracking-wider">
+                                                            <i class="fa-solid fa-paper-plane text-[10px]"></i> Kirim Progress
                                                         </button>
                                                     </div>
                                                 </form>
@@ -600,16 +599,24 @@ foreach ($myTasks as $tk) {
             <?php endif; ?>
         </div>
 
-        <footer class="mt-14 pb-6 text-center">
-            <p class="text-[10px] text-slate-400 font-medium">PT. Cipta Teknologi Cendekia &mdash; Workspace Penugasan Tim Teknis</p>
+        <!-- PAGINASI SLIDE INTERAKTIF -->
+        <div class="bg-white border border-slate-200/90 rounded-2xl p-3.5 mt-5 shadow-2xs flex flex-col sm:flex-row justify-between items-center gap-3 text-xs">
+            <span class="text-slate-500 font-bold text-[10px]" id="paginationInfo">Menampilkan 0 proyek</span>
+            <div class="flex items-center gap-1" id="paginationControls"></div>
+        </div>
+
+        <footer class="mt-8 pb-6 text-center">
+            <p class="text-[10px] text-slate-400 font-bold">PT. Cipta Teknologi Cendekia &mdash; Workspace Penugasan Tim Teknis</p>
         </footer>
 
     </main>
 
     <script>
         let currentStatusFilter = 'all';
+        const projectsPerPage = 3;
+        let currentPage = 1;
+        let filteredProjects = [];
 
-        // Toggle Accordion Buka / Tutup Proyek
         function toggleAccordion(contentId, chevronId) {
             const content = document.getElementById(contentId);
             const chevron = document.getElementById(chevronId);
@@ -641,8 +648,9 @@ foreach ($myTasks as $tk) {
 
         function applyCombinedFilters() {
             const searchVal = document.getElementById('globalTaskSearch').value.toLowerCase();
+            const allProjects = Array.from(document.querySelectorAll('.project-section'));
 
-            document.querySelectorAll('.project-section').forEach(sec => {
+            filteredProjects = allProjects.filter(sec => {
                 const cards = sec.querySelectorAll('.task-card');
                 let visibleCount = 0;
 
@@ -670,23 +678,65 @@ foreach ($myTasks as $tk) {
                     }
                 });
 
-                // Otomatis buka accordion jika user sedang melakukan pencarian
-                const contentId = 'project-content-' + sec.getAttribute('data-project-id');
-                const chevronId = 'project-chevron-' + sec.getAttribute('data-project-id');
-                const content = document.getElementById(contentId);
-                const chevron = document.getElementById(chevronId);
-
-                if (visibleCount > 0) {
-                    sec.classList.remove('hidden');
-                    if (searchVal.trim() !== '') {
-                        content.classList.remove('hidden');
-                        if (chevron) chevron.classList.add('rotate-180');
-                    }
-                } else {
-                    sec.classList.add('hidden');
-                }
+                return visibleCount > 0;
             });
+
+            currentPage = 1;
+            renderPagination();
         }
+
+        function renderPagination() {
+            const allProjects = document.querySelectorAll('.project-section');
+            allProjects.forEach(sec => sec.classList.add('hidden'));
+
+            const totalItems = filteredProjects.length;
+            const totalPages = Math.ceil(totalItems / projectsPerPage) || 1;
+
+            const startIdx = (currentPage - 1) * projectsPerPage;
+            const endIdx   = startIdx + projectsPerPage;
+
+            filteredProjects.slice(startIdx, endIdx).forEach(sec => {
+                sec.classList.remove('hidden');
+            });
+
+            const displayStart = totalItems === 0 ? 0 : startIdx + 1;
+            const displayEnd   = Math.min(endIdx, totalItems);
+            document.getElementById('paginationInfo').innerText = `Menampilkan ${displayStart}-${displayEnd} dari ${totalItems} proyek`;
+
+            const controls = document.getElementById('paginationControls');
+            controls.innerHTML = '';
+
+            if (totalPages <= 1) return;
+
+            // Prev Button
+            const prevBtn = document.createElement('button');
+            prevBtn.innerHTML = '<i class="fa-solid fa-chevron-left"></i>';
+            prevBtn.className = `btn-press px-2.5 py-1 rounded-lg font-bold ${currentPage === 1 ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
+            prevBtn.disabled = currentPage === 1;
+            prevBtn.onclick = () => { if(currentPage > 1) { currentPage--; renderPagination(); } };
+            controls.appendChild(prevBtn);
+
+            // Page Numbers
+            for (let i = 1; i <= totalPages; i++) {
+                const pageBtn = document.createElement('button');
+                pageBtn.innerText = i;
+                pageBtn.className = `btn-press px-3 py-1 rounded-lg font-bold ${i === currentPage ? 'bg-emerald-600 text-white shadow-2xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
+                pageBtn.onclick = () => { currentPage = i; renderPagination(); };
+                controls.appendChild(pageBtn);
+            }
+
+            // Next Button
+            const nextBtn = document.createElement('button');
+            nextBtn.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
+            nextBtn.className = `btn-press px-2.5 py-1 rounded-lg font-bold ${currentPage === totalPages ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
+            nextBtn.disabled = currentPage === totalPages;
+            nextBtn.onclick = () => { if(currentPage < totalPages) { currentPage++; renderPagination(); } };
+            controls.appendChild(nextBtn);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            applyCombinedFilters();
+        });
     </script>
 </body>
 </html>

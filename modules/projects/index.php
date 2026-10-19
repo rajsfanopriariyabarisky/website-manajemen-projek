@@ -106,7 +106,7 @@ $totalProjectCount = count($projects);
 $inProgressCount   = 0;
 $completedCount    = 0;
 
-foreach ($projects as $pr) {
+foreach ($projects as$pr) {
     if ($pr['status'] === 'In Progress') {$inProgressCount++; }
     elseif ($pr['status'] === 'Completed') {$completedCount++; }
 }
@@ -288,10 +288,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                 </span>
                             </div>
                         </div>
-
-                        <a href="../proposals/print_proposal.php?project_id=<?= $p['id'] ?>" target="_blank" class="w-full mb-3 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition text-center flex items-center justify-center gap-1.5">
-                            <i class="fa-solid fa-file-signature text-emerald-400"></i> Cetak Surat Penawaran PDF
-                        </a>
                     </div>
 
                     <!-- Card Footer & H-7 Urgent Bell Alert -->

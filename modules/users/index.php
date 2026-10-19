@@ -77,8 +77,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
 <main class="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto w-full min-w-0 bg-[#f8fafc] text-slate-800 font-sans selection:bg-emerald-600 selection:text-white">
     
-    <!-- Header Banner Navigation -->
-    <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-sm">
+    <!-- Header Banner Navigation & Action Button -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-2xs">
         <div>
             <div class="flex items-center gap-2 mb-1">
                 <span class="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
@@ -88,24 +88,29 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             <h1 class="text-xl md:text-2xl font-black text-slate-900 tracking-tight">Manajemen Tim & Karyawan</h1>
             <p class="text-xs text-slate-500 font-medium mt-0.5">Kelola daftar tim, jobdesk/jabatan, dan alokasi personel PT. CTC</p>
         </div>
+
+        <!-- Tombol Buka Modal Form Tambah Karyawan -->
+        <button onclick="openUserModal()" class="btn-press px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl transition flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 shrink-0 uppercase tracking-wider">
+            <i class="fa-solid fa-user-plus text-xs"></i> Tambah Karyawan Baru
+        </button>
     </div>
 
     <!-- Alert Notifications -->
     <?php if ($error): ?>
-        <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3.5 rounded-2xl text-xs font-bold mb-6 flex items-center gap-2.5 shadow-sm">
+        <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-2xl text-xs font-bold mb-6 flex items-center gap-2.5 shadow-2xs">
             <i class="fa-solid fa-triangle-exclamation text-base text-red-600"></i> <?= $error ?>
         </div>
     <?php endif; ?>
 
     <?php if ($success): ?>
-        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3.5 rounded-2xl text-xs font-bold mb-6 flex items-center gap-2.5 shadow-sm">
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-2xl text-xs font-bold mb-6 flex items-center gap-2.5 shadow-2xs">
             <i class="fa-solid fa-circle-check text-base text-emerald-600"></i> <?= $success ?>
         </div>
     <?php endif; ?>
 
     <!-- Executive Summary Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div class="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+        <div class="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex items-center justify-between">
             <div>
                 <span class="text-[9px] font-black uppercase tracking-wider text-slate-400 block">Total Personel Tim</span>
                 <span class="text-xl font-black text-slate-900 mt-0.5 block"><?= $totalPersonel ?> Personel</span>
@@ -115,7 +120,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             </div>
         </div>
 
-        <div class="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+        <div class="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex items-center justify-between">
             <div>
                 <span class="text-[9px] font-black uppercase tracking-wider text-slate-400 block">Karyawan / Technical Staff</span>
                 <span class="text-xl font-black text-blue-700 mt-0.5 block"><?= $totalKaryawan ?> Orang</span>
@@ -125,7 +130,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             </div>
         </div>
 
-        <div class="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+        <div class="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex items-center justify-between">
             <div>
                 <span class="text-[9px] font-black uppercase tracking-wider text-slate-400 block">Project Manager / Admin</span>
                 <span class="text-xl font-black text-purple-700 mt-0.5 block"><?= $totalAdmin ?> Personel</span>
@@ -136,164 +141,188 @@ require_once __DIR__ . '/../../includes/sidebar.php';
         </div>
     </div>
 
-    <!-- Grid Layout Utama: Form & Tabel -->
-    <div class="flex flex-col xl:flex-row gap-6 w-full min-w-0">
+    <!-- Tabel Daftar Karyawan Full Width & Clean -->
+    <div class="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-2xs">
         
-        <!-- Form Tambah Anggota Tim (Lebar Tetap di Desktop) -->
-        <div class="w-full xl:w-80 shrink-0">
-            <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-sm sticky top-6">
-                <h3 class="font-black text-slate-800 text-xs uppercase tracking-wider mb-4 flex items-center gap-2 pb-3 border-b border-slate-100">
-                    <i class="fa-solid fa-user-plus text-emerald-600"></i> Tambah Anggota Tim
+        <!-- Header Tabel & Search / Filter Bar -->
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 mb-4 border-b border-slate-100">
+            <div>
+                <h3 class="font-black text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                    <i class="fa-solid fa-address-book text-emerald-600"></i> Daftar Anggota Tim PT. CTC
                 </h3>
+                <p class="text-xs text-slate-400 font-medium">Monitoring hak akses dan alokasi penugasan modul karyawan</p>
+            </div>
 
-                <form action="" method="POST" class="space-y-4">
-                    <input type="hidden" name="add_user" value="1">
-                    
-                    <div>
-                        <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Nama Lengkap *</label>
-                        <input type="text" name="nama" required placeholder="Contoh: Budi Pratama" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none">
-                    </div>
+            <!-- Live Search & Filter Role -->
+            <div class="flex items-center gap-2.5 shrink-0 flex-wrap sm:flex-nowrap w-full sm:w-auto">
+                <div class="relative w-full sm:w-56">
+                    <input type="text" id="userSearchInput" onkeyup="filterUsers()" placeholder="Cari nama / email / job..." class="input-glow w-full px-3.5 py-2 pl-9 rounded-xl border border-slate-200 text-xs focus:outline-none font-medium">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                </div>
 
-                    <div>
-                        <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Email Karyawan *</label>
-                        <input type="email" name="email" required placeholder="budi@ctc.co.id" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none">
-                    </div>
-
-                    <div>
-                        <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Jabatan / Jobdesk *</label>
-                        <input type="text" name="jabatan" required placeholder="Contoh: Frontend Developer / UI Designer" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none">
-                    </div>
-
-                    <div>
-                        <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Role Hak Akses</label>
-                        <select name="role" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-extrabold text-slate-700 bg-white focus:outline-none">
-                            <option value="karyawan" selected>Karyawan / Technical Staff</option>
-                            <option value="admin">Project Manager / System Admin</option>
-                        </select>
-                    </div>
-
-                    <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-[10px] text-slate-500 font-medium">
-                        Password standar akun baru: <span class="font-mono text-slate-800 font-extrabold">123456</span>
-                    </div>
-
-                    <button type="submit" class="btn-press w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-plus text-xs"></i> Simpan Karyawan
-                    </button>
-                </form>
+                <select id="roleFilterSelect" onchange="filterUsers()" class="input-glow px-3 py-2 rounded-xl border border-slate-200 text-xs font-extrabold text-slate-700 bg-white focus:outline-none w-full sm:w-auto">
+                    <option value="all">Semua Role</option>
+                    <option value="admin">Admin / PM</option>
+                    <option value="karyawan">Karyawan</option>
+                </select>
             </div>
         </div>
 
-        <!-- Tabel Daftar Karyawan (Auto Expand / Flex 1) -->
-        <div class="flex-1 min-w-0">
-            <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-sm">
-                
-                <!-- Header Tabel & Search / Filter Bar -->
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 mb-4 border-b border-slate-100">
-                    <div>
-                        <h3 class="font-black text-slate-900 text-base flex items-center gap-2">
-                            <i class="fa-solid fa-address-book text-emerald-600"></i> Daftar Anggota Tim PT. CTC
-                        </h3>
-                        <p class="text-xs text-slate-400 font-medium">Monitoring hak akses dan alokasi penugasan modul karyawan</p>
-                    </div>
+        <!-- Table Content -->
+        <div class="overflow-x-auto w-full">
+            <table class="w-full text-left text-xs text-slate-600 border-collapse min-w-[650px]" id="usersTable">
+                <thead class="uppercase bg-slate-50 text-slate-500 font-black border-b border-slate-200 text-[10px] tracking-wider">
+                    <tr>
+                        <th class="py-3.5 px-4">Nama & Jabatan</th>
+                        <th class="py-3.5 px-4">Email</th>
+                        <th class="py-3.5 px-4">Role</th>
+                        <th class="py-3.5 px-4">Beban Tugas (Multi-Team)</th>
+                        <th class="py-3.5 px-4 text-center">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100" id="usersTableBody">
+                    <?php foreach ($users as$u): ?>
+                        <?php 
+                            $roleLower = strtolower($u['role']);
+                            $assignedT =$u['total_assigned_tasks'] ?? 0;
+                            $compT     =$u['completed_tasks'] ?? 0;
+                        ?>
+                        <tr class="user-row hover:bg-slate-50/80 transition align-middle"
+                            data-search="<?= htmlspecialchars(strtolower($u['nama'] . ' ' . $u['email'] . ' ' .$u['jabatan'])) ?>"
+                            data-role="<?= htmlspecialchars($roleLower) ?>">
+                            
+                            <!-- Nama & Jabatan -->
+                            <td class="py-3.5 px-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 font-black flex items-center justify-center text-xs shrink-0 shadow-2xs border border-emerald-200/60">
+                                        <?= strtoupper(substr($u['nama'], 0, 1)) ?>
+                                    </div>
+                                    <div class="min-w-0">
+                                        <p class="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight truncate"><?= htmlspecialchars($u['nama']) ?></p>
+                                        <span class="text-[10px] text-slate-400 font-bold block truncate"><?= htmlspecialchars($u['jabatan']) ?></span>
+                                    </div>
+                                </div>
+                            </td>
 
-                    <!-- Live Search & Filter Role -->
-                    <div class="flex items-center gap-2.5 shrink-0 flex-wrap sm:flex-nowrap w-full sm:w-auto">
-                        <div class="relative w-full sm:w-48">
-                            <input type="text" id="userSearchInput" onkeyup="filterUsers()" placeholder="Cari nama / email / job..." class="input-glow w-full px-3.5 py-2 pl-9 rounded-xl border border-slate-200 text-xs focus:outline-none font-medium">
-                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
-                        </div>
+                            <!-- Email -->
+                            <td class="py-3.5 px-4 text-slate-600 font-bold">
+                                <?= htmlspecialchars($u['email']) ?>
+                            </td>
 
-                        <select id="roleFilterSelect" onchange="filterUsers()" class="input-glow px-3 py-2 rounded-xl border border-slate-200 text-xs font-extrabold text-slate-700 bg-white focus:outline-none w-full sm:w-auto">
-                            <option value="all">Semua Role</option>
-                            <option value="admin">Admin / PM</option>
-                            <option value="karyawan">Karyawan</option>
-                        </select>
-                    </div>
-                </div>
+                            <!-- Role -->
+                            <td class="py-3.5 px-4">
+                                <span class="px-2.5 py-1 text-[9px] font-black uppercase rounded-lg border tracking-wider inline-block
+                                    <?= $roleLower === 'admin' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-slate-100 text-slate-700 border-slate-200' ?>">
+                                    <?= htmlspecialchars($u['role']) ?>
+                                </span>
+                            </td>
 
-                <!-- Table Content -->
-                <div class="overflow-x-auto w-full">
-                    <table class="w-full text-left text-xs text-slate-600 border-collapse min-w-[650px]" id="usersTable">
-                        <thead class="uppercase bg-slate-50 text-slate-500 font-black border-b border-slate-200 text-[10px] tracking-wider">
-                            <tr>
-                                <th class="py-3.5 px-4">Nama & Jabatan</th>
-                                <th class="py-3.5 px-4">Email</th>
-                                <th class="py-3.5 px-4">Role</th>
-                                <th class="py-3.5 px-4">Beban Tugas (Multi-Team)</th>
-                                <th class="py-3.5 px-4 text-center">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100" id="usersTableBody">
-                            <?php foreach ($users as$u): ?>
-                                <?php 
-                                    $roleLower = strtolower($u['role']);
-                                    $assignedT =$u['total_assigned_tasks'] ?? 0;
-                                    $compT     =$u['completed_tasks'] ?? 0;
-                                ?>
-                                <tr class="user-row hover:bg-slate-50/80 transition align-middle"
-                                    data-search="<?= htmlspecialchars(strtolower($u['nama'] . ' ' . $u['email'] . ' ' .$u['jabatan'])) ?>"
-                                    data-role="<?= htmlspecialchars($roleLower) ?>">
-                                    
-                                    <!-- Nama & Jabatan -->
-                                    <td class="py-3.5 px-4">
-                                        <div class="flex items-center gap-3">
-                                            <div class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 font-black flex items-center justify-center text-xs shrink-0 shadow-sm border border-emerald-200/60">
-                                                <?= strtoupper(substr($u['nama'], 0, 1)) ?>
-                                            </div>
-                                            <div class="min-w-0">
-                                                <p class="font-extrabold text-slate-900 text-sm leading-tight truncate"><?= htmlspecialchars($u['nama']) ?></p>
-                                                <span class="text-[10px] text-slate-400 font-bold block truncate"><?= htmlspecialchars($u['jabatan']) ?></span>
-                                            </div>
-                                        </div>
-                                    </td>
+                            <!-- Beban Tugas -->
+                            <td class="py-3.5 px-4 font-bold text-slate-800">
+                                <span class="text-emerald-700 font-extrabold"><?= $compT ?></span> / <?= $assignedT ?> Modul Selesai
+                            </td>
 
-                                    <!-- Email -->
-                                    <td class="py-3.5 px-4 text-slate-600 font-bold">
-                                        <?= htmlspecialchars($u['email']) ?>
-                                    </td>
+                            <!-- Aksi -->
+                            <td class="py-3.5 px-4 text-center">
+                                <?php if ($u['id'] != 1): ?>
+                                    <a href="index.php?delete=<?= $u['id'] ?>" onclick="return confirm('Yakin ingin menghapus karyawan ini?')" class="btn-press p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition inline-block" title="Hapus Personel">
+                                        <i class="fa-regular fa-trash-can text-sm"></i>
+                                    </a>
+                                <?php else: ?>
+                                    <span class="text-[10px] text-slate-400 font-bold italic">Primary Admin</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
 
-                                    <!-- Role -->
-                                    <td class="py-3.5 px-4">
-                                        <span class="px-2.5 py-1 text-[9px] font-black uppercase rounded-lg border tracking-wider inline-block
-                                            <?= $roleLower === 'admin' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-slate-100 text-slate-700 border-slate-200' ?>">
-                                            <?= htmlspecialchars($u['role']) ?>
-                                        </span>
-                                    </td>
-
-                                    <!-- Beban Tugas -->
-                                    <td class="py-3.5 px-4 font-bold text-slate-800">
-                                        <span class="text-emerald-700 font-extrabold"><?= $compT ?></span> / <?= $assignedT ?> Modul Selesai
-                                    </td>
-
-                                    <!-- Aksi -->
-                                    <td class="py-3.5 px-4 text-center">
-                                        <?php if ($u['id'] != 1): ?>
-                                            <a href="index.php?delete=<?= $u['id'] ?>" onclick="return confirm('Yakin ingin menghapus karyawan ini?')" class="btn-press p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition inline-block" title="Hapus Personel">
-                                                <i class="fa-regular fa-trash-can text-sm"></i>
-                                            </a>
-                                        <?php else: ?>
-                                            <span class="text-[10px] text-slate-400 font-bold italic">Primary Admin</span>
-                                        <?php endif; ?>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Paginasi Interaktif (1, 2, 3...) -->
-                <div class="flex flex-col sm:flex-row justify-between items-center gap-3 pt-4 mt-4 border-t border-slate-100 text-xs">
-                    <span class="text-slate-500 font-bold text-[11px]" id="paginationInfo">Menampilkan 0 data</span>
-                    <div class="flex items-center gap-1" id="paginationControls"></div>
-                </div>
-
-            </div>
+        <!-- Paginasi Interaktif (1, 2, 3...) -->
+        <div class="flex flex-col sm:flex-row justify-between items-center gap-3 pt-4 mt-4 border-t border-slate-100 text-xs">
+            <span class="text-slate-500 font-bold text-[11px]" id="paginationInfo">Menampilkan 0 data</span>
+            <div class="flex items-center gap-1" id="paginationControls"></div>
         </div>
 
     </div>
+
+    <!-- ========================================================================= -->
+    <!-- MODAL POPUP FORM TAMBAH ANGGOTA TIM (CLEAN & ELEGANT) -->
+    <!-- ========================================================================= -->
+    <div id="userModal" class="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-white border border-slate-200 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden relative animate-in fade-in zoom-in-95 duration-200">
+            
+            <!-- Modal Header -->
+            <div class="p-5 bg-slate-900 text-white flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-sm font-bold">
+                        <i class="fa-solid fa-user-plus"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xs font-black uppercase tracking-wider text-white">Tambah Anggota Tim Baru</h3>
+                        <p class="text-[10px] text-slate-400 font-medium">Lengkapi data akun personel baru PT. CTC</p>
+                    </div>
+                </div>
+                <button onclick="closeUserModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+
+            <!-- Modal Form Body -->
+            <form action="" method="POST" class="p-5 space-y-4 text-xs">
+                <input type="hidden" name="add_user" value="1">
+                
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Nama Lengkap *</label>
+                    <input type="text" name="nama" required placeholder="Contoh: Budi Pratama" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Email Karyawan *</label>
+                    <input type="email" name="email" required placeholder="budi@ctc.co.id" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Jabatan / Jobdesk *</label>
+                    <input type="text" name="jabatan" required placeholder="Contoh: Frontend Developer / UI Designer" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Role Hak Akses</label>
+                    <select name="role" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-extrabold text-slate-700 bg-white focus:outline-none">
+                        <option value="karyawan" selected>Karyawan / Technical Staff</option>
+                        <option value="admin">Project Manager / System Admin</option>
+                    </select>
+                </div>
+
+                <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-[10px] text-slate-500 font-medium">
+                    Password standar akun baru: <span class="font-mono text-slate-800 font-extrabold">123456</span>
+                </div>
+
+                <div class="flex items-center justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeUserModal()" class="btn-press px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold rounded-xl transition">
+                        Batal
+                    </button>
+                    <button type="submit" class="btn-press px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl transition shadow-md shadow-emerald-600/20 flex items-center gap-2 uppercase tracking-wider">
+                        <i class="fa-solid fa-plus text-xs"></i> Simpan Karyawan
+                    </button>
+                </div>
+            </form>
+
+        </div>
+    </div>
+
 </main>
 
 <script>
+function openUserModal() {
+    document.getElementById('userModal').classList.remove('hidden');
+}
+
+function closeUserModal() {
+    document.getElementById('userModal').classList.add('hidden');
+}
+
 const rowsPerPage = 5;
 let currentPage = 1;
 let filteredRows = [];
@@ -356,7 +385,7 @@ function renderPagination() {
     for (let i = 1; i <= totalPages; i++) {
         const pageBtn = document.createElement('button');
         pageBtn.innerText = i;
-        pageBtn.className = `btn-press px-3 py-1 rounded-lg font-bold ${i === currentPage ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
+        pageBtn.className = `btn-press px-3 py-1 rounded-lg font-bold ${i === currentPage ? 'bg-emerald-600 text-white shadow-2xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
         pageBtn.onclick = () => { currentPage = i; renderPagination(); };
         controls.appendChild(pageBtn);
     }
@@ -366,7 +395,7 @@ function renderPagination() {
     nextBtn.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
     nextBtn.className = `btn-press px-2.5 py-1 rounded-lg font-bold ${currentPage === totalPages ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
     nextBtn.disabled = currentPage === totalPages;
-    nextBtn.onclick = () => { if(currentPage < totalPages) { currentPage--; renderPagination(); } };
+    nextBtn.onclick = () => { if(currentPage < totalPages) { currentPage++; renderPagination(); } };
     controls.appendChild(nextBtn);
 }
 </script>
