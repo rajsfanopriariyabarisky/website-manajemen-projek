@@ -1,32 +1,10 @@
 <?php
 session_start();
-require_once __DIR__ . '/../config/database.php';
 
-$error_msg = '';
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email    = trim($_POST['email'] ?? '');
-    $password = trim($_POST['password'] ?? '');
-
-    if (empty($email) || empty($password)) {
-        $error_msg = 'Harap isi email dan password Anda.';
-    } else {
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? AND role = 'Client'");
-        $stmt->execute([$email]);
-        $user = $stmt->fetch();
-
-        if ($user && password_verify($password, $user['password'])) {
-            $_SESSION['client_logged_in'] = true;
-            $_SESSION['client_user_id']   = $user['id'];
-            $_SESSION['client_nama']      = $user['nama'];
-            $_SESSION['client_email']     = $user['email'];
-
-            header('Location: portal.php');
-            exit;
-        } else {
-            $error_msg = 'Email atau password salah! (Password default: CTC12345)';
-        }
-    }
+// Jika klien sudah login, langsung arahkan ke portal utama
+if (isset($_SESSION['client_logged_in']) && $_SESSION['client_logged_in'] === true) {
+    header('Location: portal.php');
+    exit;
 }
 ?>
 <!DOCTYPE html>
@@ -34,49 +12,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Client Portal Login - PT. Cipta Teknologi Cendekia</title>
+    <title>PT. Cipta Teknologi Cendekia - Enterprise Portal</title>
+    
+    <link rel="icon" type="image/jpeg" href="../assets/images/logo.jpg">
+    <link rel="shortcut icon" type="image/jpeg" href="../assets/images/logo.jpg">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        .gpu {
+            will-change: opacity, transform;
+            transform: translateZ(0);
+        }
+        .fade-out {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+    </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center p-4 font-sans relative">
+<body class="bg-white text-slate-900 min-h-screen font-sans overflow-hidden select-none">
 
-    <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 md:p-8 relative z-10">
-        <div class="text-center mb-6">
-            <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold text-xl mx-auto mb-3">
-                <i class="fa-solid fa-user-lock"></i>
-            </div>
-            <h1 class="text-lg font-bold text-white uppercase tracking-wider">Client Portal Access</h1>
-            <p class="text-xs text-slate-400 mt-1">PT. Cipta Teknologi Cendekia</p>
-        </div>
+    <!-- Screen Container Intro -->
+    <div id="splashContainer" class="fixed inset-0 z-50 flex items-center justify-center bg-white transition-opacity duration-500 gpu">
+        
+        <!-- Video Background Fullscreen (Warna Original Kertas/Terang Tanpa Gelap) -->
+        <video id="introVideo" autoplay muted playsinline preload="auto" class="absolute inset-0 w-full h-full object-cover">
+            <source src="../intro-ctc.mp4" type="video/mp4">
+        </video>
 
-        <?php if (!empty($error_msg)): ?>
-            <div class="mb-4 p-3.5 bg-red-950/80 border border-red-500/40 rounded-xl text-red-300 text-xs flex items-center gap-2">
-                <i class="fa-solid fa-circle-exclamation text-red-400"></i>
-                <span><?= htmlspecialchars($error_msg) ?></span>
-            </div>
-        <?php endif; ?>
+        <!-- Minimalist Clean Skip Button (Pojok Kanan Bawah) -->
+        <button id="skipBtn" onclick="finishIntro()" class="absolute bottom-6 right-6 sm:bottom-8 sm:right-8 z-20 px-4 py-2 bg-slate-900/70 hover:bg-slate-900 active:scale-95 text-white/90 hover:text-white rounded-full text-[11px] font-bold tracking-wider uppercase backdrop-blur-md transition-all duration-300 flex items-center gap-2 shadow-lg border border-white/20">
+            <span>SKIP</span>
+            <i class="fa-solid fa-arrow-right text-[10px]"></i>
+        </button>
 
-        <form method="POST" class="space-y-4 text-xs">
-            <div>
-                <label class="block font-bold text-slate-300 uppercase tracking-wider mb-1">Email Resmi</label>
-                <input type="email" name="email" required placeholder="email@perusahaan.com" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-800 bg-slate-950 text-white focus:outline-none focus:border-emerald-500">
-            </div>
-
-            <div>
-                <label class="block font-bold text-slate-300 uppercase tracking-wider mb-1">Password</label>
-                <input type="password" name="password" required placeholder="••••••••" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-800 bg-slate-950 text-white focus:outline-none focus:border-emerald-500">
-                <span class="text-[10px] text-slate-500 block mt-1">Password default: <strong class="text-emerald-400">CTC12345</strong></span>
-            </div>
-
-            <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition shadow-lg text-xs uppercase tracking-wider">
-                Masuk ke Portal
-            </button>
-        </form>
-
-        <div class="mt-6 pt-4 border-t border-slate-800 text-center text-[11px] text-slate-500">
-            Belum mengajukan proyek? <a href="request.php" class="text-emerald-400 font-bold hover:underline">Kirim Requirement Baru</a>
+        <!-- Progress Line Tipis di Paling Bawah -->
+        <div class="absolute bottom-0 left-0 w-full h-[3px] bg-slate-200/50 z-20">
+            <div id="progressBar" class="h-full bg-emerald-600 w-0 transition-all duration-100 ease-linear"></div>
         </div>
     </div>
+
+    <script>
+        const video = document.getElementById('introVideo');
+        const splash = document.getElementById('splashContainer');
+        const progressBar = document.getElementById('progressBar');
+        let isRedirecting = false;
+
+        function finishIntro() {
+            if (isRedirecting) return;
+            isRedirecting = true;
+            
+            splash.classList.add('fade-out');
+            setTimeout(() => {
+                window.location.href = 'login.php';
+            }, 500);
+        }
+
+        function updateProgress() {
+            if (video.duration && !isRedirecting) {
+                const pct = (video.currentTime / video.duration) * 100;
+                progressBar.style.width = pct + '%';
+            }
+            if (!isRedirecting) {
+                requestAnimationFrame(updateProgress);
+            }
+        }
+        requestAnimationFrame(updateProgress);
+
+        video.addEventListener('ended', finishIntro);
+        video.addEventListener('error', finishIntro);
+
+        // Fallback jika video ngadat
+        setTimeout(() => {
+            if (!isRedirecting) finishIntro();
+        }, 8000);
+    </script>
 
 </body>
 </html>
