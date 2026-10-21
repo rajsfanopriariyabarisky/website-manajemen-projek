@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Waktu pembuatan: 12 Okt 2026 pada 12.22
+-- Waktu pembuatan: 19 Okt 2026 pada 06.06
 -- Versi server: 10.4.32-MariaDB
 -- Versi PHP: 8.2.28
 
@@ -20,6 +20,61 @@ SET time_zone = "+00:00";
 --
 -- Database: `db_manajemen_projek`
 --
+
+-- --------------------------------------------------------
+
+--
+-- Struktur dari tabel `clients`
+--
+
+CREATE TABLE `clients` (
+  `id` int(11) NOT NULL,
+  `nama` varchar(150) NOT NULL,
+  `email` varchar(150) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data untuk tabel `clients`
+--
+
+INSERT INTO `clients` (`id`, `nama`, `email`, `password`, `created_at`) VALUES
+(1, 'Rajsfano Priariya Barisky', '10230103@bsi.ac.id', '$2y$10$Ga8ZA8S1CVFbM82Yd7cPA.W3X8CvnRakmqYYoqyKerqMgR6Hi8oEW', '2026-10-14 04:32:41'),
+(2, 'Rajsfano Priariya Barisky', 'rajsfanopriariyabarisky@gmail.com', '$2y$10$wso0q0UiDmD1jr6gVFP8PeQCLMYLQV7VBptKuqyRFQMDny8xLazEe', '2026-10-14 07:48:27'),
+(3, 'Dicky Rialdy', 'ceo@keel.com', '$2y$10$m1GPpZgB.JqynuGIzoIdOepxeYgR82LiwbpIDhitkXDsQQ.vzry/i', '2026-10-14 08:26:29'),
+(4, 'Roy ricardo', 'roy@gmail.com', '$2y$10$QtCOpo3QU/LZB2Xwo88Yuugy78tETpJ/arp7RZkCtVwxoeZVzkfnS', '2026-10-14 09:20:18');
+
+-- --------------------------------------------------------
+
+--
+-- Struktur dari tabel `client_requirements`
+--
+
+CREATE TABLE `client_requirements` (
+  `id` int(11) NOT NULL,
+  `client_name` varchar(250) NOT NULL,
+  `client_email` varchar(250) NOT NULL,
+  `client_phone` varchar(50) DEFAULT NULL,
+  `company_name` varchar(250) DEFAULT NULL,
+  `title` varchar(250) NOT NULL,
+  `description` text NOT NULL,
+  `file_attachment` varchar(250) DEFAULT NULL,
+  `budget_estimation` decimal(15,2) DEFAULT 0.00,
+  `status` enum('Pending','Under Review','Proposal Sent','Deal / Accepted','Rejected') DEFAULT 'Pending',
+  `user_id` int(11) DEFAULT NULL,
+  `client_id` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data untuk tabel `client_requirements`
+--
+
+INSERT INTO `client_requirements` (`id`, `client_name`, `client_email`, `client_phone`, `company_name`, `title`, `description`, `file_attachment`, `budget_estimation`, `status`, `user_id`, `client_id`, `created_at`) VALUES
+(3, 'Rajsfano Priariya Barisky', 'rajsfanopriariyabarisky@gmail.com', '081280822265', 'PT. KEEL COMPANY', 'Projek Test 1', 'seadanya', '1791964107_Company_Profile.pdf', 100000000.00, 'Under Review', NULL, 2, '2026-10-14 07:48:27'),
+(4, 'Dicky Rialdy', 'ceo@keel.com', '085781540431', 'Keel Company', 'Ecomece Keel Collective', 'Buat sesuai standart perusahaan besar', '1791966389_Company_Profile.pdf', 600000000.00, 'Deal / Accepted', NULL, 3, '2026-10-14 08:26:29'),
+(5, 'Roy ricardo', 'roy@gmail.com', '0831218313', 'PT. Kukang kikung', 'Landingpage TokyoDrift', 'apa aja', NULL, 100000000.00, 'Deal / Accepted', NULL, 4, '2026-10-14 09:20:18');
 
 -- --------------------------------------------------------
 
@@ -44,11 +99,54 @@ CREATE TABLE `contracts` (
 --
 
 INSERT INTO `contracts` (`id`, `project_id`, `nomor_kontrak`, `durasi_bulan`, `tanggal_mulai`, `tanggal_selesai`, `nilai_kontrak`, `file_pdf`, `created_at`) VALUES
-(9, 1, '001/CTC-SPK/X/2026', 3, '2026-10-01', '2027-02-01', 10000000000.00, NULL, '2026-10-05 03:48:49'),
 (10, 10, '002/CTC-SPK/X/2026', 12, '2026-10-05', '2027-10-05', 50000000.00, NULL, '2026-10-05 03:54:49'),
-(14, 11, '003/CTC-SPK/X/2026', 1, '2026-10-05', '2026-10-20', 7000000.00, NULL, '2026-10-05 05:05:42'),
-(15, 13, '004/CTC-SPK/X/2026', 5, '2026-10-09', '2027-02-20', 40000000.00, NULL, '2026-10-09 02:50:23'),
-(17, 19, '005/CTC-SPK/X/2026', 1, '2026-10-12', '2026-10-17', 100000000.00, NULL, '2026-10-12 07:33:47');
+(20, 1, '003/CTC-SPK/X/2026', 5, '2026-10-01', '2027-02-01', 100000000.00, NULL, '2026-10-14 08:22:06'),
+(21, 25, '025/CTC-SPK/10/2026', 5, '2026-10-14', '2027-03-14', 600000000.00, NULL, '2026-10-14 08:27:30'),
+(22, 26, '026/CTC-SPK/10/2026', 4, '2026-10-14', '2027-02-14', 100000000.00, NULL, '2026-10-14 09:22:43');
+
+-- --------------------------------------------------------
+
+--
+-- Struktur dari tabel `deal_chats`
+--
+
+CREATE TABLE `deal_chats` (
+  `id` int(11) NOT NULL,
+  `requirement_id` int(11) NOT NULL,
+  `sender_type` enum('admin','client') NOT NULL,
+  `sender_name` varchar(150) NOT NULL,
+  `message` text NOT NULL,
+  `attachment_file` varchar(250) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data untuk tabel `deal_chats`
+--
+
+INSERT INTO `deal_chats` (`id`, `requirement_id`, `sender_type`, `sender_name`, `message`, `attachment_file`, `created_at`) VALUES
+(8, 3, 'client', 'Rajsfano Priariya Barisky', 'Halo Tim Konsultan PT. CTC, kami telah mengajukan dokumen requirement proyek: \"Projek Test 1\". Mohon dapat ditinjau untuk penyusunan Surat Penawaran Resmi.', NULL, '2026-10-14 07:48:27'),
+(9, 3, 'client', 'Rajsfano Priariya Barisky', 'tes', NULL, '2026-10-14 07:48:46'),
+(10, 3, 'client', 'Rajsfano Priariya Barisky', '1', NULL, '2026-10-14 07:48:48'),
+(11, 3, 'client', 'Rajsfano Priariya Barisky', '2', NULL, '2026-10-14 07:48:51'),
+(12, 3, 'client', 'Rajsfano Priariya Barisky', '3', NULL, '2026-10-14 07:48:52'),
+(13, 3, 'admin', 'Administrator', 'baik pak ada yang bisa saya bantu?', NULL, '2026-10-14 07:49:54'),
+(14, 3, 'admin', 'Administrator', 'deal ya 50 M', NULL, '2026-10-14 07:59:54'),
+(15, 3, 'client', 'Rajsfano Priariya Barisky', 'oke Deal', NULL, '2026-10-14 08:00:06'),
+(16, 4, 'client', 'Dicky Rialdy', 'Halo Tim Konsultan PT. CTC, kami telah mengajukan dokumen requirement proyek: \"Ecomece Keel Collective\". Mohon dapat ditinjau untuk penyusunan Surat Penawaran Resmi.', NULL, '2026-10-14 08:26:29'),
+(17, 4, 'client', 'Dicky Rialdy', 'tes', NULL, '2026-10-14 08:26:43'),
+(18, 4, 'client', 'Dicky Rialdy', 'kerjain sekarang saya tf 1M', NULL, '2026-10-14 08:26:56'),
+(19, 4, 'admin', 'System CTC', 'Requirement resmi disetujui & dikonversi menjadi Proyek Aktif: [ Ecomece Keel Collective ]', NULL, '2026-10-14 08:27:30'),
+(20, 5, 'client', 'Roy ricardo', 'Halo Tim Konsultan PT. CTC, kami telah mengajukan dokumen requirement proyek: \"Landingpage TokyoDrift\". Mohon dapat ditinjau untuk penyusunan Surat Penawaran Resmi.', NULL, '2026-10-14 09:20:18'),
+(21, 5, 'client', 'Roy ricardo', 'tes', NULL, '2026-10-14 09:20:45'),
+(22, 5, 'admin', 'System CTC', 'Requirement resmi disetujui & dikonversi menjadi Proyek Aktif: [ Landingpage TokyoDrift ]', NULL, '2026-10-14 09:22:43'),
+(23, 5, 'admin', 'Administrator', 'deal ya mas', NULL, '2026-10-14 09:53:06'),
+(24, 5, 'admin', 'System CTC', 'Status pengajuan diperbarui menjadi: [ Pending ]', NULL, '2026-10-14 09:56:42'),
+(25, 5, 'admin', 'System CTC', 'Status pengajuan diperbarui menjadi: [ Proposal Sent ]', NULL, '2026-10-14 09:57:25'),
+(26, 5, 'client', 'Roy ricardo', 'tes', NULL, '2026-10-14 10:11:38'),
+(27, 5, 'admin', 'Administrator', 'tes', NULL, '2026-10-14 10:24:42'),
+(28, 5, 'admin', 'Administrator', 'tes', NULL, '2026-10-14 10:24:46'),
+(29, 5, 'admin', 'System CTC', 'Status pengajuan diperbarui menjadi: [ Deal / Accepted ]', NULL, '2026-10-14 10:27:36');
 
 -- --------------------------------------------------------
 
@@ -71,8 +169,7 @@ CREATE TABLE `expenses` (
 
 INSERT INTO `expenses` (`id`, `project_id`, `kategori`, `keterangan`, `jumlah_biaya`, `tanggal_pengeluaran`) VALUES
 (5, 10, 'Infrastruktur & Cloud', 'beli hosting untuk website', 2500000.00, '2026-10-05'),
-(6, 10, 'Vendor / Freelancer', 'gaji anak magang', 1500000.00, '2026-10-05'),
-(7, 13, 'Vendor / Freelancer', 'gaji anak magang', 2000000.00, '2026-10-09');
+(6, 10, 'Vendor / Freelancer', 'gaji anak magang', 1500000.00, '2026-10-05');
 
 -- --------------------------------------------------------
 
@@ -101,15 +198,7 @@ INSERT INTO `invoices` (`id`, `project_id`, `nomor_invoice`, `termin_ke`, `keter
 (3, 1, 'INV/CTC/2026/10/001', 1, 'DP 50% Penandatanganan SPK', 50000000.00, '2026-10-05', '2026-10-19', 'Paid', '2026-10-05 03:46:28'),
 (4, 10, 'INV/CTC/2026/10/002', 1, 'DP 50% Penandatanganan SPK', 25000000.00, '2026-10-05', '2026-10-19', 'Paid', '2026-10-05 03:53:13'),
 (5, 10, 'INV/CTC/2026/10/003', 2, 'Pelunasan 50% BAST Selesai', 25000000.00, '2026-10-05', '2026-11-19', 'Paid', '2026-10-05 03:55:57'),
-(6, 13, 'INV/CTC/2026/10/004', 1, 'DP 50% Penandatanganan SPK', 20000000.00, '2026-10-09', '2026-10-23', 'Paid', '2026-10-09 02:59:27'),
-(7, 13, 'INV/CTC/2026/10/005', 2, 'Pelunasan 50% BAST Selesai', 20000000.00, '2026-10-12', '2026-10-26', 'Paid', '2026-10-12 04:39:48'),
-(8, 19, 'INV/CTC/2026/10/006', 3, 'Pelunasan 100% Pembayaran Penuh', 100000000.00, '2026-10-12', '2026-10-26', 'Paid', '2026-10-12 06:46:59'),
-(9, 11, 'INV/CTC/2026/10/007', 1, 'DP 50% Penandatanganan SPK', 3500000.00, '2026-10-12', '2026-10-26', 'Paid', '2026-10-12 06:58:49'),
-(10, 11, 'INV/CTC/2026/10/008', 1, 'DP 50% Penandatanganan SPK', 3500000.00, '2026-10-12', '2026-10-26', 'Paid', '2026-10-12 07:00:02'),
-(11, 12, 'INV/CTC/2026/10/009', 1, 'DP 50% Penandatanganan SPK', 20000000.00, '2026-10-12', '2026-10-26', 'Paid', '2026-10-12 07:02:43'),
-(12, 12, 'INV/CTC/2026/10/010', 2, 'Pelunasan 50% BAST Selesai', 20000000.00, '2026-10-12', '2026-10-26', 'Paid', '2026-10-12 07:03:13'),
-(13, 20, 'INV/CTC/2026/10/011', 1, 'DP 50% Penandatanganan SPK', 50000000.00, '2026-10-12', '2026-10-26', 'Paid', '2026-10-12 07:12:57'),
-(14, 20, 'INV/CTC/2026/10/012', 2, 'Pelunasan 50% BAST Selesai', 50000000.00, '2026-10-12', '2026-10-26', 'Paid', '2026-10-12 07:13:15');
+(15, 1, 'INV/CTC/2026/10/004', 2, 'Pelunasan 50% BAST Selesai', 50000000.00, '2026-10-14', '2026-10-28', 'Paid', '2026-10-14 08:21:28');
 
 -- --------------------------------------------------------
 
@@ -136,14 +225,10 @@ CREATE TABLE `projects` (
 --
 
 INSERT INTO `projects` (`id`, `nama_projek`, `klien`, `budget`, `tanggal_mulai`, `deadline`, `status`, `kategori_rab`, `rab_custom_data`, `client_token`, `created_at`) VALUES
-(1, 'Website Landing Page Parking', 'PT Lynx Indonesia', 100000000.00, '2026-10-01', '2027-02-01', 'In Progress', 'Website', NULL, '26f1e159ec6b0e3202a71cacbba58238', '2026-10-01 03:29:58'),
+(1, 'Website Landing Page Parking', 'PT Lynx Indonesia', 100000000.00, '2026-10-01', '2027-02-01', 'Completed', 'Website', NULL, '26f1e159ec6b0e3202a71cacbba58238', '2026-10-01 03:29:58'),
 (10, 'PT PERTAMINA', 'Prabowo subianto', 50000000.00, '2026-10-05', '2027-10-05', 'Completed', 'Website', NULL, NULL, '2026-10-05 03:52:30'),
-(11, 'projek test', 'test 1', 7000000.00, '2026-10-05', '2026-10-20', 'Completed', 'Website', NULL, NULL, '2026-10-05 04:44:13'),
-(12, 'PT Asnoor Parking', 'Megawati Soekarno Putri', 40000000.00, '2026-10-07', '2026-12-07', 'Completed', 'Website', NULL, NULL, '2026-10-07 04:09:16'),
-(13, 'Model Pertanian Modern', 'Badan Pengembangan dan modernisasi Pertanian', 40000000.00, '2026-10-09', '2026-10-20', 'Completed', 'Website', NULL, NULL, '2026-10-09 02:36:49'),
-(18, 'test 2', 'Jendral Sudirman', 100000000.00, '2026-10-12', '2026-10-12', 'In Progress', 'Mobile', NULL, NULL, '2026-10-12 04:18:36'),
-(19, 'iot pertanianku', 'uzumaki naruto', 100000000.00, '2026-10-12', '2026-10-17', 'Completed', 'IoT', NULL, NULL, '2026-10-12 04:37:32'),
-(20, 'pt bakso idola', 'Mamat Sudrajat', 100000000.00, '2026-10-12', '2027-03-12', 'On Hold', 'Website', NULL, NULL, '2026-10-12 04:46:51');
+(25, 'Ecomece Keel Collective', 'Dicky Rialdy', 600000000.00, '2026-10-14', '2027-03-14', 'In Progress', 'Website', NULL, NULL, '2026-10-14 08:27:30'),
+(26, 'Landingpage TokyoDrift', 'Roy ricardo', 100000000.00, '2026-10-14', '2027-02-14', 'In Progress', 'IoT', NULL, NULL, '2026-10-14 09:22:43');
 
 -- --------------------------------------------------------
 
@@ -162,16 +247,6 @@ CREATE TABLE `project_files` (
   `uploaded_by` int(11) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data untuk tabel `project_files`
---
-
-INSERT INTO `project_files` (`id`, `project_id`, `task_id`, `nama_file`, `kategori`, `file_path`, `ukuran_file`, `uploaded_by`, `created_at`) VALUES
-(4, 12, 21, 'Manual Book - Sistem Manajemen Projek PT CTC.docx', 'Deliverable / Code', '3419a69040b7cb3108fc4174a5c5a1ad.docx', 2212809, 2, '2026-10-07 04:12:03'),
-(5, 12, 21, 'logoctc.jpg', 'Deliverable / Code', 'd80f2e84c113a276fc5126e89f37ea33.jpg', 2283463, 6, '2026-10-07 04:13:08'),
-(6, 12, 22, 'logoctc.jpg', 'Deliverable / Code', 'fad10fb0a60f62f22546f8ad43bb368d.jpg', 2283463, 4, '2026-10-07 05:22:54'),
-(7, 13, 30, 'ctc (priority & hub).png', 'Deliverable / Code', '12026d2a2912673a85a9ab3fb689a561.png', 217979, 6, '2026-10-09 03:11:11');
 
 -- --------------------------------------------------------
 
@@ -196,70 +271,61 @@ CREATE TABLE `project_logs` (
 INSERT INTO `project_logs` (`id`, `project_id`, `user_id`, `nama_user`, `aktivitas`, `tipe`, `created_at`) VALUES
 (36, 1, 1, 'Administrator', 'Mengalokasikan tugas baru \'Software development\' ke Febrian V.', 'task', '2026-10-05 03:47:17'),
 (37, 10, 1, 'Administrator', 'Memperbarui data & status proyek menjadi \'In Progress\'', 'info', '2026-10-05 03:56:42'),
-(38, 11, 1, 'Administrator', 'Mengalokasikan tugas \'web development\' ke Tim: (billyanz yusuf, Febrian V., Muhammad Fachri, Rajsfano Priariya Barisky)', 'task', '2026-10-05 05:30:55'),
-(39, 11, 1, 'Administrator', 'Menyetujui (Approved) tugas \'web development\' -> Status: Done', 'success', '2026-10-05 05:32:09'),
-(40, 11, 1, 'Administrator', 'Mengalokasikan tugas \'UI/UX design\' ke Tim: (Febrian V., Rajsfano Priariya Barisky)', 'task', '2026-10-05 05:33:43'),
 (41, 1, 6, 'Febrian V.', 'Memperbarui progress \'Software development\' menjadi status: Ready for Review', 'info', '2026-10-05 05:37:14'),
-(42, 11, 2, 'Rajsfano Priariya Barisky', 'Memperbarui progress \'UI/UX design\' menjadi status: In Progress', 'info', '2026-10-05 05:45:39'),
-(43, 11, 1, 'Administrator', 'Memperbarui data & status proyek menjadi \'Completed\'', 'info', '2026-10-07 04:01:57'),
-(44, 11, 1, 'Administrator', 'Menyetujui (Approved) tugas \'UI/UX design\' -> Status: Done', 'success', '2026-10-07 04:02:01'),
 (45, 10, 1, 'Administrator', 'Memperbarui data & status proyek menjadi \'Completed\'', 'info', '2026-10-07 04:02:21'),
 (46, 1, 1, 'Administrator', 'Menyetujui (Approved) tugas \'Software development\' -> Status: Done', 'success', '2026-10-07 04:02:41'),
 (47, 1, 1, 'Administrator', 'Memperbarui data & status proyek menjadi \'Completed\'', 'info', '2026-10-07 04:03:03'),
 (48, 10, 1, 'Administrator', 'Memperbarui data & status proyek menjadi \'In Progress\'', 'info', '2026-10-07 04:07:39'),
-(49, 12, 1, 'Administrator', 'Mengalokasikan tugas \'UI/UX design\' ke Tim: (Febrian V., Rajsfano Priariya Barisky)', 'task', '2026-10-07 04:09:43'),
-(50, 12, 2, 'Rajsfano Priariya Barisky', 'Memperbarui progress \'UI/UX design\' menjadi status: In Progress', 'info', '2026-10-07 04:12:03'),
-(51, 12, 6, 'Febrian V.', 'Memperbarui progress \'UI/UX design\' menjadi status: In Progress', 'info', '2026-10-07 04:13:08'),
-(52, 12, 1, 'Administrator', 'Mengirimkan catatan revisi pada tugas \'UI/UX design\'', 'warning', '2026-10-07 04:22:42'),
-(53, 12, 6, 'Febrian V.', 'Memperbarui progress \'UI/UX design\' menjadi status: In Progress', 'info', '2026-10-07 04:22:59'),
-(54, 12, 6, 'Febrian V.', 'Memperbarui progress \'UI/UX design\' menjadi status: In Progress', 'info', '2026-10-07 04:28:36'),
-(55, 12, 1, 'Administrator', 'Mengirimkan catatan revisi pada tugas \'UI/UX design\'', 'warning', '2026-10-07 04:29:03'),
-(56, 12, 1, 'Administrator', 'Menyetujui (Approved) tugas \'UI/UX design\' -> Status: Done', 'success', '2026-10-07 04:29:10'),
-(57, 12, 1, 'Administrator', 'Mengalokasikan modul baru \'ERD LRS\' ke Tim: (billyanz yusuf)', 'task', '2026-10-07 05:21:36'),
-(58, 12, 1, 'Administrator', 'Mengirimkan catatan instruksi revisi pada modul \'ERD LRS\'', 'warning', '2026-10-07 05:21:58'),
-(59, 12, 4, 'billyanz yusuf', 'Memperbarui progress \'ERD LRS\' menjadi status: In Progress', 'info', '2026-10-07 05:22:54'),
-(60, 12, 1, 'Administrator', 'Mengirimkan catatan instruksi revisi pada modul \'ERD LRS\'', 'warning', '2026-10-07 05:23:38'),
-(61, 12, 4, 'billyanz yusuf', 'Memperbarui progress \'ERD LRS\' menjadi status: In Progress', 'info', '2026-10-07 05:24:11'),
-(62, 12, 1, 'Administrator', 'Menyetujui (Approved) pengerjaan modul \'ERD LRS\'', 'success', '2026-10-07 05:24:32'),
-(63, 12, 1, 'Administrator', 'Memperbarui konfigurasi & status proyek menjadi \'Completed\'', 'info', '2026-10-07 05:36:24'),
 (64, 10, 1, 'Administrator', 'Mengalokasikan modul baru \'UI/UX design\' ke Tim: (billyanz yusuf)', 'task', '2026-10-07 05:51:32'),
 (65, 10, 1, 'Administrator', 'Mengalokasikan modul baru \'Software development\' ke Tim: (Muhammad Fachri)', 'task', '2026-10-07 05:51:40'),
 (66, 10, 1, 'Administrator', 'Mengalokasikan modul baru \'Membuat RAB\' ke Tim: (Febrian V.)', 'task', '2026-10-07 05:52:00'),
 (67, 10, 1, 'Administrator', 'Menyetujui (Approved) pengerjaan modul \'Membuat RAB\'', 'success', '2026-10-07 06:45:08'),
 (68, 10, 1, 'Administrator', 'Menyetujui (Approved) pengerjaan modul \'UI/UX design\'', 'success', '2026-10-07 06:45:13'),
 (69, 10, 1, 'Administrator', 'Menyetujui (Approved) pengerjaan modul \'Software development\'', 'success', '2026-10-07 06:45:16'),
-(70, 12, 1, 'Administrator', 'Memperbarui konfigurasi & status proyek menjadi \'Completed\'', 'info', '2026-10-07 06:46:44'),
-(71, 12, 1, 'Administrator', 'Mengalokasikan modul baru \'frontend\' ke Tim: (billyanz yusuf)', 'task', '2026-10-07 07:04:35'),
-(72, 12, 1, 'Administrator', 'Mengirimkan catatan instruksi revisi pada modul \'frontend\'', 'warning', '2026-10-07 07:06:21'),
-(73, 12, 4, 'billyanz yusuf', 'Memperbarui progress \'frontend\' menjadi status: In Progress', 'info', '2026-10-07 07:10:56'),
-(74, 12, 4, 'billyanz yusuf', 'Memperbarui progress \'frontend\' menjadi status: In Progress', 'info', '2026-10-07 07:13:04'),
-(75, 12, 1, 'Administrator', 'Menyetujui (Approved) pengerjaan modul \'frontend\'', 'success', '2026-10-07 07:13:18'),
-(76, 12, 1, 'Administrator', 'Mengalokasikan modul baru \'nganggur\' ke Tim: (Rajsfano Priariya Barisky)', 'task', '2026-10-07 07:13:33'),
-(77, 12, 1, 'Administrator', 'Mengirimkan catatan instruksi revisi pada modul \'nganggur\'', 'warning', '2026-10-07 07:13:47'),
-(78, 12, 2, 'Rajsfano Priariya Barisky', 'Memperbarui progress \'nganggur\' menjadi status: In Progress', 'info', '2026-10-07 07:14:13'),
-(79, 12, 1, 'Administrator', 'Menyetujui (Approved) pengerjaan modul \'nganggur\'', 'success', '2026-10-07 07:19:55'),
 (80, 10, 1, 'Administrator', 'Mengalokasikan modul baru \'nganggur\' ke Tim: (Rajsfano Priariya Barisky)', 'task', '2026-10-07 07:22:26'),
 (81, 10, 1, 'Administrator', 'Menyetujui (Approved) pengerjaan modul \'nganggur\'', 'success', '2026-10-07 07:22:43'),
-(82, 12, 1, 'Administrator', 'Mengalokasikan modul baru \'testing\' ke Tim: (Febrian V.)', 'task', '2026-10-07 09:05:47'),
-(83, 13, 1, 'Administrator', 'Memperbarui konfigurasi & status proyek menjadi \'In Progress\'', 'info', '2026-10-09 02:49:52'),
-(84, 13, 1, 'Administrator', 'Mengalokasikan modul baru \'UI/UX design\' ke Tim: (billyanz yusuf, Febrian V.)', 'task', '2026-10-09 03:10:25'),
-(85, 13, 6, 'Febrian V.', 'Memperbarui progress \'UI/UX design\' menjadi status: In Progress', 'info', '2026-10-09 03:11:11'),
-(86, 13, 1, 'Administrator', 'Mengirimkan catatan instruksi revisi pada modul \'UI/UX design\'', 'warning', '2026-10-09 03:12:03'),
-(87, 13, 1, 'Administrator', 'Menyetujui (Approved) pengerjaan modul \'UI/UX design\'', 'success', '2026-10-12 03:51:22'),
 (88, 10, 1, 'Administrator', 'Memperbarui konfigurasi & status proyek menjadi \'Completed\'', 'info', '2026-10-12 04:24:57'),
-(89, 12, 1, 'Administrator', 'Menyetujui (Approved) pengerjaan modul \'testing\'', 'success', '2026-10-12 04:27:47'),
-(90, 13, 1, 'Administrator', 'Memperbarui konfigurasi & status proyek menjadi \'Completed\'', 'info', '2026-10-12 04:32:14'),
-(91, 18, 1, 'Administrator', 'Memperbarui konfigurasi & status proyek menjadi \'In Progress\'', 'info', '2026-10-12 04:34:53'),
-(92, 19, 1, 'Administrator', 'Memperbarui konfigurasi & status proyek menjadi \'Completed\'', 'info', '2026-10-12 06:48:07'),
 (93, 10, 1, 'Administrator', 'Menyetujui (Approved) pengerjaan modul \'nganggur\'', 'success', '2026-10-12 08:57:31'),
 (94, 10, 1, 'Administrator', 'Menyetujui (Approved) pengerjaan modul \'nganggur\'', 'success', '2026-10-12 09:33:50'),
-(95, 20, 1, 'Administrator', 'Mengalokasikan modul baru \'UI/UX design\' ke Tim: (billyanz yusuf, Febrian V.)', 'task', '2026-10-12 09:35:59'),
-(96, 20, 1, 'Administrator', 'Menyetujui (Approved) pengerjaan modul \'UI/UX design\'', 'success', '2026-10-12 09:37:51'),
-(97, 20, 1, 'Administrator', 'Mengalokasikan modul baru \'Software development\' ke Tim: (Muhammad Fachri, Rajsfano Priariya Barisky)', 'task', '2026-10-12 09:38:10'),
-(98, 18, 1, 'Administrator', 'Mengalokasikan modul baru \'UI/UX design\' ke Tim: (billyanz yusuf)', 'task', '2026-10-12 09:42:40'),
 (99, 1, 1, 'Administrator', 'Mengalokasikan modul baru \'mobile design\' ke Tim: (Rajsfano Priariya Barisky)', 'task', '2026-10-12 09:44:44'),
 (100, 1, 1, 'Administrator', 'Mengalokasikan modul baru \'finishing\' ke Tim: (Rajsfano Priariya Barisky)', 'task', '2026-10-12 09:49:14'),
-(101, 1, 1, 'Administrator', 'Memperbarui konfigurasi & status proyek menjadi \'In Progress\'', 'info', '2026-10-12 09:50:50');
+(101, 1, 1, 'Administrator', 'Memperbarui konfigurasi & status proyek menjadi \'In Progress\'', 'info', '2026-10-12 09:50:50'),
+(106, 1, 1, 'Administrator', 'Memperbarui konfigurasi & status proyek menjadi \'Completed\'', 'info', '2026-10-14 08:22:30'),
+(107, 26, 1, 'Administrator', 'Mengalokasikan modul baru \'UI/UX design\' ke Tim: (billyanz yusuf)', 'task', '2026-10-14 09:51:02'),
+(108, 26, 1, 'Administrator', 'Menyetujui (Approved) pengerjaan modul \'UI/UX design\'', 'success', '2026-10-19 03:32:16'),
+(109, 26, 1, 'Administrator', 'Mengalokasikan modul baru \'Software development\' ke Tim: (billyanz yusuf)', 'task', '2026-10-19 03:54:01');
+
+-- --------------------------------------------------------
+
+--
+-- Struktur dari tabel `proposals`
+--
+
+CREATE TABLE `proposals` (
+  `id` int(11) NOT NULL,
+  `nomor_proposal` varchar(100) NOT NULL,
+  `client_name` varchar(250) NOT NULL,
+  `client_email` varchar(250) NOT NULL,
+  `title` varchar(250) NOT NULL,
+  `nilai_penawaran` decimal(15,2) DEFAULT 0.00,
+  `estimasi_pengerjaan` varchar(100) DEFAULT NULL,
+  `ringkasan_scope` text DEFAULT NULL,
+  `status` enum('Draft','Sent','Accepted','Rejected') DEFAULT 'Sent',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data untuk tabel `proposals`
+--
+
+INSERT INTO `proposals` (`id`, `nomor_proposal`, `client_name`, `client_email`, `title`, `nilai_penawaran`, `estimasi_pengerjaan`, `ringkasan_scope`, `status`, `created_at`) VALUES
+(1, 'SPH/CTC/202610/303', 'Rajsfano Priariya Barisky', '10230103@bsi.ac.id', 'KeeL Website Landingpage', 100000000.00, '5 bulan', 'selayaknya aja pak', 'Sent', '2026-10-14 06:48:07'),
+(2, 'SPH/CTC/202610/275', 'Rajsfano Priariya Barisky', '10230103@bsi.ac.id', 'KeeL Website Landingpage', 1000000.00, '5bulan', 'seadanya', 'Sent', '2026-10-14 07:10:24'),
+(3, 'SPH/CTC/202610/467', 'Rajsfano Priariya Barisky', '10230103@bsi.ac.id', 'KeeL Website Landingpage', 1000000.00, '5bulan', 'apa aja', 'Sent', '2026-10-14 07:11:21'),
+(4, 'SPH/CTC/202610/867', 'Rocky Gerung', 'rajsfanopriariyabarisky@gmail.com', 'Projek Pembrantasan korupsi', 100000000.00, '5 bulan', '', 'Sent', '2026-10-14 07:12:54'),
+(5, 'SPH/CTC/202610/142', 'Rajsfano Priariya Barisky', 'rajsfanopriariyabarisky@gmail.com', 'Projek Test 1', 100000000.00, '5 bulan', 'ngasal', 'Sent', '2026-10-14 08:00:37'),
+(6, 'SPH/CTC/202610/410', 'Dicky Rialdy', 'ceo@keel.com', 'Ecomece Keel Collective', 600000000.00, '5 bulan', 'buat sesuai standart Calle De Larache', 'Sent', '2026-10-14 08:28:10'),
+(7, 'SPH/CTC/202610/378', 'Roy ricardo', 'roy@gmail.com', 'Landingpage TokyoDrift', 100000000.00, '5', 'apa aja yang penting sah', 'Sent', '2026-10-14 09:56:08');
 
 -- --------------------------------------------------------
 
@@ -290,23 +356,14 @@ CREATE TABLE `tasks` (
 INSERT INTO `tasks` (`id`, `project_id`, `assigned_to`, `user_id`, `nama_tugas`, `prioritas`, `status`, `progress_notes`, `updated_by_user_id`, `revision_notes`, `drive_link`, `deadline`, `updated_at`) VALUES
 (1, 1, NULL, 1, 'UI/UX design', 'High', 'Done', NULL, NULL, NULL, NULL, '2026-10-05', '2026-10-01 09:36:32'),
 (18, 1, 6, 6, 'Software development', 'High', 'Done', 'tes 1', NULL, NULL, 'https://drive.google.com/drive/u/0/', '2026-10-19', '2026-10-07 04:02:41'),
-(19, 11, 4, 4, 'web development', 'High', 'Done', NULL, NULL, NULL, NULL, '2026-10-05', '2026-10-05 05:32:09'),
-(20, 11, 6, 6, 'UI/UX design', 'Medium', 'Done', 'ini pak sudah beberapa ada yang saya  rubah', NULL, NULL, 'https://drive.google.com/drive/u/0/', '2026-10-05', '2026-10-07 04:02:01'),
-(21, 12, 6, 6, 'UI/UX design', 'High', 'Done', 'terima kasih pak sudah saya kerjakan', 6, NULL, 'https://drive.google.com/drive/folders/1RcWjJ5bS6YZasisoOhOJIF1HEJ7_GIev?usp=drive_link', '2026-10-09', '2026-10-07 04:29:10'),
-(22, 12, 4, 4, 'ERD LRS', 'Medium', 'Done', 'baik pak sudah saya isi sesuai dengan yang bapak minta', 4, NULL, 'https://drive.google.com/drive/folders/1RcWjJ5bS6YZasisoOhOJIF1HEJ7_GIev?usp=drive_link', '2026-10-07', '2026-10-07 05:24:32'),
 (23, 10, 4, 4, 'UI/UX design', 'Medium', 'Done', NULL, NULL, NULL, NULL, '2026-10-07', '2026-10-07 06:45:13'),
 (24, 10, 3, 3, 'Software development', 'Medium', 'Done', NULL, NULL, NULL, NULL, '2026-10-07', '2026-10-07 06:45:16'),
 (25, 10, 6, 6, 'Membuat RAB', 'Medium', 'Done', NULL, NULL, NULL, NULL, '2026-10-06', '2026-10-07 06:45:08'),
-(26, 12, 4, 4, 'frontend', 'Medium', 'Done', 'ini sudah saya perbaiki', 4, NULL, '', '2026-10-06', '2026-10-07 07:13:18'),
-(27, 12, 2, 2, 'nganggur', 'Medium', 'Done', 'siap nganggur', 2, NULL, '', '2026-10-07', '2026-10-07 07:19:55'),
 (28, 10, 2, 2, 'nganggur', 'Urgent', 'Done', NULL, NULL, NULL, NULL, '2026-10-06', '2026-10-12 09:33:50'),
-(29, 12, 6, 6, 'testing', 'Medium', 'Done', NULL, NULL, NULL, NULL, '2026-10-07', '2026-10-12 04:27:47'),
-(30, 13, 4, 4, 'UI/UX design', 'Medium', 'Done', 'sudah saya kerjakan', 6, NULL, 'https://drive.google.com/drive/u/0/', '2026-10-10', '2026-10-12 03:51:22'),
-(31, 20, 4, 4, 'UI/UX design', 'Medium', 'Done', NULL, NULL, NULL, NULL, '2026-10-12', '2026-10-12 09:47:18'),
-(32, 20, 3, 3, 'Software development', 'Medium', 'To Do', NULL, NULL, NULL, NULL, '2026-10-10', '2026-10-12 09:41:50'),
-(33, 18, 4, 4, 'UI/UX design', 'Medium', 'To Do', NULL, NULL, NULL, NULL, '2026-10-12', '2026-10-12 09:48:30'),
 (34, 1, 2, 2, 'mobile design', 'Medium', 'Done', NULL, NULL, NULL, NULL, '2026-10-09', '2026-10-12 09:47:06'),
-(35, 1, 2, 2, 'finishing', 'Medium', 'Done', NULL, NULL, NULL, NULL, '2026-10-01', '2026-10-12 09:58:28');
+(35, 1, 2, 2, 'finishing', 'Medium', 'Done', NULL, NULL, NULL, NULL, '2026-10-01', '2026-10-12 09:58:28'),
+(36, 26, 4, 4, 'UI/UX design', 'Medium', 'Done', NULL, NULL, NULL, NULL, '2026-10-17', '2026-10-19 03:32:16'),
+(37, 26, 4, 4, 'Software development', 'Medium', 'To Do', NULL, NULL, NULL, NULL, '2026-10-19', '2026-10-19 03:54:01');
 
 -- --------------------------------------------------------
 
@@ -326,31 +383,14 @@ CREATE TABLE `task_assignees` (
 --
 
 INSERT INTO `task_assignees` (`id`, `task_id`, `user_id`, `created_at`) VALUES
-(1, 19, 4, '2026-10-05 05:30:55'),
-(2, 19, 6, '2026-10-05 05:30:55'),
-(3, 19, 3, '2026-10-05 05:30:55'),
-(4, 19, 2, '2026-10-05 05:30:55'),
-(5, 20, 6, '2026-10-05 05:33:43'),
-(6, 20, 2, '2026-10-05 05:33:43'),
-(7, 21, 6, '2026-10-07 04:09:43'),
-(8, 21, 2, '2026-10-07 04:09:43'),
-(9, 22, 4, '2026-10-07 05:21:36'),
 (10, 23, 4, '2026-10-07 05:51:32'),
 (11, 24, 3, '2026-10-07 05:51:40'),
 (12, 25, 6, '2026-10-07 05:52:00'),
-(13, 26, 4, '2026-10-07 07:04:35'),
-(14, 27, 2, '2026-10-07 07:13:33'),
 (15, 28, 2, '2026-10-07 07:22:26'),
-(16, 29, 6, '2026-10-07 09:05:47'),
-(17, 30, 4, '2026-10-09 03:10:25'),
-(18, 30, 6, '2026-10-09 03:10:25'),
-(19, 31, 4, '2026-10-12 09:35:59'),
-(20, 31, 6, '2026-10-12 09:35:59'),
-(21, 32, 3, '2026-10-12 09:38:10'),
-(22, 32, 2, '2026-10-12 09:38:10'),
-(23, 33, 4, '2026-10-12 09:42:40'),
 (24, 34, 2, '2026-10-12 09:44:44'),
-(25, 35, 2, '2026-10-12 09:49:14');
+(25, 35, 2, '2026-10-12 09:49:14'),
+(26, 36, 4, '2026-10-14 09:51:02'),
+(27, 37, 4, '2026-10-19 03:54:01');
 
 -- --------------------------------------------------------
 
@@ -384,11 +424,31 @@ INSERT INTO `users` (`id`, `nama`, `email`, `password`, `role`, `jabatan`, `crea
 --
 
 --
+-- Indeks untuk tabel `clients`
+--
+ALTER TABLE `clients`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `email` (`email`);
+
+--
+-- Indeks untuk tabel `client_requirements`
+--
+ALTER TABLE `client_requirements`
+  ADD PRIMARY KEY (`id`);
+
+--
 -- Indeks untuk tabel `contracts`
 --
 ALTER TABLE `contracts`
   ADD PRIMARY KEY (`id`),
   ADD KEY `project_id` (`project_id`);
+
+--
+-- Indeks untuk tabel `deal_chats`
+--
+ALTER TABLE `deal_chats`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `requirement_id` (`requirement_id`);
 
 --
 -- Indeks untuk tabel `expenses`
@@ -425,6 +485,12 @@ ALTER TABLE `project_logs`
   ADD KEY `project_id` (`project_id`);
 
 --
+-- Indeks untuk tabel `proposals`
+--
+ALTER TABLE `proposals`
+  ADD PRIMARY KEY (`id`);
+
+--
 -- Indeks untuk tabel `tasks`
 --
 ALTER TABLE `tasks`
@@ -453,10 +519,28 @@ ALTER TABLE `users`
 --
 
 --
+-- AUTO_INCREMENT untuk tabel `clients`
+--
+ALTER TABLE `clients`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+
+--
+-- AUTO_INCREMENT untuk tabel `client_requirements`
+--
+ALTER TABLE `client_requirements`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
 -- AUTO_INCREMENT untuk tabel `contracts`
 --
 ALTER TABLE `contracts`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=18;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
+
+--
+-- AUTO_INCREMENT untuk tabel `deal_chats`
+--
+ALTER TABLE `deal_chats`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=30;
 
 --
 -- AUTO_INCREMENT untuk tabel `expenses`
@@ -468,43 +552,49 @@ ALTER TABLE `expenses`
 -- AUTO_INCREMENT untuk tabel `invoices`
 --
 ALTER TABLE `invoices`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
 
 --
 -- AUTO_INCREMENT untuk tabel `projects`
 --
 ALTER TABLE `projects`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=21;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=27;
 
 --
 -- AUTO_INCREMENT untuk tabel `project_files`
 --
 ALTER TABLE `project_files`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT untuk tabel `project_logs`
 --
 ALTER TABLE `project_logs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=102;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=110;
+
+--
+-- AUTO_INCREMENT untuk tabel `proposals`
+--
+ALTER TABLE `proposals`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT untuk tabel `tasks`
 --
 ALTER TABLE `tasks`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=36;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=38;
 
 --
 -- AUTO_INCREMENT untuk tabel `task_assignees`
 --
 ALTER TABLE `task_assignees`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=26;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=28;
 
 --
 -- AUTO_INCREMENT untuk tabel `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- Ketidakleluasaan untuk tabel pelimpahan (Dumped Tables)
@@ -515,6 +605,12 @@ ALTER TABLE `users`
 --
 ALTER TABLE `contracts`
   ADD CONSTRAINT `contracts_ibfk_1` FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE;
+
+--
+-- Ketidakleluasaan untuk tabel `deal_chats`
+--
+ALTER TABLE `deal_chats`
+  ADD CONSTRAINT `deal_chats_ibfk_1` FOREIGN KEY (`requirement_id`) REFERENCES `client_requirements` (`id`) ON DELETE CASCADE;
 
 --
 -- Ketidakleluasaan untuk tabel `expenses`
