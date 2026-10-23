@@ -2,42 +2,85 @@
 session_start();
 require_once __DIR__ . '/../../config/database.php';
 
-// Proteksi Halaman: Wajib Login
+// 1. Proteksi Halaman: Wajib Login & Harus Role Admin
 if (!isset($_SESSION['user_id'])) {
     header("Location: ../../login.php");
     exit;
 }
 
-$error = '';$success = '';
+if (strtolower($_SESSION['role'] ?? '') !== 'admin') {
+    header("Location: ../../my_tasks.php");
+    exit;
+}
 
-// Handle Tambah Karyawan Baru
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_user'])) {$nama     = trim($_POST['nama']);$email    = trim($_POST['email']);$jabatan  = trim($_POST['jabatan']);$role     = $_POST['role'];$password = password_hash('123456', PASSWORD_BCRYPT);
+// 2. Fetch Data User Login & Cek Hak Akses Super Admin (Primary Admin)
+$loggedInUserId = (int)$_SESSION['user_id'];
+$stmtMe = $pdo->prepare("SELECT * FROM users WHERE id = ? LIMIT 1");
+$stmtMe->execute([$loggedInUserId]);
+$currentUser = $stmtMe->fetch();
 
-    if (!empty($nama) && !empty($email) && !empty($jabatan)) {
-        try {
-            $stmt =$pdo->prepare("INSERT INTO users (nama, email, password, role, jabatan) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$nama, $email,$password, $role,$jabatan]);
-            $success = "Karyawan $nama berhasil ditambahkan!";
-        } catch (\PDOException $e) {$error = "Email sudah terdaftar di sistem!";
-        }
+// Super Admin / Primary Admin Utama ditentukan secara presisi berdasarkan email 'admin@gmail.com'
+$isSuperAdmin = ($currentUser && strtolower($currentUser['email']) === 'admin@gmail.com');
+
+$error = '';
+$success = '';
+
+// 3. Handle Tambah Karyawan / User Baru (KHUSUS PRIMARY ADMIN)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_user'])) {
+    if (!$isSuperAdmin) {
+        $error = "Akses Ditolak: Hanya Primary Admin (admin@gmail.com) yang berhak menambahkan anggota tim baru!";
     } else {
-        $error = "Mohon isi seluruh kolom wajib!";
+        $nama     = trim($_POST['nama'] ?? '');
+        $email    = trim($_POST['email'] ?? '');
+        $jabatan  = trim($_POST['jabatan'] ?? '');
+        $role     = $_POST['role'] ?? 'karyawan';
+        $password = password_hash('123456', PASSWORD_BCRYPT);
+
+        if (!empty($nama) && !empty($email) && !empty($jabatan)) {
+            try {
+                $stmt = $pdo->prepare("INSERT INTO users (nama, email, password, role, jabatan) VALUES (?, ?, ?, ?, ?)");
+                $stmt->execute([$nama, $email, $password, $role, $jabatan]);
+                $success = "Anggota tim <strong>" . htmlspecialchars($nama) . "</strong> berhasil ditambahkan!";
+            } catch (\PDOException $e) {
+                $error = "Email <strong>" . htmlspecialchars($email) . "</strong> sudah terdaftar di sistem!";
+            }
+        } else {
+            $error = "Mohon isi seluruh kolom wajib!";
+        }
     }
 }
 
-// Handle Hapus Karyawan
+// 4. Handle Hapus Karyawan / User (KHUSUS PRIMARY ADMIN)
 if (isset($_GET['delete'])) {
     $delete_id = (int)$_GET['delete'];
-    if ($delete_id != 1) {
-        $stmtDel =$pdo->prepare("DELETE FROM users WHERE id = ?");
+
+    // Ambil data user yang akan dihapus
+    $stmtCheck = $pdo->prepare("SELECT * FROM users WHERE id = ? LIMIT 1");
+    $stmtCheck->execute([$delete_id]);
+    $userToDelete = $stmtCheck->fetch();
+
+    if (!$isSuperAdmin) {
+        $error = "Akses Ditolak: Hanya Primary Admin (admin@gmail.com) yang berhak menghapus anggota tim!";
+    } elseif (!$userToDelete) {
+        $error = "Data pengguna tidak ditemukan!";
+    } elseif ($delete_id === $loggedInUserId) {
+        $error = "Tindakan Ditolak: Anda tidak dapat menghapus akun Anda sendiri!";
+    } elseif (strtolower($userToDelete['email']) === 'admin@gmail.com') {
+        $error = "Tindakan Ditolak: Akun Primary Admin (admin@gmail.com) bersifat permanen dan tidak dapat dihapus!";
+    } else {
+        $stmtDel = $pdo->prepare("DELETE FROM users WHERE id = ?");
         $stmtDel->execute([$delete_id]);
-        header("Location: index.php");
+        header("Location: index.php?msg=deleted");
         exit;
     }
 }
 
-// Fetch Semua Karyawan dengan Perhitungan Tugas Tim & Perorangan
-$users =$pdo->query("
+if (isset($_GET['msg']) && $_GET['msg'] === 'deleted') {
+    $success = "Anggota tim berhasil dihapus dari sistem.";
+}
+
+// 5. Fetch Semua Karyawan dengan Perhitungan Tugas Tim & Perorangan
+$users = $pdo->query("
     SELECT u.*, 
            COUNT(DISTINCT ta.task_id) AS total_assigned_tasks,
            SUM(CASE WHEN t.status = 'Done' THEN 1 ELSE 0 END) AS completed_tasks
@@ -45,14 +88,16 @@ $users =$pdo->query("
     LEFT JOIN task_assignees ta ON u.id = ta.user_id
     LEFT JOIN tasks t ON ta.task_id = t.id
     GROUP BY u.id
-    ORDER BY u.role ASC, u.nama ASC
+    ORDER BY CASE WHEN LOWER(u.email) = 'admin@gmail.com' THEN 0 ELSE 1 END, u.role ASC, u.nama ASC
 ")->fetchAll();
 
 // Hitung Statistik Ringkas
-$totalPersonel = count($users);$totalAdmin    = 0;
+$totalPersonel = count($users);
+$totalAdmin    = 0;
 $totalKaryawan = 0;
-foreach ($users as$u) {
-    if (strtolower($u['role']) === 'admin') {$totalAdmin++;
+foreach ($users as $u) {
+    if (strtolower($u['role']) === 'admin') {
+        $totalAdmin++;
     } else {
         $totalKaryawan++;
     }
@@ -89,22 +134,30 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             <p class="text-xs text-slate-500 font-medium mt-0.5">Kelola daftar tim, jobdesk/jabatan, dan alokasi personel PT. CTC</p>
         </div>
 
-        <!-- Tombol Buka Modal Form Tambah Karyawan -->
-        <button onclick="openUserModal()" class="btn-press px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl transition flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 shrink-0 uppercase tracking-wider">
-            <i class="fa-solid fa-user-plus text-xs"></i> Tambah Karyawan Baru
-        </button>
+        <!-- Tombol Buka Modal Form Tambah Karyawan (Khusus Primary Admin) -->
+        <?php if ($isSuperAdmin): ?>
+            <button onclick="openUserModal()" class="btn-press px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl transition flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 shrink-0 uppercase tracking-wider">
+                <i class="fa-solid fa-user-plus text-xs"></i> Tambah Karyawan Baru
+            </button>
+        <?php else: ?>
+            <div class="px-3.5 py-2 bg-slate-100 border border-slate-200 text-slate-500 rounded-xl text-xs font-bold flex items-center gap-2 shrink-0">
+                <i class="fa-solid fa-lock text-slate-400"></i> Mode Tinjau (Project Manager)
+            </div>
+        <?php endif; ?>
     </div>
 
     <!-- Alert Notifications -->
     <?php if ($error): ?>
         <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-2xl text-xs font-bold mb-6 flex items-center gap-2.5 shadow-2xs">
-            <i class="fa-solid fa-triangle-exclamation text-base text-red-600"></i> <?= $error ?>
+            <i class="fa-solid fa-triangle-exclamation text-base text-red-600 shrink-0"></i> 
+            <div><?= $error ?></div>
         </div>
     <?php endif; ?>
 
     <?php if ($success): ?>
         <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-2xl text-xs font-bold mb-6 flex items-center gap-2.5 shadow-2xs">
-            <i class="fa-solid fa-circle-check text-base text-emerald-600"></i> <?= $success ?>
+            <i class="fa-solid fa-circle-check text-base text-emerald-600 shrink-0"></i> 
+            <div><?= $success ?></div>
         </div>
     <?php endif; ?>
 
@@ -181,14 +234,17 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100" id="usersTableBody">
-                    <?php foreach ($users as$u): ?>
+                    <?php foreach ($users as $u): ?>
                         <?php 
-                            $roleLower = strtolower($u['role']);
-                            $assignedT =$u['total_assigned_tasks'] ?? 0;
-                            $compT     =$u['completed_tasks'] ?? 0;
+                            $roleLower   = strtolower($u['role']);
+                            $emailLower  = strtolower($u['email']);
+                            $assignedT   = $u['total_assigned_tasks'] ?? 0;
+                            $compT       = $u['completed_tasks'] ?? 0;
+                            $isPrimary   = ($emailLower === 'admin@gmail.com');
+                            $isSelf      = ((int)$u['id'] === $loggedInUserId);
                         ?>
                         <tr class="user-row hover:bg-slate-50/80 transition align-middle"
-                            data-search="<?= htmlspecialchars(strtolower($u['nama'] . ' ' . $u['email'] . ' ' .$u['jabatan'])) ?>"
+                            data-search="<?= htmlspecialchars(strtolower($u['nama'] . ' ' . $u['email'] . ' ' . $u['jabatan'])) ?>"
                             data-role="<?= htmlspecialchars($roleLower) ?>">
                             
                             <!-- Nama & Jabatan -->
@@ -198,7 +254,12 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                         <?= strtoupper(substr($u['nama'], 0, 1)) ?>
                                     </div>
                                     <div class="min-w-0">
-                                        <p class="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight truncate"><?= htmlspecialchars($u['nama']) ?></p>
+                                        <p class="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight truncate">
+                                            <?= htmlspecialchars($u['nama']) ?>
+                                            <?php if ($isSelf): ?>
+                                                <span class="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-black ml-1">Anda</span>
+                                            <?php endif; ?>
+                                        </p>
                                         <span class="text-[10px] text-slate-400 font-bold block truncate"><?= htmlspecialchars($u['jabatan']) ?></span>
                                     </div>
                                 </div>
@@ -224,12 +285,18 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                             <!-- Aksi -->
                             <td class="py-3.5 px-4 text-center">
-                                <?php if ($u['id'] != 1): ?>
-                                    <a href="index.php?delete=<?= $u['id'] ?>" onclick="return confirm('Yakin ingin menghapus karyawan ini?')" class="btn-press p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition inline-block" title="Hapus Personel">
+                                <?php if ($isPrimary): ?>
+                                    <span class="px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-black rounded-lg inline-block shadow-2xs">
+                                        <i class="fa-solid fa-crown text-amber-500 mr-1"></i> Primary Admin
+                                    </span>
+                                <?php elseif ($isSuperAdmin && !$isSelf): ?>
+                                    <a href="index.php?delete=<?= $u['id'] ?>" onclick="return confirm('Yakin ingin menghapus personel <?= htmlspecialchars(addslashes($u['nama'])) ?> dari sistem?')" class="btn-press p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition inline-block" title="Hapus Personel">
                                         <i class="fa-regular fa-trash-can text-sm"></i>
                                     </a>
+                                <?php elseif ($isSelf): ?>
+                                    <span class="text-[10px] text-slate-400 font-bold italic">Akun Anda</span>
                                 <?php else: ?>
-                                    <span class="text-[10px] text-slate-400 font-bold italic">Primary Admin</span>
+                                    <span class="text-[10px] text-slate-300 font-bold italic"><i class="fa-solid fa-lock text-slate-300 mr-1"></i> Terkunci</span>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -247,8 +314,9 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     </div>
 
     <!-- ========================================================================= -->
-    <!-- MODAL POPUP FORM TAMBAH ANGGOTA TIM (CLEAN & ELEGANT) -->
+    <!-- MODAL POPUP FORM TAMBAH ANGGOTA TIM (KHUSUS PRIMARY ADMIN) -->
     <!-- ========================================================================= -->
+    <?php if ($isSuperAdmin): ?>
     <div id="userModal" class="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
         <div class="bg-white border border-slate-200 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden relative animate-in fade-in zoom-in-95 duration-200">
             
@@ -311,16 +379,19 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
         </div>
     </div>
+    <?php endif; ?>
 
 </main>
 
 <script>
 function openUserModal() {
-    document.getElementById('userModal').classList.remove('hidden');
+    const modal = document.getElementById('userModal');
+    if (modal) modal.classList.remove('hidden');
 }
 
 function closeUserModal() {
-    document.getElementById('userModal').classList.add('hidden');
+    const modal = document.getElementById('userModal');
+    if (modal) modal.classList.add('hidden');
 }
 
 const rowsPerPage = 5;

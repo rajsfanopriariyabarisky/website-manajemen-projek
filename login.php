@@ -4,7 +4,7 @@ require_once __DIR__ . '/config/database.php';
 
 // Jika sudah login, redirect sesuai session role
 if (isset($_SESSION['user_id'])) {
-    if (strtolower($_SESSION['role']) === 'admin') {
+    if (strtolower($_SESSION['role'] ?? '') === 'admin') {
         header("Location: index.php");
     } else {
         header("Location: my_tasks.php");
@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password_actio
         $stmt->execute([$email]);
         $user = $stmt->fetch();
 
-        if ($user && ($old_password === $user['password'] || md5($old_password) === $user['password'] || password_verify($old_password, $user['password']))) {
+        if ($user && (password_verify($old_password, $user['password']) || md5($old_password) === $user['password'] || $old_password === $user['password'])) {
             $hashed_new = password_hash($new_password, PASSWORD_BCRYPT);
             $stmtUpdate = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
             $stmtUpdate->execute([$hashed_new, $user['id']]);
@@ -52,14 +52,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['change_password_acti
         $stmt->execute([$email]);
         $user = $stmt->fetch();
 
-        // Verifikasi Akun & Password (support legacy plaintext, md5, & password_verify)
-        if ($user && ($password === $user['password'] || md5($password) === $user['password'] || password_verify($password, $user['password']))) {
+        // Verifikasi Akun & Password (support bcrypt password_verify, md5, & legacy plaintext)
+        if ($user && (password_verify($password, $user['password']) || md5($password) === $user['password'] || $password === $user['password'])) {
             
             $userRoleLower = strtolower($user['role'] ?? 'karyawan');
 
-            // Pengecekan Validasi Portal
+            // Pengecekan Validasi Portal Pas Berdasarkan Role
             if ($portal === 'admin' && $userRoleLower !== 'admin') {
                 $error = "Akun Anda terdaftar sebagai Karyawan, tidak memiliki otorisasi ke Portal Admin / PM!";
+            } elseif ($portal === 'karyawan' && $userRoleLower !== 'karyawan') {
+                $error = "Akun Anda terdaftar sebagai Admin / PM! Silakan pilih portal Admin / PM untuk masuk.";
             } else {
                 // Mencegah Session Fixation Attack
                 session_regenerate_id(true);
@@ -69,8 +71,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['change_password_acti
                 $_SESSION['role']      = $user['role'];
                 $_SESSION['email']     = $user['email'];
 
-                // Redirect sesuai pilihan portal / role akun
-                if ($userRoleLower === 'admin' && $portal === 'admin') {
+                // Redirect sesuai role akun
+                if ($userRoleLower === 'admin') {
                     header("Location: index.php");
                 } else {
                     header("Location: my_tasks.php");
@@ -246,14 +248,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['change_password_acti
         </p>
     </div>
 
-    <!-- ========================================================================= -->
-    <!-- POPUP MODAL SUKSES GANTI PASSWORD + ANIMASI CENTANG -->
-    <!-- ========================================================================= -->
+    <!-- POPUP MODAL SUKSES GANTI PASSWORD -->
     <?php if ($success): ?>
     <div id="successModal" class="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
         <div class="bg-white border border-slate-200 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative animate-in fade-in zoom-in-95 duration-200 text-xs text-center p-6 space-y-4">
             
-            <!-- LOGO CENTANG DENGAN ANIMASI MEKAR & BOUNCE -->
             <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto text-3xl shadow-inner border border-emerald-200/80 animate-success-box">
                 <i class="fa-solid fa-check animate-check-icon"></i>
             </div>
@@ -276,9 +275,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['change_password_acti
     </div>
     <?php endif; ?>
 
-    <!-- ========================================================================= -->
     <!-- MODAL 1: LUPA PASSWORD -->
-    <!-- ========================================================================= -->
     <div id="forgotModal" class="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
         <div class="bg-white border border-slate-200 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative animate-in fade-in zoom-in-95 duration-200 text-xs">
             
@@ -316,9 +313,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['change_password_acti
         </div>
     </div>
 
-    <!-- ========================================================================= -->
     <!-- MODAL 2: GANTI PASSWORD MANDIRI -->
-    <!-- ========================================================================= -->
     <div id="changePwdModal" class="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
         <div class="bg-white border border-slate-200 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative animate-in fade-in zoom-in-95 duration-200 text-xs">
             
@@ -385,7 +380,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['change_password_acti
     </div>
 
     <script>
-        // Toggle Show/Hide Password Universal
         function togglePasswordVisibility(inputId, iconId) {
             const pwdInput = document.getElementById(inputId);
             const toggleIcon = document.getElementById(iconId);

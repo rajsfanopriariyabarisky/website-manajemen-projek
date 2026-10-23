@@ -56,7 +56,7 @@ switch ($kategoriRAB) {
         $rab3 = round($totalBudget * 0.20);
         $rab4 = round($totalBudget * 0.15);
         $rab5 = $totalBudget - ($rab1 + $rab2 + $rab3 + $rab4);
-        
+
         $rabItems = [
             ['komponen' => 'Hardware & Sensor Procurement', 'deskripsi' => 'Pengadaan Modul Sensor, Mikrokontroler, & Komponen IoT', 'biaya' => $rab1],
             ['komponen' => 'Firmware & Embedded System Coding', 'deskripsi' => 'Pengkodean Logika Hardware, Calibrating Sensor, & Local Logic', 'biaya' => $rab2],
@@ -147,150 +147,446 @@ function terbilang($angka) {
     <title>Surat Penawaran - <?= htmlspecialchars($project['nama_projek']) ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- jsPDF + html2canvas CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
-        @media print {
-            .no-print { display: none !important; }
-            body { background: white !important; padding: 0 !important; color: #000 !important; }
-            .print-container { box-shadow: none !important; border: none !important; width: 100% !important; max-width: 100% !important; padding: 0 !important; }
+        /* ===== CETAK FULL-BLEED TANPA MARGIN PUTIH ===== */
+        @page {
+            size: A4 portrait;
+            margin: 0 !important;
         }
-        body { font-family: 'Times New Roman', Times, serif; line-height: 1.5; }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background-color: #0f172a;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            line-height: 1.55;
+        }
+
+        .doc-font, .doc-font * {
+            font-family: 'Times New Roman', Times, serif !important;
+        }
+
+        /* Container Dokumen: GAP = 0 MENCEGAH SPILL HALAMAN KOSONG */
+        #proposalContainer {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            width: 210mm;
+            margin: 0 auto;
+            padding: 0;
+            background: #ffffff;
+        }
+
+        /* Halaman A4 Presisi Full-Bleed */
+        .page-a4 {
+            width: 210mm;
+            height: 297mm;
+            min-height: 297mm;
+            max-height: 297mm;
+            position: relative;
+            overflow: hidden;
+            background-color: #ffffff;
+            flex-shrink: 0;
+            box-sizing: border-box;
+        }
+
+        /* Background Kop Surat FULL 210x297mm */
+        .kop-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 210mm;
+            height: 297mm;
+            object-fit: cover;
+            z-index: 0;
+            pointer-events: none;
+            user-select: none;
+            display: block;
+        }
+
+        /* Stempel Basah Transparan */
+        .stempel-img {
+            mix-blend-mode: multiply;
+            filter: contrast(115%);
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .no-print { display: flex; }
+
+        @media print {
+            html, body {
+                width: 210mm !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+            }
+            .no-print { display: none !important; }
+            #proposalContainer {
+                margin: 0 !important;
+                padding: 0 !important;
+                gap: 0 !important;
+                width: 210mm !important;
+                display: block !important;
+            }
+            .page-a4 {
+                width: 210mm !important;
+                height: 297mm !important;
+                box-shadow: none !important;
+                page-break-after: always !important;
+                break-after: page !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+            .page-a4:last-child {
+                page-break-after: auto !important;
+                break-after: auto !important;
+            }
+        }
+
+        @media screen {
+            .page-a4 {
+                box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.4);
+            }
+        }
     </style>
 </head>
-<body class="bg-slate-100 text-slate-900 min-h-screen py-8 px-4">
+<body class="bg-slate-900 min-h-screen py-8 flex flex-col items-center">
 
     <!-- Action Bar (Browser Only) -->
-    <div class="max-w-4xl mx-auto mb-6 flex justify-between items-center no-print font-sans">
-        <a href="index.php" class="text-xs font-semibold text-emerald-700 hover:underline">
-            <i class="fa-solid fa-arrow-left mr-1"></i> Kembali ke Daftar Penawaran
+    <div class="w-[210mm] mb-6 flex flex-col sm:flex-row justify-between items-center gap-3 no-print font-sans">
+        <a href="index.php" class="text-xs font-bold text-slate-300 hover:text-white flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-arrow-left"></i> Kembali ke Daftar Penawaran
         </a>
-        <button onclick="window.print()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-5 py-2.5 rounded-xl flex items-center gap-2 transition text-sm shadow-md">
-            <i class="fa-solid fa-print"></i> Cetak Proposal / Save PDF
-        </button>
+        <div class="flex items-center gap-3">
+            <button onclick="window.print()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition text-xs shadow">
+                <i class="fa-solid fa-print"></i> Cetak Browser
+            </button>
+            <button id="btnDownloadPdf" onclick="downloadDirectPDF()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-2.5 rounded-xl flex items-center gap-2 transition text-xs shadow-md">
+                <i class="fa-solid fa-file-arrow-down"></i> Download PDF Langsung
+            </button>
+        </div>
     </div>
 
-    <!-- Container Proposal Dokumen -->
-    <div class="max-w-4xl mx-auto bg-white p-12 rounded-lg shadow-xl border border-slate-200 print-container text-justify">
-        
-        <!-- Kop Surat Perusahaan -->
-        <div class="border-b-4 border-double border-emerald-900 pb-4 mb-6">
-            <h1 class="text-xl font-bold tracking-wider text-emerald-950 font-sans uppercase">PT. CIPTA TEKNOLOGI CENDEKIA</h1>
-            <p class="text-xs font-sans text-slate-600 font-bold">IT Solution, Software Development & Enterprise System Engineering</p>
-            <p class="text-[11px] font-sans text-slate-500">Perumahan Cahaya Garuda Residence Kav. 31, Bojongsari, Kota Depok, Jawa Barat | ciptateknologicendekia@gmail.com | Website: https://ctc-nusantara.com/</p>
-        </div>
+    <!-- Wrapper Utama Dokumen PDF (Eksak 2 Halaman) -->
+    <div id="proposalContainer">
 
-        <!-- Meta Surat Penawaran -->
-        <div class="text-xs font-sans mb-6 space-y-1">
-            <div class="flex justify-between">
-                <span><strong>Nomor</strong> : <?= $noSurat ?></span>
-                <span>Jakarta, <?= date('d F Y') ?></span>
-            </div>
-            <p><strong>Lampiran</strong> : 1 (Satu) Berkas Rincian Anggaran Biaya & Scope of Work</p>
-            <p class="pt-2">Kepada Yth.<br>
-            <strong>Pimpinan / Direksi Management</strong><br>
-            <span class="font-bold text-slate-900"><?= htmlspecialchars($project['klien']) ?></span><br>
-            Di Tempat</p>
-            <p class="pt-2"><strong>Hal: Penawaran Pengembangan <?= htmlspecialchars($project['nama_projek']) ?></strong></p>
-        </div>
+        <!-- ================= HALAMAN 1 (KOP SURAT UTAMA kopsurat-ctc.png) ================= -->
+        <div class="page-a4">
+            <img src="../../assets/images/kopsurat-ctc.png"
+                 alt="Kop Surat Utama"
+                 class="kop-background"
+                 crossorigin="anonymous">
 
-        <p class="text-xs mb-3">Dengan hormat,</p>
-        <p class="text-xs mb-3">
-            Menindaklanjuti rencana kerja sama dan integrasi sistem pada <strong><?= htmlspecialchars($project['klien']) ?></strong>, kami dari <strong>PT. Cipta Teknologi Cendekia</strong> mengajukan penawaran resmi untuk pengembangan <strong>"<?= htmlspecialchars($project['nama_projek']) ?>"</strong>.
-        </p>
-        <p class="text-xs mb-6">
-            Sistem ini dirancang khusus berbasis arsitektur modern, aman, dan dapat diandalkan untuk meningkatkan efisiensi operasional bisnis mitra secara terukur. Total nilai investasi komersial pengembangan sistem ini adalah sebesar <strong>Rp <?= number_format($totalBudget, 0, ',', '.') ?>,-</strong> (<em><?= terbilang($totalBudget) ?> Rupiah</em>) dengan estimasi durasi pengerjaan selama <strong><?= $durasiMinggu ?> Minggu (<?= $durasiBulan ?> Bulan)</strong>.
-        </p>
-
-        <!-- Executive Summary -->
-        <div class="bg-slate-50 p-4 border-l-4 border-emerald-800 text-xs mb-6 font-sans">
-            <h3 class="font-bold text-slate-900 mb-2 uppercase">RINGKASAN EKSEKUTIF (EXECUTIVE SUMMARY)</h3>
-            <p class="mb-2">Pengembangan sistem <strong><?= htmlspecialchars($project['nama_projek']) ?></strong> berfokus pada 3 Pilar Utama Keunggulan Teknologi:</p>
-            <ol class="list-decimal pl-5 space-y-1">
-                <li><strong>Arsitektur High-Availability & Scalable:</strong> Dirancang dengan performa optimal, pengamanan data terenkripsi, serta fleksibilitas integrasi API.</li>
-                <li><strong>Intuitive Multi-User Dashboard:</strong> Tampilan UI/UX modern yang mempermudah staf maupun pimpinan dalam memantau operasional real-time.</li>
-                <li><strong>Automated Analytics & Reporting:</strong> Sistem pelaporan otomatis yang mendukung pengambilan keputusan strategis secara presisi.</li>
-            </ol>
-        </div>
-
-        <!-- Scope of Work -->
-        <div class="text-xs mb-6 space-y-3">
-            <h3 class="font-bold text-sm text-slate-900 border-b border-slate-200 pb-1 uppercase">1. RUANG LINGKUP PEKERJAAN (SCOPE OF WORK)</h3>
-            
-            <div>
-                <p class="font-bold text-emerald-900">A. Front-End Application & User Interface</p>
-                <ul class="list-disc pl-5 space-y-1 mt-1">
-                    <li>Design UI/UX interaktif berbasis standar pengerjaan platform <?= htmlspecialchars($kategoriRAB) ?> modern.</li>
-                    <li>Modul operasional utama sesuai alur kerja bisnis <?= htmlspecialchars($project['klien']) ?>.</li>
-                    <li>Integrasi fitur pencarian, filter data, serta navigasi responsif multi-device.</li>
-                </ul>
-            </div>
-
-            <div>
-                <p class="font-bold text-emerald-900">B. Back-End Engine & Cloud Infrastructure</p>
-                <p class="pl-2">Konfigurasi Database Cloud, Management Restful API, keamanan enkripsi data, serta penanganan otentikasi akun berhak akses.</p>
-            </div>
-
-            <div>
-                <p class="font-bold text-emerald-900">C. Web Admin Dashboard & Analytics Management</p>
-                <p class="pl-2">Master Data Management, Ringkasan Eksekutif Analytics, serta modul ekspor laporan resmi (PDF/Excel).</p>
-            </div>
-        </div>
-
-        <!-- RAB Table -->
-        <div class="text-xs mb-6">
-            <h3 class="font-bold text-sm text-slate-900 border-b border-slate-200 pb-1 mb-3 uppercase">2. RINCIAN ANGGARAN BIAYA (RAB)</h3>
-            <table class="w-full border-collapse border border-slate-300 font-sans text-xs">
-                <thead>
-                    <tr class="bg-emerald-900 text-white">
-                        <th class="border border-slate-300 p-2 w-10">No</th>
-                        <th class="border border-slate-300 p-2">Komponen Pekerjaan</th>
-                        <th class="border border-slate-300 p-2">Deskripsi / Output</th>
-                        <th class="border border-slate-300 p-2 text-right w-36">Biaya (IDR)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php 
-                    $no = 1;
-                    foreach ($rabItems as $item): 
-                    ?>
-                        <tr>
-                            <td class="border border-slate-300 p-2 text-center"><?= $no++ ?></td>
-                            <td class="border border-slate-300 p-2 font-bold"><?= htmlspecialchars($item['komponen']) ?></td>
-                            <td class="border border-slate-300 p-2"><?= htmlspecialchars($item['deskripsi']) ?></td>
-                            <td class="border border-slate-300 p-2 text-right font-mono"><?= number_format($item['biaya'], 0, ',', '.') ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    <tr class="font-bold bg-slate-100">
-                        <td colspan="3" class="border border-slate-300 p-2 text-right">TOTAL INVESTASI (Eksklusif PPN)</td>
-                        <td class="border border-slate-300 p-2 text-right font-mono text-emerald-800">Rp <?= number_format($totalBudget, 0, ',', '.') ?></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Lembar Persetujuan -->
-        <div class="text-xs font-sans mt-10">
-            <h3 class="font-bold text-slate-900 mb-3 uppercase border-b border-slate-200 pb-1">3. LEMBAR PERSETUJUAN (ACCEPTANCE OF PROPOSAL)</h3>
-            <p class="mb-6">Jika penawaran Pengembangan <strong><?= htmlspecialchars($project['nama_projek']) ?></strong> ini disetujui, mohon menandatangani lembar konfirmasi di bawah ini.</p>
-
-            <div class="grid grid-cols-2 text-center">
+            <!-- Konten Utama Halaman 1 -->
+            <div class="doc-font relative z-10 pt-[52mm] pb-[20mm] px-[20mm] h-full flex flex-col justify-between text-justify text-[11.5px] text-black">
                 <div>
-                    <p class="font-bold">Untuk & Atas Nama Klien</p>
-                    <p class="text-slate-500 font-semibold"><?= htmlspecialchars($project['klien']) ?></p>
-                    <div class="h-20 my-2 flex items-center justify-center text-slate-300 italic">[Tanda Tangan & Stempel]</div>
-                    <p class="font-bold underline">[ Direksi / Perwakilan Resmi ]</p>
-                    <p class="text-[10px] text-slate-500 font-medium mt-0.5"><?= htmlspecialchars($project['klien']) ?></p>
-                </div>
+                    <!-- Meta Surat Penawaran -->
+                    <div class="mb-5 space-y-1">
+                        <div class="flex justify-between font-bold text-[12px]">
+                            <span>Nomor : <?= $noSurat ?></span>
+                            <span>Depok, <?= date('d F Y') ?></span>
+                        </div>
+                        <p><strong>Lampiran</strong> : 1 (Satu) Berkas Rincian Anggaran Biaya &amp; Scope of Work</p>
+                        <div class="pt-2">
+                            <p>Kepada Yth.</p>
+                            <p class="font-bold text-[12px]">Pimpinan / Direksi Management</p>
+                            <!-- Nama Klien dibuat Hitam Tegas + Underline -->
+                            <p class="font-bold text-black text-[12px] underline"><?= htmlspecialchars($project['klien']) ?></p>
+                            <p>Di Tempat</p>
+                        </div>
+                        <p class="pt-2"><strong>Hal: Penawaran Pengembangan <?= htmlspecialchars($project['nama_projek']) ?></strong></p>
+                    </div>
 
-                <div>
-                    <p class="font-bold">Untuk & Atas Nama</p>
-                    <p class="text-slate-500 font-semibold">PT. Cipta Teknologi Cendekia</p>
-                    <div class="h-20 my-2 flex items-center justify-center text-slate-300 italic">[Tanda Tangan & Stempel]</div>
-                    <p class="font-bold underline">[ Project Director / Consultant ]</p>
-                    <p class="text-[10px] text-slate-500 font-medium mt-0.5">PT. Cipta Teknologi Cendekia</p>
+                    <!-- Pembuka (Rata Kanan-Kiri) -->
+                    <p class="mb-2.5 leading-relaxed text-justify">Dengan hormat,</p>
+                    <p class="mb-2.5 leading-relaxed text-justify">
+                        Menindaklanjuti rencana kerja sama dan integrasi sistem pada <strong><?= htmlspecialchars($project['klien']) ?></strong>, kami dari <strong>PT. Cipta Teknologi Cendekia</strong> mengajukan penawaran resmi untuk pengembangan <strong>"<?= htmlspecialchars($project['nama_projek']) ?>"</strong>.
+                    </p>
+                    <p class="mb-5 leading-relaxed text-justify">
+                        Sistem ini dirancang khusus berbasis arsitektur modern, aman, dan dapat diandalkan untuk meningkatkan efisiensi operasional bisnis mitra secara terukur. Total nilai investasi komersial pengembangan sistem ini adalah sebesar <strong>Rp <?= number_format($totalBudget, 0, ',', '.') ?>,-</strong> (<em><?= terbilang($totalBudget) ?> Rupiah</em>) dengan estimasi durasi pengerjaan selama <strong><?= $durasiMinggu ?> Minggu (<?= $durasiBulan ?> Bulan)</strong>.
+                    </p>
+
+                    <!-- Executive Summary (Flexbox Rapi Tanpa Bug Marker Floating) -->
+                    <div class="p-3.5 border-l-4 border-emerald-800 bg-slate-50/90 mb-5 font-sans rounded-r-lg shadow-sm">
+                        <h3 class="font-bold text-[11.5px] text-slate-900 mb-1.5 uppercase tracking-wide">RINGKASAN EKSEKUTIF (EXECUTIVE SUMMARY)</h3>
+                        <p class="mb-2 text-[11px] text-slate-800 text-justify">Pengembangan sistem <strong><?= htmlspecialchars($project['nama_projek']) ?></strong> berfokus pada 3 Pilar Utama Keunggulan Teknologi:</p>
+                        
+                        <div class="space-y-1.5 text-[11px] text-slate-800">
+                            <div class="flex gap-2 items-start">
+                                <span class="font-bold min-w-[14px]">1.</span>
+                                <p class="leading-relaxed text-justify"><strong>Arsitektur High-Availability &amp; Scalable:</strong> Performa optimal, pengamanan data terenkripsi, serta integrasi API.</p>
+                            </div>
+                            <div class="flex gap-2 items-start">
+                                <span class="font-bold min-w-[14px]">2.</span>
+                                <p class="leading-relaxed text-justify"><strong>Intuitive Multi-User Dashboard:</strong> Tampilan UI/UX modern mempermudah pemantauan operasional real-time.</p>
+                            </div>
+                            <div class="flex gap-2 items-start">
+                                <span class="font-bold min-w-[14px]">3.</span>
+                                <p class="leading-relaxed text-justify"><strong>Automated Analytics &amp; Reporting:</strong> Pelaporan otomatis yang mendukung pengambilan keputusan strategis.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Scope of Work (Flexbox Bullet Presisi Rapi) -->
+                    <div class="space-y-2.5 font-sans">
+                        <h3 class="font-bold text-[12px] text-slate-900 border-b-2 border-slate-300 pb-2 mb-3.5 uppercase tracking-wide">
+                            1. RUANG LINGKUP PEKERJAAN (SCOPE OF WORK)
+                        </h3>
+
+                        <div class="mb-2">
+                            <p class="font-bold text-emerald-900 text-[11.5px] mb-1">A. Front-End Application &amp; User Interface</p>
+                            <div class="space-y-1.5 text-[11px] text-slate-700 pl-1">
+                                <div class="flex gap-2 items-start">
+                                    <span class="text-slate-900 font-bold leading-none mt-[3px]">•</span>
+                                    <p class="leading-relaxed text-justify">Design UI/UX interaktif berbasis standar platform <?= htmlspecialchars($kategoriRAB) ?> modern.</p>
+                                </div>
+                                <div class="flex gap-2 items-start">
+                                    <span class="text-slate-900 font-bold leading-none mt-[3px]">•</span>
+                                    <p class="leading-relaxed text-justify">Modul operasional utama sesuai alur kerja bisnis <?= htmlspecialchars($project['klien']) ?>.</p>
+                                </div>
+                                <div class="flex gap-2 items-start">
+                                    <span class="text-slate-900 font-bold leading-none mt-[3px]">•</span>
+                                    <p class="leading-relaxed text-justify">Fitur pencarian, filter data, serta navigasi responsif multi-device.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-2">
+                            <p class="font-bold text-emerald-900 text-[11.5px]">B. Back-End Engine &amp; Cloud Infrastructure</p>
+                            <p class="pl-3 text-[11px] text-slate-700 text-justify">Konfigurasi Database Cloud, Restful API, keamanan enkripsi data, &amp; otentikasi akun berhak akses.</p>
+                        </div>
+
+                        <div>
+                            <p class="font-bold text-emerald-900 text-[11.5px]">C. Web Admin Dashboard &amp; Analytics Management</p>
+                            <p class="pl-3 text-[11px] text-slate-700 text-justify">Master Data Management, Ringkasan Eksekutif Analytics, &amp; modul ekspor laporan resmi (PDF/Excel).</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
+        <!-- ================= HALAMAN 2 (KOP SURAT HALAMAN 2+ kopsurat-ctc-2.png) ================= -->
+        <div class="page-a4">
+            <img src="../../assets/images/kopsurat-ctc-2.png"
+                 alt="Kop Surat Halaman 2"
+                 class="kop-background"
+                 crossorigin="anonymous">
+
+            <!-- Konten Utama Halaman 2 -->
+            <div class="doc-font relative z-10 pt-[28mm] pb-[20mm] px-[20mm] h-full flex flex-col justify-between text-justify text-[11.5px] text-black">
+                <div>
+                    <!-- RAB Table -->
+                    <div class="mb-6 font-sans">
+                        <h3 class="font-bold text-[12px] text-slate-900 border-b-2 border-slate-300 pb-2 mb-3.5 uppercase tracking-wide">
+                            2. RINCIAN ANGGARAN BIAYA (RAB)
+                        </h3>
+                        <table class="w-full border-collapse border border-slate-300 text-[11px] shadow-sm rounded-lg overflow-hidden">
+                            <thead>
+                                <tr class="bg-emerald-900 text-white text-[10.5px] uppercase tracking-wider">
+                                    <th class="border border-emerald-800 p-2.5 w-10 text-center font-bold">No</th>
+                                    <th class="border border-emerald-800 p-2.5 text-left font-bold">Komponen Pekerjaan</th>
+                                    <th class="border border-emerald-800 p-2.5 text-left font-bold">Deskripsi / Output</th>
+                                    <th class="border border-emerald-800 p-2.5 text-right w-32 font-bold">Biaya (IDR)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200">
+                                <?php
+                                $no = 1;
+                                foreach ($rabItems as $item):
+                                ?>
+                                    <tr class="bg-white hover:bg-slate-50/80 transition-colors">
+                                        <td class="border border-slate-300 p-2.5 text-center font-semibold text-slate-600"><?= $no++ ?></td>
+                                        <td class="border border-slate-300 p-2.5 font-bold text-slate-900"><?= htmlspecialchars($item['komponen']) ?></td>
+                                        <td class="border border-slate-300 p-2.5 text-slate-700 leading-snug"><?= htmlspecialchars($item['deskripsi']) ?></td>
+                                        <td class="border border-slate-300 p-2.5 text-right font-mono font-bold text-slate-800"><?= number_format($item['biaya'], 0, ',', '.') ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                <tr class="font-bold bg-emerald-50/70 border-t-2 border-emerald-800">
+                                    <td colspan="3" class="border border-slate-300 p-2.5 text-right uppercase text-[10.5px] text-emerald-950 font-black tracking-wide">
+                                        TOTAL INVESTASI (Eksklusif PPN)
+                                    </td>
+                                    <td class="border border-slate-300 p-2.5 text-right font-mono text-emerald-900 text-[12px] font-black">
+                                        Rp <?= number_format($totalBudget, 0, ',', '.') ?>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Lembar Persetujuan & Stempel -->
+                    <div class="mt-8 font-sans">
+                        <h3 class="font-bold text-[12px] text-slate-900 border-b-2 border-slate-300 pb-2 mb-3.5 uppercase tracking-wide">
+                            3. LEMBAR PERSETUJUAN (ACCEPTANCE OF PROPOSAL)
+                        </h3>
+                        <p class="mb-4 text-slate-700 text-[11px] text-justify">Jika penawaran Pengembangan <strong><?= htmlspecialchars($project['nama_projek']) ?></strong> ini disetujui, mohon menandatangani lembar konfirmasi di bawah ini.</p>
+
+                        <div class="grid grid-cols-2 text-center gap-6">
+
+                            <!-- Sisi Klien -->
+                            <div class="flex flex-col justify-between h-48 border border-dashed border-slate-300 p-4 rounded-xl bg-white/80">
+                                <div>
+                                    <p class="font-bold text-slate-900 text-[11.5px]">Untuk &amp; Atas Nama Klien</p>
+                                    <p class="text-slate-600 font-semibold text-[10.5px]"><?= htmlspecialchars($project['klien']) ?></p>
+                                </div>
+                                <div class="h-20 flex items-center justify-center italic text-slate-400 text-[10px]">
+                                    [ Tanda Tangan &amp; Stempel Klien ]
+                                </div>
+                                <div>
+                                    <p class="font-bold underline text-slate-900 text-[11px]">( .................................................... )</p>
+                                    <p class="text-[10px] text-slate-500 font-medium mt-0.5">Jabatan / Perwakilan Resmi</p>
+                                </div>
+                            </div>
+
+                            <!-- Sisi PT CTC: Stempel bergeser ke kanan menimpa di atas kata Mohammad -->
+                            <div class="flex flex-col justify-between h-48 border border-emerald-200 bg-emerald-50/40 p-4 rounded-xl relative">
+                                <div>
+                                    <p class="font-bold text-slate-900 text-[11.5px]">Untuk &amp; Atas Nama</p>
+                                    <p class="text-emerald-900 font-bold text-[11px]">PT. CIPTA TEKNOLOGI CENDEKIA</p>
+                                </div>
+
+                                <!-- Area TTD + Stempel basah transparan menimpa atas kata Mohammad -->
+                                <div class="relative h-20 w-full flex items-center justify-center">
+                                    <img src="../../assets/images/Stempel.png"
+                                         alt="Stempel PT CTC"
+                                         id="stempelImg"
+                                         class="stempel-img absolute w-24 h-24 object-contain left-[22%] top-[-6px] -rotate-12 opacity-60"
+                                         crossorigin="anonymous"
+                                         onerror="this.style.display='none'">
+                                </div>
+
+                                <div class="relative z-10">
+                                    <p class="font-bold underline text-slate-900 text-[11.5px]">Mohammad Habbas Ali, SE.</p>
+                                    <p class="text-[10px] text-slate-600 font-medium mt-0.5">Direktur / Managing Director</p>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
+
+    <!-- ===== Script: Hapus background putih Stempel + Download PDF per-halaman full-bleed ===== -->
+    <script>
+    function waitForImages() {
+        const imgs = Array.from(document.querySelectorAll('#proposalContainer img'));
+        return Promise.all(imgs.map(img => {
+            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+            return new Promise(res => {
+                img.onload = () => res();
+                img.onerror = () => res();
+            });
+        }));
+    }
+
+    function processStampTransparency() {
+        return new Promise((resolve) => {
+            const img = document.getElementById('stempelImg');
+            if (!img || img.style.display === 'none' || !img.src) return resolve();
+
+            const run = () => {
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.naturalWidth;
+                    canvas.height = img.naturalHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const d = imageData.data;
+                    for (let i = 0; i < d.length; i += 4) {
+                        const r = d[i], g = d[i+1], b = d[i+2];
+                        if (r > 200 && g > 200 && b > 200) {
+                            d[i+3] = 0;
+                        }
+                    }
+                    ctx.putImageData(imageData, 0, 0);
+                    img.src = canvas.toDataURL('image/png');
+                } catch (e) {
+                    console.warn('Gagal proses transparansi stempel:', e);
+                }
+                resolve();
+            };
+
+            if (img.complete && img.naturalWidth > 0) {
+                run();
+            } else {
+                img.onload = run;
+                img.onerror = () => resolve();
+            }
+        });
+    }
+
+    async function downloadDirectPDF() {
+        const btn = document.getElementById('btnDownloadPdf');
+        const originalText = btn.innerHTML;
+
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Memproses PDF...';
+        btn.disabled = true;
+
+        try {
+            await waitForImages();
+            await processStampTransparency();
+            await new Promise(r => setTimeout(r, 250));
+
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF({
+                unit: 'mm',
+                format: 'a4',
+                orientation: 'portrait',
+                compress: true
+            });
+
+            const pages = document.querySelectorAll('#proposalContainer .page-a4');
+            const PAGE_W = 210;
+            const PAGE_H = 297;
+
+            for (let i = 0; i < pages.length; i++) {
+                const page = pages[i];
+                const canvas = await html2canvas(page, {
+                    scale: 3, // Kualitas cetak HD tajam
+                    useCORS: true,
+                    allowTaint: false,
+                    logging: false,
+                    backgroundColor: '#ffffff',
+                    width: page.offsetWidth,
+                    height: page.offsetHeight,
+                    windowWidth: page.offsetWidth,
+                    windowHeight: page.offsetHeight,
+                    x: 0,
+                    y: 0
+                });
+
+                const imgData = canvas.toDataURL('image/jpeg', 0.98);
+                if (i > 0) pdf.addPage('a4', 'portrait');
+                pdf.addImage(imgData, 'JPEG', 0, 0, PAGE_W, PAGE_H, undefined, 'FAST');
+            }
+
+            pdf.save('Surat_Penawaran_<?= preg_replace('/[^a-zA-Z0-9_-]/', '_', $project['nama_projek']) ?>.pdf');
+        } catch (err) {
+            console.error('Error generate PDF:', err);
+            window.print();
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+    </script>
 </body>
 </html>

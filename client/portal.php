@@ -3,7 +3,7 @@ session_start();
 date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../config/database.php';
 
-// Proteksi Sesi Login
+// Proteksi Sesi Login Client
 if (
     !isset($_SESSION['client_logged_in']) ||
     $_SESSION['client_logged_in'] !== true ||
@@ -13,11 +13,11 @@ if (
     exit;
 }
 
-$client_id = intval($_SESSION['client_user_id']);
-$client_nama = $_SESSION['client_nama'] ?? 'Klien';
+$client_id    = intval($_SESSION['client_user_id']);
+$client_nama  = $_SESSION['client_nama'] ?? 'Klien';
 $client_email = $_SESSION['client_email'] ?? '';
 
-// Handle Logout
+// Handle Logout Khusus Client (Tanpa merusak session Admin/Karyawan di tab lain)
 if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     unset(
         $_SESSION['client_logged_in'],
@@ -27,7 +27,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
         $_SESSION['client_token']
     );
 
-    session_destroy();
     header('Location: login.php');
     exit;
 }

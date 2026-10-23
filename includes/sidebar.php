@@ -12,6 +12,43 @@ if (isset($pdo)) {
         $pendingReqCount = 0;
     }
 }
+
+// LOGIKA BACKEND GANTI PASSWORD ADMIN / PM
+$admin_pwd_error   = '';
+$admin_pwd_success = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_change_password_action'])) {
+    if (isset($_SESSION['user_id']) && isset($pdo)) {
+        $adm_user_id     = (int)$_SESSION['user_id'];
+        $old_password    = $_POST['old_password'] ?? '';
+        $new_password    = $_POST['new_password'] ?? '';
+        $confirm_password= $_POST['confirm_password'] ?? '';
+
+        if (!empty($old_password) && !empty($new_password) && !empty($confirm_password)) {
+            if ($new_password !== $confirm_password) {
+                $admin_pwd_error = "Konfirmasi password baru tidak cocok!";
+            } elseif (strlen($new_password) < 6) {
+                $admin_pwd_error = "Password baru minimal 6 karakter!";
+            } else {
+                $stmtCheckAdmin = $pdo->prepare("SELECT password FROM users WHERE id = ? LIMIT 1");
+                $stmtCheckAdmin->execute([$adm_user_id]);
+                $admData = $stmtCheckAdmin->fetch();
+
+                if ($admData && (password_verify($old_password, $admData['password']) || md5($old_password) === $admData['password'] || $old_password === $admData['password'])) {
+                    $hashed_new_pwd = password_hash($new_password, PASSWORD_BCRYPT);
+                    $stmtUpAdmPwd   = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
+                    $stmtUpAdmPwd->execute([$hashed_new_pwd, $adm_user_id]);
+
+                    $admin_pwd_success = "Password akun Admin berhasil diperbarui!";
+                } else {
+                    $admin_pwd_error = "Password lama Anda salah!";
+                }
+            }
+        } else {
+            $admin_pwd_error = "Mohon isi seluruh kolom password!";
+        }
+    }
+}
 ?>
 <style>
     /* Custom Scrollbar Sidebar */
@@ -312,7 +349,7 @@ if (isset($pdo)) {
         </div>
     </div>
 
-    <!-- BOTTOM SECTION: Profil User -->
+    <!-- BOTTOM SECTION: Profil User & Action Buttons -->
     <div class="pt-3 mt-3 border-t border-emerald-800/40 shrink-0">
         
         <!-- PROFIL MODE BUKA -->
@@ -330,14 +367,23 @@ if (isset($pdo)) {
                 </div>
             </div>
             
-            <a href="<?= $baseUrl ?>/logout.php" title="Keluar Sistem" 
-               class="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 flex items-center justify-center transition border border-red-500/20 active:scale-95 shrink-0">
-                <i class="fa-solid fa-right-from-bracket text-xs"></i>
-            </a>
+            <div class="flex items-center gap-1 shrink-0">
+                <!-- Tombol Ganti Password -->
+                <button type="button" onclick="openAdminPwdModal()" title="Ganti Password"
+                        class="w-8 h-8 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/25 text-emerald-300 hover:text-white flex items-center justify-center transition border border-emerald-500/20 active:scale-95">
+                    <i class="fa-solid fa-key text-xs"></i>
+                </button>
+
+                <!-- Tombol Logout -->
+                <a href="<?= $baseUrl ?>/logout.php" title="Keluar Sistem" 
+                   class="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 flex items-center justify-center transition border border-red-500/20 active:scale-95">
+                    <i class="fa-solid fa-right-from-bracket text-xs"></i>
+                </a>
+            </div>
         </div>
 
         <!-- PROFIL MODE TUTUP (Desktop) -->
-        <div class="user-collapsed hidden flex-col items-center gap-2.5 p-2 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
+        <div class="user-collapsed hidden flex-col items-center gap-2 p-2 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
             <div class="relative shrink-0">
                 <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 text-emerald-950 font-black flex items-center justify-center text-xs shadow-md">
                     <?= strtoupper(substr($_SESSION['nama'] ?? 'A', 0, 1)) ?>
@@ -345,6 +391,13 @@ if (isset($pdo)) {
                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-slate-950 absolute -bottom-0.5 -right-0.5"></span>
             </div>
             
+            <!-- Tombol Ganti Password -->
+            <button type="button" onclick="openAdminPwdModal()" title="Ganti Password" 
+               class="w-8 h-8 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/25 text-emerald-300 hover:text-white flex items-center justify-center transition border border-emerald-500/20 active:scale-95">
+                <i class="fa-solid fa-key text-xs"></i>
+            </button>
+
+            <!-- Tombol Logout -->
             <a href="<?= $baseUrl ?>/logout.php" title="Keluar Sistem" 
                class="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 flex items-center justify-center transition border border-red-500/20 active:scale-95">
                 <i class="fa-solid fa-right-from-bracket text-xs"></i>
@@ -355,8 +408,124 @@ if (isset($pdo)) {
 
 </aside>
 
+<!-- ========================================================================= -->
+<!-- MODAL POPUP FORM GANTI PASSWORD ADMIN / PM -->
+<!-- ========================================================================= -->
+<div id="adminChangePasswordModal" class="fixed inset-0 z-[9999] bg-slate-950/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative animate-in fade-in zoom-in-95 duration-200 text-xs text-slate-800">
+        
+        <!-- Header Modal -->
+        <div class="p-4 bg-slate-900 text-white flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-key text-emerald-400 text-sm"></i>
+                <h3 class="text-xs font-black uppercase tracking-wider">Ganti Password Admin</h3>
+            </div>
+            <button type="button" onclick="closeAdminPwdModal()" class="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+                <i class="fa-solid fa-xmark text-xs"></i>
+            </button>
+        </div>
+
+        <!-- Form Body -->
+        <form action="" method="POST" class="p-5 space-y-3.5">
+            <input type="hidden" name="admin_change_password_action" value="1">
+
+            <!-- Alert Notifikasi Di Dalam Modal -->
+            <?php if (!empty($admin_pwd_error)): ?>
+                <div class="bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-2">
+                    <i class="fa-solid fa-circle-exclamation text-red-600 text-xs"></i>
+                    <div><?= $admin_pwd_error ?></div>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($admin_pwd_success)): ?>
+                <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600 text-xs"></i>
+                    <div><?= $admin_pwd_success ?></div>
+                </div>
+            <?php endif; ?>
+
+            <!-- Password Saat Ini -->
+            <div>
+                <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Password Saat Ini *</label>
+                <div class="relative flex items-center">
+                    <input type="password" id="admCurPwdInput" name="old_password" required placeholder="••••••••" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 pl-9 pr-10 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-emerald-500 font-semibold transition">
+                    <i class="fa-solid fa-lock absolute left-3 text-slate-400 text-xs pointer-events-none"></i>
+                    <button type="button" onclick="toggleAdminPwdVisibility('admCurPwdInput', 'admCurPwdIcon')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-emerald-600 focus:outline-none p-1 transition flex items-center justify-center">
+                        <i id="admCurPwdIcon" class="fa-regular fa-eye text-xs"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Password Baru -->
+            <div>
+                <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Password Baru *</label>
+                <div class="relative flex items-center">
+                    <input type="password" id="admNewPwdInput" name="new_password" required minlength="6" placeholder="Minimal 6 karakter" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 pl-9 pr-10 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-emerald-500 font-semibold transition">
+                    <i class="fa-solid fa-shield-halved absolute left-3 text-slate-400 text-xs pointer-events-none"></i>
+                    <button type="button" onclick="toggleAdminPwdVisibility('admNewPwdInput', 'admNewPwdIcon')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-emerald-600 focus:outline-none p-1 transition flex items-center justify-center">
+                        <i id="admNewPwdIcon" class="fa-regular fa-eye text-xs"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Konfirmasi Password Baru -->
+            <div>
+                <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Konfirmasi Password Baru *</label>
+                <div class="relative flex items-center">
+                    <input type="password" id="admConfirmPwdInput" name="confirm_password" required minlength="6" placeholder="Ulangi password baru" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 pl-9 pr-10 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-emerald-500 font-semibold transition">
+                    <i class="fa-solid fa-circle-check absolute left-3 text-slate-400 text-xs pointer-events-none"></i>
+                    <button type="button" onclick="toggleAdminPwdVisibility('admConfirmPwdInput', 'admConfirmPwdIcon')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-emerald-600 focus:outline-none p-1 transition flex items-center justify-center">
+                        <i id="admConfirmPwdIcon" class="fa-regular fa-eye text-xs"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 text-[10px] text-slate-500 font-bold flex items-center gap-1.5">
+                <i class="fa-solid fa-lock text-emerald-600"></i> Encrypted & Secured dengan BCRYPT.
+            </div>
+
+            <div class="flex items-center justify-end gap-2 pt-1">
+                <button type="button" onclick="closeAdminPwdModal()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition active:scale-95">
+                    Batal
+                </button>
+                <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl uppercase tracking-wider text-xs shadow-md shadow-emerald-600/20 transition active:scale-95">
+                    Simpan Password
+                </button>
+            </div>
+        </form>
+
+    </div>
+</div>
+
 <!-- SCRIPT LOGIC RESPONSIF SIDEBAR & MEMORI LOCALSTORAGE -->
 <script>
+    function openAdminPwdModal() {
+        const modal = document.getElementById('adminChangePasswordModal');
+        if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeAdminPwdModal() {
+        const modal = document.getElementById('adminChangePasswordModal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    function toggleAdminPwdVisibility(inputId, iconId) {
+        const pwdInput = document.getElementById(inputId);
+        const toggleIcon = document.getElementById(iconId);
+        
+        if (pwdInput && toggleIcon) {
+            if (pwdInput.type === 'password') {
+                pwdInput.type = 'text';
+                toggleIcon.classList.remove('fa-eye');
+                toggleIcon.classList.add('fa-eye-slash');
+            } else {
+                pwdInput.type = 'password';
+                toggleIcon.classList.remove('fa-eye-slash');
+                toggleIcon.classList.add('fa-eye');
+            }
+        }
+    }
+
     (function() {
         const sidebar = document.getElementById('mainSidebar');
         const backdrop = document.getElementById('mobileSidebarBackdrop');
@@ -401,3 +570,11 @@ if (isset($pdo)) {
         };
     })();
 </script>
+
+<?php if (!empty($admin_pwd_error) || !empty($admin_pwd_success)): ?>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        openAdminPwdModal();
+    });
+</script>
+<?php endif; ?>

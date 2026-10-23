@@ -12,6 +12,41 @@ $user_id   = $_SESSION['user_id'];
 $user_nama = $_SESSION['nama'] ?? 'Karyawan';
 $user_role = $_SESSION['role'] ?? 'Karyawan';
 
+$pwd_error   = '';
+$pwd_success = '';
+
+// Handle Ganti Password Mandiri Karyawan
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password_action'])) {
+    $old_password     = $_POST['old_password'] ?? '';
+    $new_password     = $_POST['new_password'] ?? '';
+    $confirm_password = $_POST['confirm_password'] ?? '';
+
+    if (!empty($old_password) && !empty($new_password) && !empty($confirm_password)) {
+        if ($new_password !== $confirm_password) {
+            $pwd_error = "Konfirmasi password baru tidak cocok! Harap periksa kembali.";
+        } elseif (strlen($new_password) < 6) {
+            $pwd_error = "Password baru minimal terdiri dari 6 karakter!";
+        } else {
+            // Fetch password user saat ini dari database
+            $stmtUser = $pdo->prepare("SELECT password FROM users WHERE id = ? LIMIT 1");
+            $stmtUser->execute([$user_id]);
+            $uData = $stmtUser->fetch();
+
+            if ($uData && (password_verify($old_password, $uData['password']) || md5($old_password) === $uData['password'] || $old_password === $uData['password'])) {
+                $hashed_new = password_hash($new_password, PASSWORD_BCRYPT);
+                $stmtUpdatePwd = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
+                $stmtUpdatePwd->execute([$hashed_new, $user_id]);
+
+                $pwd_success = "Password akun Anda berhasil diperbarui secara aman!";
+            } else {
+                $pwd_error = "Password lama yang Anda masukkan salah!";
+            }
+        }
+    } else {
+        $pwd_error = "Mohon lengkapi seluruh kolom untuk mengganti password.";
+    }
+}
+
 // Handle Update Progress + Upload File dari Karyawan
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_progress'])) {
     $task_id        = $_POST['task_id'];
@@ -253,6 +288,11 @@ foreach ($myTasks as $tk) {
                     </div>
                 </div>
 
+                <!-- Tombol Ganti Password Mandiri -->
+                <button onclick="openPwdModal()" class="btn-press text-[11px] bg-emerald-700/80 hover:bg-emerald-600 border border-emerald-500/40 text-white px-3 py-1.5 rounded-xl flex items-center gap-1.5 font-extrabold shadow-sm">
+                    <i class="fa-solid fa-key text-emerald-300"></i><span class="hidden sm:inline">Ganti Password</span>
+                </button>
+
                 <?php if (strtolower($user_role) === 'admin'): ?>
                     <a href="modules/projects/index.php" class="btn-press text-[11px] bg-white/10 hover:bg-white/20 border border-white/20 text-white px-3 py-1.5 rounded-xl flex items-center gap-1.5 font-extrabold">
                         <i class="fa-solid fa-gauge text-emerald-300"></i><span class="hidden sm:inline">Panel Admin</span>
@@ -286,6 +326,21 @@ foreach ($myTasks as $tk) {
                 <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
             </div>
         </div>
+
+        <!-- NOTIFIKASI HASIL GANTI PASSWORD -->
+        <?php if ($pwd_error): ?>
+            <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-2xl text-xs font-bold mb-5 flex items-center gap-2.5 shadow-2xs">
+                <i class="fa-solid fa-triangle-exclamation text-base text-red-600 shrink-0"></i>
+                <div><?= $pwd_error ?></div>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($pwd_success): ?>
+            <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-2xl text-xs font-bold mb-5 flex items-center gap-2.5 shadow-2xs">
+                <i class="fa-solid fa-circle-check text-base text-emerald-600 shrink-0"></i>
+                <div><?= $pwd_success ?></div>
+            </div>
+        <?php endif; ?>
 
         <!-- STAT CARDS -->
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
@@ -611,7 +666,102 @@ foreach ($myTasks as $tk) {
 
     </main>
 
+    <!-- ========================================================================= -->
+    <!-- MODAL FORM GANTI PASSWORD MANDIRI (ELEGANT & CLEAN) -->
+    <!-- ========================================================================= -->
+    <div id="changePasswordModal" class="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-white border border-slate-200 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative animate-in fade-in zoom-in-95 duration-200 text-xs">
+            
+            <div class="p-4 bg-slate-900 text-white flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-key text-emerald-400 text-sm"></i>
+                    <h3 class="text-xs font-black uppercase tracking-wider">Pembaruan Password Akun</h3>
+                </div>
+                <button onclick="closePwdModal()" class="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark text-xs"></i>
+                </button>
+            </div>
+
+            <form action="" method="POST" class="p-5 space-y-3.5">
+                <input type="hidden" name="change_password_action" value="1">
+
+                <!-- Password Saat Ini -->
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Password Saat Ini / Standar *</label>
+                    <div class="relative flex items-center">
+                        <input type="password" id="curPwdInput" name="old_password" required placeholder="••••••••" class="input-glow w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 pl-9 pr-10 text-xs text-slate-800 focus:outline-none focus:bg-white font-semibold">
+                        <i class="fa-solid fa-lock absolute left-3 text-slate-400 text-xs pointer-events-none"></i>
+                        <button type="button" onclick="togglePasswordVisibility('curPwdInput', 'curPwdIcon')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-emerald-600 focus:outline-none p-1 transition flex items-center justify-center">
+                            <i id="curPwdIcon" class="fa-regular fa-eye text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Password Baru -->
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Password Baru *</label>
+                    <div class="relative flex items-center">
+                        <input type="password" id="newPwdInput" name="new_password" required minlength="6" placeholder="Minimal 6 karakter" class="input-glow w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 pl-9 pr-10 text-xs text-slate-800 focus:outline-none focus:bg-white font-semibold">
+                        <i class="fa-solid fa-shield-halved absolute left-3 text-slate-400 text-xs pointer-events-none"></i>
+                        <button type="button" onclick="togglePasswordVisibility('newPwdInput', 'newPwdIcon')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-emerald-600 focus:outline-none p-1 transition flex items-center justify-center">
+                            <i id="newPwdIcon" class="fa-regular fa-eye text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Konfirmasi Password Baru -->
+                <div>
+                    <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Konfirmasi Password Baru *</label>
+                    <div class="relative flex items-center">
+                        <input type="password" id="confirmPwdInput" name="confirm_password" required minlength="6" placeholder="Ulangi password baru Anda" class="input-glow w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 pl-9 pr-10 text-xs text-slate-800 focus:outline-none focus:bg-white font-semibold">
+                        <i class="fa-solid fa-circle-check absolute left-3 text-slate-400 text-xs pointer-events-none"></i>
+                        <button type="button" onclick="togglePasswordVisibility('confirmPwdInput', 'confirmPwdIcon')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-emerald-600 focus:outline-none p-1 transition flex items-center justify-center">
+                            <i id="confirmPwdIcon" class="fa-regular fa-eye text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 text-[10px] text-slate-500 font-bold flex items-center gap-1.5">
+                    <i class="fa-solid fa-lock text-emerald-600"></i> Password baru akan langsung dienkripsi secara aman.
+                </div>
+
+                <div class="flex items-center justify-end gap-2 pt-1">
+                    <button type="button" onclick="closePwdModal()" class="btn-press px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">
+                        Batal
+                    </button>
+                    <button type="submit" class="btn-press px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl uppercase tracking-wider text-xs shadow-md shadow-emerald-600/20">
+                        Simpan Password Baru
+                    </button>
+                </div>
+            </form>
+
+        </div>
+    </div>
+
     <script>
+        function openPwdModal() {
+            document.getElementById('changePasswordModal').classList.remove('hidden');
+        }
+
+        function closePwdModal() {
+            document.getElementById('changePasswordModal').classList.add('hidden');
+        }
+
+        function togglePasswordVisibility(inputId, iconId) {
+            const pwdInput = document.getElementById(inputId);
+            const toggleIcon = document.getElementById(iconId);
+            
+            if (pwdInput.type === 'password') {
+                pwdInput.type = 'text';
+                toggleIcon.classList.remove('fa-eye');
+                toggleIcon.classList.add('fa-eye-slash');
+            } else {
+                pwdInput.type = 'password';
+                toggleIcon.classList.remove('fa-eye-slash');
+                toggleIcon.classList.add('fa-eye');
+            }
+        }
+
         let currentStatusFilter = 'all';
         const projectsPerPage = 3;
         let currentPage = 1;
