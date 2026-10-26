@@ -1,8 +1,9 @@
 <?php
 session_start();
+date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../../config/database.php';
 
-// Proteksi Halaman: Wajib Login & Role Guard
+// Proteksi Halaman: Wajib Login & Role Guard Admin
 if (!isset($_SESSION['user_id'])) {
     header("Location: ../../login.php");
     exit;
@@ -13,7 +14,7 @@ if (strtolower($_SESSION['role'] ?? '') !== 'admin') {
     exit;
 }
 
-$id = $_GET['id'] ?? null;
+$id = intval($_GET['id'] ?? 0);
 if (!$id) {
     header("Location: index.php");
     exit;
@@ -28,7 +29,7 @@ function logProjectActivity($pdo, $project_id, $user_id, $nama_user, $aktivitas,
     $stmt->execute([$project_id, $user_id, $nama_user, $aktivitas, $tipe]);
 }
 
-// 1. Handle Update Data Proyek (Termasuk Kategori RAB & Custom RAB)
+// 1. Handle Update Data Proyek & SINKRONISASI BIDIREKSIONAL KE KEBUTUHAN KLIEN
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_project'])) {
     $nama_projek  = trim($_POST['nama_projek']);
     $klien        = trim($_POST['klien']);
@@ -63,6 +64,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_project'])) {
         $stmtUp = $pdo->prepare("UPDATE projects SET nama_projek = ?, klien = ?, budget = ?, status = ?, deadline = ?, kategori_rab = ?, rab_custom_data = ? WHERE id = ?");
         $stmtUp->execute([$nama_projek, $klien, $budget, $status, $deadline, $kategori_rab, $rab_custom_json, $id]);
 
+        // Cek jika proyek terhubung ke Kebutuhan Klien (requirement_id)
+        $stmtGetReq = $pdo->prepare("SELECT requirement_id FROM projects WHERE id = ?");
+        $stmtGetReq->execute([$id]);
+        $reqId = $stmtGetReq->fetchColumn();
+
+        if ($reqId) {
+            if ($status === 'In Progress' || $status === 'Completed') {
+                $pdo->prepare("UPDATE client_requirements SET status = 'Deal / Accepted' WHERE id = ?")->execute([$reqId]);
+            } elseif ($status === 'On Hold') {
+                $pdo->prepare("UPDATE client_requirements SET status = 'Proposal Sent' WHERE id = ?")->execute([$reqId]);
+            }
+        }
+
         logProjectActivity($pdo, $id, $current_user_id, $current_user_nama, "Memperbarui konfigurasi proyek, status '$status' & Kategori RAB '$kategori_rab'", 'info');
 
         header("Location: detail.php?id=" . $id . "&msg=project_updated");
@@ -94,7 +108,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_task'])) {
         $stmtTask->execute([$id, $primary_user_id, $primary_user_id, $nama_tugas, $prioritas, $deadline]);
         $new_task_id = $pdo->lastInsertId();
 
-        // Simpan ke task_assignees
         $stmtAssign = $pdo->prepare("INSERT INTO task_assignees (task_id, user_id) VALUES (?, ?)");
         $names = [];
         foreach ($assigned_users as $u_id) {
@@ -144,7 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qc_action'])) {
     }
 }
 
-// Fetch List Karyawan & Daftar Jabatan Unik
+// Fetch Karyawan & Jabatan Unik
 $users = $pdo->query("SELECT * FROM users ORDER BY nama ASC")->fetchAll();
 $jabatans = $pdo->query("SELECT DISTINCT jabatan FROM users WHERE jabatan IS NOT NULL AND jabatan != '' ORDER BY jabatan ASC")->fetchAll(PDO::FETCH_COLUMN);
 
@@ -200,7 +213,6 @@ foreach ($allTasks as $tk) {
 
 $progressPercent = $totalTasks > 0 ? round(($completedTasks / $totalTasks) * 100) : 0;
 
-// Parse existing Custom RAB Data if any
 $existingCustomRab = [];
 if (!empty($project['rab_custom_data'])) {
     $existingCustomRab = json_decode($project['rab_custom_data'], true) ?? [];
@@ -210,67 +222,65 @@ require_once __DIR__ . '/../../includes/header.php';
 require_once __DIR__ . '/../../includes/sidebar.php';
 ?>
 
-<!-- Include Chart.js -->
+<!-- Google Fonts: Plus Jakarta Sans -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-    .btn-press { transition: transform .15s ease, background-color .2s ease, box-shadow .2s ease; }
-    .btn-press:active { transform: scale(.96); }
-
-    .input-glow { transition: box-shadow .2s ease, border-color .2s ease; }
-    .input-glow:focus { border-color: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.15); }
-
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    body, input, select, button, h1, h2, h3, h4, h5, h6, textarea { 
+        font-family: 'Plus Jakarta Sans', sans-serif !important; 
+    }
+    .btn-press { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+    .btn-press:active { transform: translateY(1px); }
+    .input-glow:focus { border-color: #059669; box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.12); }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
     ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-    .overdue-row {
-        background-color: rgba(254, 242, 242, 0.75) !important;
-    }
-    .overdue-row:hover {
-        background-color: rgba(254, 226, 226, 0.95) !important;
-    }
+    .overdue-row { background-color: rgba(254, 242, 242, 0.75) !important; }
+    .overdue-row:hover { background-color: rgba(254, 226, 226, 0.95) !important; }
 </style>
 
-<main class="flex-1 p-4 md:p-8 overflow-y-auto bg-[#f8fafc] min-h-screen w-full min-w-0 font-sans">
+<main class="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto w-full min-w-0 bg-[#f8fafc] text-slate-800 selection:bg-emerald-600 selection:text-white">
     
     <!-- Top Navigation Bar -->
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <a href="index.php" class="btn-press text-xs font-extrabold text-emerald-800 hover:text-emerald-900 flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100/80 px-3.5 py-2 rounded-xl border border-emerald-200/80 transition shadow-sm">
+        <a href="index.php" class="btn-press text-xs font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-2 bg-white hover:bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200/90 transition shadow-2xs">
             <i class="fa-solid fa-arrow-left"></i> Kembali ke Portfolio Proyek
         </a>
-        <span class="text-xs font-mono font-bold px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-600 shadow-sm flex items-center gap-1.5">
+        <span class="text-xs font-mono font-semibold px-3 py-1.5 rounded-xl bg-white border border-slate-200/90 text-slate-600 shadow-2xs flex items-center gap-1.5">
             <i class="fa-solid fa-hashtag text-emerald-600"></i> PROJ-<?= sprintf("%03d", $project['id']) ?>
         </span>
     </div>
 
     <!-- Alert Notifications -->
     <?php if (isset($_GET['msg']) && $_GET['msg'] === 'project_updated'): ?>
-        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3.5 rounded-2xl text-xs font-bold mb-6 flex items-center gap-2.5 shadow-sm">
-            <i class="fa-solid fa-circle-check text-base text-emerald-600"></i> Konfigurasi, Kategori RAB & milestone proyek berhasil diperbarui!
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
+            <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i> Konfigurasi & status proyek berhasil diperbarui! Sinkronisasi status kebutuhan klien di-update secara otomatis.
         </div>
     <?php elseif (isset($_GET['msg']) && $_GET['msg'] === 'task_added'): ?>
-        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3.5 rounded-2xl text-xs font-bold mb-6 flex items-center gap-2.5 shadow-sm">
-            <i class="fa-solid fa-circle-check text-base text-emerald-600"></i> Alokasi modul baru berhasil didistribusikan ke tim terkait!
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
+            <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i> Alokasi modul baru berhasil didistribusikan ke tim terkait!
         </div>
     <?php elseif (isset($_GET['msg']) && $_GET['msg'] === 'approved'): ?>
-        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3.5 rounded-2xl text-xs font-bold mb-6 flex items-center gap-2.5 shadow-sm">
-            <i class="fa-solid fa-circle-check text-base text-emerald-600"></i> Modul disetujui (Approved)! Status otomatis diperbarui ke Selesai (Done).
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
+            <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i> Modul disetujui (Approved)! Status otomatis diperbarui ke Selesai (Done).
         </div>
     <?php elseif (isset($_GET['msg']) && $_GET['msg'] === 'revision_sent'): ?>
-        <div class="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3.5 rounded-2xl text-xs font-bold mb-6 flex items-center gap-2.5 shadow-sm">
-            <i class="fa-solid fa-triangle-exclamation text-base text-amber-600"></i> Catatan instruksi revisi telah berhasil dikirimkan ke tim teknis.
+        <div class="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
+            <i class="fa-solid fa-triangle-exclamation text-amber-600 text-base"></i> Catatan instruksi revisi telah berhasil dikirimkan ke tim teknis.
         </div>
     <?php endif; ?>
 
     <!-- Banner Header Proyek & Executive Summary -->
-    <div class="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-sm mb-6 relative overflow-hidden">
+    <div class="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs mb-6 relative overflow-hidden">
         <div class="flex flex-col lg:flex-row justify-between lg:items-center gap-6">
             
             <div class="space-y-3 flex-1 min-w-0">
-                <div class="flex items-center gap-2.5 flex-wrap">
-                    <span class="px-3 py-1 rounded-lg text-[10px] uppercase font-black border tracking-wider
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="px-2.5 py-1 rounded-lg text-[10px] uppercase font-semibold border tracking-wider
                         <?php
                             switch($project['status']) {
                                 case 'In Progress': echo 'bg-blue-50 text-blue-700 border-blue-200'; break;
@@ -282,55 +292,57 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                         <i class="fa-solid fa-circle text-[6px] mr-1.5 align-middle"></i><?= htmlspecialchars($project['status']) ?>
                     </span>
 
-                    <span class="px-3 py-1 rounded-lg text-[10px] uppercase font-black bg-indigo-50 text-indigo-700 border border-indigo-200 tracking-wider">
+                    <span class="px-2.5 py-1 rounded-lg text-[10px] uppercase font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 tracking-wider">
                         RAB: <?= htmlspecialchars($project['kategori_rab'] ?? 'Website') ?>
                     </span>
 
-                    <span class="text-xs text-slate-500 font-bold flex items-center gap-1.5 bg-slate-50 px-3 py-1 rounded-lg border border-slate-200/80">
-                        <i class="fa-regular fa-calendar-check text-emerald-600"></i> Target Deadline: <strong class="text-slate-800 font-extrabold"><?= date('d M Y', strtotime($project['deadline'])) ?></strong>
+                    <span class="text-xs text-slate-500 font-normal flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200/80">
+                        <i class="fa-regular fa-calendar-check text-emerald-600"></i> Target Deadline: <strong class="text-slate-800 font-semibold"><?= date('d M Y', strtotime($project['deadline'])) ?></strong>
                     </span>
                 </div>
 
-                <h1 class="text-2xl md:text-3xl font-black text-slate-900 tracking-tight leading-tight truncate"><?= htmlspecialchars($project['nama_projek']) ?></h1>
+                <h1 class="text-xl md:text-2xl font-bold text-slate-900 tracking-tight leading-tight truncate"><?= htmlspecialchars($project['nama_projek']) ?></h1>
                 
-                <div class="text-xs text-slate-500 flex items-center gap-3 flex-wrap">
-                    <span>Mitra Klien: <strong class="text-slate-800 font-extrabold"><?= htmlspecialchars($project['klien']) ?></strong></span>
+                <div class="text-xs sm:text-sm text-slate-500 flex items-center gap-3 flex-wrap font-normal">
+                    <span>Mitra Klien: <strong class="text-slate-800 font-semibold"><?= htmlspecialchars($project['klien']) ?></strong></span>
                     <span class="text-slate-300">•</span>
-                    <span>Nilai Kontrak Workload: <strong class="text-emerald-700 font-black font-mono text-sm">Rp <?= number_format($project['budget'], 0, ',', '.') ?></strong></span>
+                    <span>Nilai Kontrak Workload: <strong class="text-emerald-700 font-bold font-mono text-sm">Rp <?= number_format($project['budget'], 0, ',', '.') ?></strong></span>
                 </div>
             </div>
 
             <!-- Visual Donut Chart Summary -->
-            <div class="flex items-center gap-4 bg-slate-50/90 p-3.5 rounded-2xl border border-slate-200/80 shrink-0">
+            <div class="flex items-center gap-4 bg-slate-50/90 p-3.5 rounded-xl border border-slate-200/80 shrink-0">
                 <div class="w-20 h-20 relative">
                     <canvas id="projectProgressChart"></canvas>
                 </div>
                 <div class="text-xs space-y-1">
-                    <span class="text-[9px] uppercase font-black tracking-wider text-slate-400 block">Status Modul</span>
-                    <p class="font-extrabold text-emerald-700 flex items-center gap-1.5"><i class="fa-solid fa-square text-[9px] text-emerald-500"></i> <?= $completedTasks ?> Done</p>
-                    <p class="font-extrabold text-purple-700 flex items-center gap-1.5"><i class="fa-solid fa-square text-[9px] text-purple-500"></i> <?= $readyReviewTasks ?> Siap QC</p>
-                    <p class="font-extrabold text-blue-700 flex items-center gap-1.5"><i class="fa-solid fa-square text-[9px] text-blue-500"></i> <?= $inProgressTasks ?> In Progress</p>
+                    <span class="text-[10px] uppercase font-semibold tracking-wider text-slate-400 block mb-0.5">Status Modul</span>
+                    <p class="font-semibold text-emerald-700 flex items-center gap-1.5"><i class="fa-solid fa-square text-[9px] text-emerald-500"></i> <?= $completedTasks ?> Done</p>
+                    <p class="font-semibold text-purple-700 flex items-center gap-1.5"><i class="fa-solid fa-square text-[9px] text-purple-500"></i> <?= $readyReviewTasks ?> Siap QC</p>
+                    <p class="font-semibold text-blue-700 flex items-center gap-1.5"><i class="fa-solid fa-square text-[9px] text-blue-500"></i> <?= $inProgressTasks ?> In Progress</p>
                 </div>
             </div>
 
-            <!-- TOMBOL DIKEMBALIKAN KELAPORAN PDF ORIGINAL -->
             <div class="flex items-center gap-2 shrink-0">
-                <button onclick="openEditProjectModal()" class="btn-press px-4 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300/80 rounded-xl text-xs font-extrabold transition shadow-sm flex items-center justify-center gap-2">
-                    <i class="fa-regular fa-pen-to-square"></i> Konfigurasi Proyek
+                <button onclick="openEditProjectModal()" class="btn-press px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300/80 rounded-xl text-xs font-semibold transition shadow-2xs flex items-center justify-center gap-2">
+                    <i class="fa-regular fa-pen-to-square"></i> Konfigurasi
                 </button>
-                <a href="print_report.php?id=<?= $id ?>" target="_blank" class="btn-press px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-extrabold transition shadow-md flex items-center justify-center gap-2">
+                <a href="../proposals/print_proposal.php?project_id=<?= $id ?>" target="_blank" class="btn-press px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-file-signature"></i> Proposal SPH
+                </a>
+                <a href="print_report.php?id=<?= $id ?>" target="_blank" class="btn-press px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center justify-center gap-2">
                     <i class="fa-solid fa-print"></i> Laporan PDF
                 </a>
             </div>
         </div>
 
         <div class="pt-5 mt-5 border-t border-slate-100">
-            <div class="flex justify-between text-xs font-black mb-2">
+            <div class="flex justify-between text-xs font-semibold mb-1.5">
                 <span class="text-slate-500 uppercase tracking-wider text-[10px]">Progress Completion Milestone</span>
-                <span class="text-emerald-700 font-black"><?= $progressPercent ?>% Completed (<?= $completedTasks ?>/<?= $totalTasks ?> Modul Selesai)</span>
+                <span class="text-emerald-700 font-bold"><?= $progressPercent ?>% Completed (<?= $completedTasks ?>/<?= $totalTasks ?> Modul Selesai)</span>
             </div>
-            <div class="w-full bg-slate-100 rounded-full h-3 overflow-hidden border border-slate-200/80 p-0.5">
-                <div class="bg-gradient-to-r from-emerald-500 to-teal-500 h-2 rounded-full transition-all duration-700" style="width: <?= $progressPercent ?>%"></div>
+            <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden border border-slate-200/80 p-0.5">
+                <div class="bg-gradient-to-r from-emerald-500 to-teal-500 h-1.5 rounded-full transition-all duration-700" style="width: <?= $progressPercent ?>%"></div>
             </div>
         </div>
     </div>
@@ -340,29 +352,29 @@ require_once __DIR__ . '/../../includes/sidebar.php';
         
         <!-- SEKSI KIRI: FORM ALOKASIKAN MODUL BARU -->
         <div class="w-full xl:w-80 shrink-0">
-            <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-sm sticky top-6">
-                <h3 class="font-black text-slate-800 text-xs uppercase tracking-wider mb-4 flex items-center gap-2 pb-3 border-b border-slate-100">
+            <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs sticky top-6">
+                <h3 class="font-bold text-slate-800 text-xs sm:text-sm uppercase tracking-wider mb-4 flex items-center gap-2 pb-3 border-b border-slate-100">
                     <i class="fa-solid fa-users-gear text-emerald-600"></i> Alokasikan Modul Baru
                 </h3>
                 
-                <form action="" method="POST" class="space-y-4">
+                <form action="" method="POST" class="space-y-3.5 text-xs sm:text-sm">
                     <input type="hidden" name="add_task" value="1">
                     
                     <div>
-                        <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Nama Modul / Fitur *</label>
-                        <input type="text" name="nama_tugas" required placeholder="Contoh: Development Core Engine" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none">
+                        <label class="block text-xs font-medium text-slate-700 mb-1.5">Nama Modul / Fitur <span class="text-red-500">*</span></label>
+                        <input type="text" name="nama_tugas" required placeholder="Contoh: Development Core Engine" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-normal focus:outline-none placeholder:text-slate-400">
                     </div>
                     
                     <div>
-                        <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Pilih Tim Pelaksana (Multi-Select) *</label>
+                        <label class="block text-xs font-medium text-slate-700 mb-1.5">Pilih Tim Pelaksana <span class="text-red-500">*</span></label>
                         
                         <div class="space-y-1.5 mb-2">
                             <div class="relative">
-                                <input type="text" id="userSearchInput" onkeyup="filterUserList()" placeholder="Cari nama karyawan..." class="input-glow w-full px-3 py-1.5 pl-8 rounded-lg border border-slate-200 text-[11px] font-medium focus:outline-none">
+                                <input type="text" id="userSearchInput" onkeyup="filterUserList()" placeholder="Cari nama karyawan..." class="input-glow w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 pl-8 text-xs font-normal focus:outline-none placeholder:text-slate-400">
                                 <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-slate-400 text-[10px]"></i>
                             </div>
 
-                            <select id="userRoleFilter" onchange="filterUserList()" class="input-glow w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-700 bg-white focus:outline-none">
+                            <select id="userRoleFilter" onchange="filterUserList()" class="input-glow w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none">
                                 <option value="all">Semua Divisi / Jabatan</option>
                                 <?php foreach ($jabatans as $jb): ?>
                                     <option value="<?= htmlspecialchars(strtolower($jb)) ?>"><?= htmlspecialchars($jb) ?></option>
@@ -370,13 +382,13 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                             </select>
                         </div>
 
-                        <div class="max-h-48 overflow-y-auto border border-slate-200 rounded-xl p-2 space-y-1 bg-slate-50/80" id="userListContainer">
+                        <div class="max-h-44 overflow-y-auto border border-slate-200 rounded-xl p-2 space-y-1 bg-slate-50/50" id="userListContainer">
                             <?php foreach ($users as $u): ?>
                                 <?php 
                                     $userJabatanLower = strtolower($u['jabatan'] ?? 'staff');
                                     $userNamaLower    = strtolower($u['nama']);
                                 ?>
-                                <label class="user-item flex items-center gap-2 text-xs text-slate-700 font-bold cursor-pointer hover:bg-white p-1.5 rounded-lg transition" 
+                                <label class="user-item flex items-center gap-2 text-xs text-slate-700 font-medium cursor-pointer hover:bg-white p-1.5 rounded-lg transition" 
                                        data-name="<?= htmlspecialchars($userNamaLower) ?>" 
                                        data-role="<?= htmlspecialchars($userJabatanLower) ?>">
                                     <input type="checkbox" name="user_ids[]" value="<?= $u['id'] ?>" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 shrink-0">
@@ -391,8 +403,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Prioritas</label>
-                            <select name="prioritas" class="input-glow w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-extrabold text-slate-700 bg-white focus:outline-none">
+                            <label class="block text-xs font-medium text-slate-700 mb-1.5">Prioritas</label>
+                            <select name="prioritas" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:outline-none">
                                 <option value="Low">Low</option>
                                 <option value="Medium" selected>Medium</option>
                                 <option value="High">High</option>
@@ -400,12 +412,12 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                             </select>
                         </div>
                         <div>
-                            <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Target Deadline</label>
-                            <input type="date" name="deadline" required value="<?= date('Y-m-d') ?>" class="input-glow w-full px-2.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none">
+                            <label class="block text-xs font-medium text-slate-700 mb-1.5">Deadline</label>
+                            <input type="date" name="deadline" required value="<?= date('Y-m-d') ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-2.5 py-2.5 text-xs font-semibold text-slate-900 focus:outline-none">
                         </div>
                     </div>
 
-                    <button type="submit" class="btn-press w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2">
+                    <button type="submit" class="btn-press w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl transition shadow-xs flex items-center justify-center gap-2 mt-2">
                         <i class="fa-solid fa-plus text-xs"></i> Pendistribusikan Modul
                     </button>
                 </form>
@@ -414,23 +426,23 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
         <!-- SEKSI KANAN: TABEL MANAJEMEN MODUL & QC UTAMA -->
         <div class="flex-1 min-w-0">
-            <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-sm">
+            <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs">
                 
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 mb-4 border-b border-slate-100">
                     <div class="min-w-0">
-                        <h3 class="font-black text-slate-900 text-base sm:text-lg flex items-center gap-2.5 whitespace-nowrap">
-                            <i class="fa-solid fa-list-check text-emerald-600 text-xl"></i> Manajemen Modul & QC
+                        <h3 class="font-bold text-slate-900 text-base flex items-center gap-2">
+                            <i class="fa-solid fa-list-check text-emerald-600"></i> Manajemen Modul & QC
                         </h3>
-                        <p class="text-xs text-slate-400 mt-0.5 truncate font-medium">Monitoring komunikasi progress dan verifikasi hasil pengerjaan tim</p>
+                        <p class="text-xs text-slate-400 mt-0.5 font-normal">Monitoring progress dan verifikasi hasil pengerjaan tim</p>
                     </div>
 
                     <div class="flex items-center gap-2.5 shrink-0 flex-wrap sm:flex-nowrap w-full sm:w-auto">
                         <div class="relative w-full sm:w-48">
-                            <input type="text" id="taskSearchInput" onkeyup="filterTasks()" placeholder="Cari modul / tim..." class="input-glow w-full px-3.5 py-2 pl-9 rounded-xl border border-slate-200 text-xs focus:outline-none font-medium">
+                            <input type="text" id="taskSearchInput" onkeyup="filterTasks()" placeholder="Cari modul / tim..." class="input-glow w-full px-3.5 py-2 pl-9 rounded-xl border border-slate-300 text-xs focus:outline-none font-normal placeholder:text-slate-400">
                             <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
                         </div>
 
-                        <select id="statusFilterSelect" onchange="filterTasks()" class="input-glow px-3 py-2 rounded-xl border border-slate-200 text-xs font-extrabold text-slate-700 bg-white focus:outline-none w-full sm:w-auto">
+                        <select id="statusFilterSelect" onchange="filterTasks()" class="input-glow px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 bg-white focus:outline-none w-full sm:w-auto">
                             <option value="all">Semua Status</option>
                             <option value="To Do">To Do</option>
                             <option value="In Progress">In Progress</option>
@@ -440,23 +452,22 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     </div>
                 </div>
 
-                <div class="overflow-x-auto w-full">
-                    <table class="w-full text-left text-xs text-slate-600 border-collapse min-w-[720px]" id="tasksTable">
-                        <thead class="uppercase bg-slate-50 text-slate-500 font-black border-b border-slate-200 text-[10px] tracking-wider">
-                            <tr>
-                                <th class="py-3 px-3.5">Modul & Laporan</th>
-                                <th class="py-3 px-3.5 text-center">Prioritas</th>
-                                <th class="py-3 px-3.5">Tim Pelaksana</th>
-                                <th class="py-3 px-3.5 text-center">Status</th>
-                                <th class="py-3 px-3.5 text-center">Deliverables</th>
-                                <th class="py-3 px-3.5 text-center">Verifikasi PM</th>
+                <div class="w-full overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs sm:text-sm min-w-[720px]" id="tasksTable">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                <th class="py-3.5 px-4">MODUL & LAPORAN</th>
+                                <th class="py-3.5 px-4 text-center">PRIORITAS</th>
+                                <th class="py-3.5 px-4">TIM PELAKSANA</th>
+                                <th class="py-3.5 px-4 text-center">STATUS</th>
+                                <th class="py-3.5 px-4 text-center">DELIVERABLES</th>
+                                <th class="py-3.5 px-4 text-center">VERIFIKASI PM</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100" id="tasksTableBody">
                             <?php if (empty($allTasks)): ?>
                                 <tr>
-                                    <td colspan="6" class="text-center py-10 text-slate-400 font-bold">
-                                        <i class="fa-solid fa-box-open text-3xl mb-2 text-slate-300 block"></i>
+                                    <td colspan="6" class="p-8 text-center text-slate-400 font-normal">
                                         Belum ada modul pengerjaan dialokasikan untuk proyek ini.
                                     </td>
                                 </tr>
@@ -478,39 +489,39 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                             $diffDays = max(1, floor(($todayTimestamp - $taskDeadlineTS) / (60 * 60 * 24)));
                                         }
                                     ?>
-                                    <tr class="task-row hover:bg-slate-50/80 transition align-middle <?= $isOverdue ? 'overdue-row' : '' ?>" data-status="<?= htmlspecialchars($t['status']) ?>">
+                                    <tr class="task-row hover:bg-slate-50/70 transition align-middle <?= $isOverdue ? 'overdue-row' : '' ?>" data-status="<?= htmlspecialchars($t['status']) ?>">
                                         
-                                        <td class="py-3.5 px-3.5">
-                                            <div class="font-extrabold text-slate-900 text-sm task-title flex items-center gap-1.5">
+                                        <td class="py-3.5 px-4">
+                                            <div class="font-semibold text-slate-900 text-xs sm:text-sm task-title flex items-center gap-1.5">
                                                 <?php if ($isOverdue): ?>
                                                     <i class="fa-solid fa-bell text-red-500 text-xs animate-bounce shrink-0" title="PRIORITAS! Modul ini telah melewati deadline."></i>
                                                 <?php endif; ?>
                                                 <span><?= htmlspecialchars($t['nama_tugas']) ?></span>
                                             </div>
 
-                                            <div class="flex items-center gap-2 mt-1.5 flex-wrap">
-                                                <span class="text-[10px] font-bold flex items-center gap-1 shrink-0 <?= $isOverdue ? 'text-red-600 font-black' : 'text-slate-400' ?>">
-                                                    <i class="fa-regular fa-calendar-xmark text-[10px]"></i>
+                                            <div class="flex items-center gap-2 mt-1 flex-wrap">
+                                                <span class="text-xs font-normal flex items-center gap-1 shrink-0 <?= $isOverdue ? 'text-red-600 font-semibold' : 'text-slate-400' ?>">
+                                                    <i class="fa-regular fa-calendar-xmark text-xs"></i>
                                                     Deadline: <?= date('d M Y', strtotime($t['deadline'])) ?>
                                                 </span>
 
                                                 <?php if ($isOverdue): ?>
-                                                    <span class="px-2 py-0.5 rounded-md text-[9px] bg-red-600 text-white font-black uppercase tracking-wider shadow-sm flex items-center gap-1 shrink-0">
-                                                        <i class="fa-solid fa-circle-exclamation text-[8px]"></i> Terlambat <?= $diffDays ?> Hari
+                                                    <span class="px-2 py-0.5 rounded-md text-[10px] bg-red-600 text-white font-semibold uppercase tracking-wider shadow-2xs flex items-center gap-1 shrink-0">
+                                                        Terlambat <?= $diffDays ?> Hari
                                                     </span>
                                                 <?php endif; ?>
                                                 
                                                 <?php if ($hasNote || $hasRev): ?>
                                                     <button onclick="openNoteModal('<?= htmlspecialchars(addslashes($t['nama_tugas'])) ?>', '<?= htmlspecialchars(addslashes($updaterName)) ?>', '<?= htmlspecialchars(addslashes($t['progress_notes'] ?? '')) ?>', '<?= htmlspecialchars(addslashes($t['revision_notes'] ?? '')) ?>', '<?= htmlspecialchars($t['drive_link'] ?? '') ?>')" 
-                                                        class="btn-press px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-black text-[10px] flex items-center gap-1 shadow-sm shrink-0" title="Klik untuk lihat laporan lengkap">
+                                                        class="btn-press px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-semibold text-[10px] flex items-center gap-1 shadow-2xs shrink-0" title="Klik untuk lihat laporan lengkap">
                                                         <i class="fa-solid fa-comments text-blue-600"></i> Laporan
                                                     </button>
                                                 <?php endif; ?>
                                             </div>
                                         </td>
 
-                                        <td class="py-3.5 px-3.5 text-center shrink-0">
-                                            <span class="px-2 py-0.5 rounded-md text-[9px] font-black uppercase inline-block border tracking-wider whitespace-nowrap
+                                        <td class="py-3.5 px-4 text-center shrink-0">
+                                            <span class="px-2.5 py-1 rounded-lg text-xs font-semibold uppercase inline-block border tracking-wider whitespace-nowrap
                                                 <?php
                                                     switch($prioLower) {
                                                         case 'urgent': echo 'bg-red-50 text-red-700 border-red-200'; break;
@@ -523,18 +534,18 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                             </span>
                                         </td>
 
-                                        <td class="py-3.5 px-3.5">
+                                        <td class="py-3.5 px-4">
                                             <div class="flex flex-col gap-1 task-assignees">
                                                 <?php foreach ($assignees as $asg): ?>
-                                                    <span class="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[10px] inline-flex items-center gap-1 w-max shadow-sm shrink-0">
-                                                        <i class="fa-solid fa-user text-[9px] text-emerald-600"></i> <?= htmlspecialchars($asg['nama']) ?>
+                                                    <span class="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200/80 font-medium text-xs inline-flex items-center gap-1 w-max shadow-2xs shrink-0">
+                                                        <i class="fa-solid fa-user text-[10px] text-emerald-600"></i> <?= htmlspecialchars($asg['nama']) ?>
                                                     </span>
                                                 <?php endforeach; ?>
                                             </div>
                                         </td>
 
-                                        <td class="py-3.5 px-3.5 text-center shrink-0">
-                                            <span class="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase inline-block border tracking-wide whitespace-nowrap
+                                        <td class="py-3.5 px-4 text-center shrink-0">
+                                            <span class="px-2.5 py-1 rounded-lg text-xs font-semibold uppercase inline-block border tracking-wider whitespace-nowrap
                                                 <?php
                                                     switch($stLower) {
                                                         case 'done': echo 'bg-emerald-50 text-emerald-700 border-emerald-200'; break;
@@ -547,27 +558,27 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                             </span>
                                         </td>
 
-                                        <td class="py-3.5 px-3.5 text-center shrink-0">
+                                        <td class="py-3.5 px-4 text-center shrink-0">
                                             <?php if (!empty($t['drive_link'])): ?>
-                                                <a href="<?= htmlspecialchars($t['drive_link']) ?>" target="_blank" class="btn-press px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-bold border border-emerald-200 transition inline-flex items-center gap-1 shadow-sm whitespace-nowrap">
+                                                <a href="<?= htmlspecialchars($t['drive_link']) ?>" target="_blank" class="btn-press px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold border border-emerald-200 transition inline-flex items-center gap-1 shadow-2xs whitespace-nowrap">
                                                     <i class="fa-brands fa-google-drive text-emerald-600"></i> Drive
                                                 </a>
                                             <?php else: ?>
-                                                <span class="text-slate-400 text-[10px] font-semibold italic whitespace-nowrap">Belum ada</span>
+                                                <span class="text-slate-400 text-xs font-normal italic whitespace-nowrap">Belum ada</span>
                                             <?php endif; ?>
                                         </td>
 
-                                        <td class="py-3.5 px-3.5 text-center shrink-0">
+                                        <td class="py-3.5 px-4 text-center shrink-0">
                                             <?php if ($stLower === 'done'): ?>
-                                                <span class="text-emerald-600 font-black text-xs inline-flex items-center gap-1 whitespace-nowrap"><i class="fa-solid fa-circle-check"></i> Approved</span>
+                                                <span class="text-emerald-600 font-semibold text-xs inline-flex items-center gap-1 whitespace-nowrap"><i class="fa-solid fa-circle-check"></i> Approved</span>
                                             <?php else: ?>
                                                 <div class="flex items-center justify-center gap-1.5 whitespace-nowrap">
                                                     <form action="" method="POST" onsubmit="return confirm('Setujui pengerjaan modul ini?')">
                                                         <input type="hidden" name="task_id" value="<?= $t['id'] ?>">
                                                         <input type="hidden" name="qc_action" value="approve">
-                                                        <button type="submit" class="btn-press px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold shadow-sm transition">Approve</button>
+                                                        <button type="submit" class="btn-press px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs transition">Approve</button>
                                                     </form>
-                                                    <button onclick="openRevisionModal('<?= $t['id'] ?>', '<?= htmlspecialchars(addslashes($t['nama_tugas'])) ?>')" class="btn-press px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold shadow-sm transition">Revisi</button>
+                                                    <button onclick="openRevisionModal('<?= $t['id'] ?>', '<?= htmlspecialchars(addslashes($t['nama_tugas'])) ?>')" class="btn-press px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold shadow-xs transition">Revisi</button>
                                                 </div>
                                             <?php endif; ?>
                                         </td>
@@ -578,9 +589,9 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     </table>
                 </div>
 
-                <div class="flex flex-col sm:flex-row justify-between items-center gap-3 pt-4 mt-4 border-t border-slate-100 text-xs">
-                    <span class="text-slate-500 font-bold text-[11px]" id="paginationInfo">Menampilkan 0 data</span>
-                    <div class="flex items-center gap-1" id="paginationControls"></div>
+                <div class="p-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-slate-500 bg-slate-50/50 mt-4">
+                    <span class="font-medium" id="paginationInfo">Menampilkan 0 data</span>
+                    <div class="flex items-center gap-1.5" id="paginationControls"></div>
                 </div>
 
             </div>
@@ -590,83 +601,83 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 </main>
 
 <!-- MODAL POPUP CHAT BUBBLE LAPORAN & CATATAN KARYAWAN -->
-<div id="noteModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+<div id="noteModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative text-xs sm:text-sm">
         <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
-            <h3 class="font-black text-slate-800 text-base flex items-center gap-2">
+            <h3 class="font-bold text-slate-900 text-base flex items-center gap-2">
                 <i class="fa-solid fa-comments text-blue-600"></i> Detail Laporan & Catatan
             </h3>
-            <button onclick="closeNoteModal()" class="text-slate-400 hover:text-slate-600 text-sm">
-                <i class="fa-solid fa-xmark"></i>
+            <button onclick="closeNoteModal()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition focus:outline-none">
+                <i class="fa-solid fa-xmark text-xs"></i>
             </button>
         </div>
 
         <div class="space-y-4">
             <div>
-                <span class="text-[9px] font-black uppercase text-slate-400 block mb-1">Nama Modul</span>
-                <p class="font-black text-slate-900 text-sm" id="noteModalTaskName">-</p>
+                <span class="text-[10px] font-semibold uppercase text-slate-400 block mb-0.5">Nama Modul</span>
+                <p class="font-bold text-slate-900 text-sm" id="noteModalTaskName">-</p>
             </div>
 
-            <div id="noteModalUserBox" class="bg-blue-50 border border-blue-200 rounded-2xl p-4">
-                <div class="flex items-center gap-2 font-black text-blue-900 mb-1 text-xs">
+            <div id="noteModalUserBox" class="bg-blue-50 border border-blue-200/80 rounded-2xl p-4">
+                <div class="flex items-center gap-2 font-bold text-blue-900 mb-1 text-xs">
                     <div class="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px]">
                         <i class="fa-solid fa-user"></i>
                     </div>
                     <span id="noteModalUser">-</span>
                 </div>
-                <p class="text-blue-800 text-xs italic leading-relaxed pl-8 font-medium" id="noteModalUserText">"-"</p>
+                <p class="text-blue-800 text-xs italic leading-relaxed pl-8 font-normal" id="noteModalUserText">"-"</p>
             </div>
 
-            <div id="noteModalRevBox" class="bg-red-50 border border-red-200 rounded-2xl p-4 hidden">
-                <div class="flex items-center gap-2 font-black text-red-900 mb-1 text-xs">
+            <div id="noteModalRevBox" class="bg-red-50 border border-red-200/80 rounded-2xl p-4 hidden">
+                <div class="flex items-center gap-2 font-bold text-red-900 mb-1 text-xs">
                     <div class="w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px]">
                         <i class="fa-solid fa-triangle-exclamation"></i>
                     </div>
                     <span>Catatan Instruksi Revisi PM:</span>
                 </div>
-                <p class="text-red-800 text-xs leading-relaxed pl-8 font-semibold" id="noteModalRevText">-</p>
+                <p class="text-red-800 text-xs leading-relaxed pl-8 font-medium" id="noteModalRevText">-</p>
             </div>
 
-            <div id="noteModalDriveBox" class="hidden pt-2">
-                <a id="noteModalDriveLink" href="#" target="_blank" class="btn-press w-full py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition">
+            <div id="noteModalDriveBox" class="hidden pt-1">
+                <a id="noteModalDriveLink" href="#" target="_blank" class="btn-press w-full py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition">
                     <i class="fa-brands fa-google-drive text-emerald-600 text-sm"></i> Buka File / Google Drive Terlampir
                 </a>
             </div>
         </div>
 
-        <div class="flex justify-end pt-5 mt-4 border-t border-slate-100">
-            <button onclick="closeNoteModal()" class="btn-press px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow">Tutup</button>
+        <div class="flex justify-end pt-4 mt-4 border-t border-slate-100">
+            <button onclick="closeNoteModal()" class="btn-press px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs">Tutup</button>
         </div>
     </div>
 </div>
 
 <!-- MODAL EDIT DETAIL PROYEK & KATEGORI RAB -->
-<div id="editProjectModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
-    <div class="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-2xl relative my-8">
+<div id="editProjectModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-2xl relative my-8 text-xs sm:text-sm">
         <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
-            <h3 class="font-black text-slate-800 text-base flex items-center gap-2">
+            <h3 class="font-bold text-slate-900 text-base flex items-center gap-2">
                 <i class="fa-regular fa-pen-to-square text-amber-500"></i> Edit Detail & Status Proyek
             </h3>
-            <button onclick="closeEditProjectModal()" class="text-slate-400 hover:text-slate-600 text-sm">
-                <i class="fa-solid fa-xmark"></i>
+            <button onclick="closeEditProjectModal()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition focus:outline-none">
+                <i class="fa-solid fa-xmark text-xs"></i>
             </button>
         </div>
 
-        <form action="" method="POST" onsubmit="return validateEditCustomRabSubmit()" class="space-y-4">
+        <form action="" method="POST" onsubmit="return validateEditCustomRabSubmit()" class="space-y-3.5">
             <input type="hidden" name="update_project" value="1">
 
             <div>
-                <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Status Proyek *</label>
-                <select name="status" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs bg-white font-extrabold text-slate-700 focus:outline-none">
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Status Proyek <span class="text-red-500">*</span></label>
+                <select name="status" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
                     <option value="In Progress" <?= $project['status'] === 'In Progress' ? 'selected' : '' ?>>In Progress (Sedang Berjalan)</option>
-                    <option value="On Hold" <?= $project['status'] === 'On Hold' ? 'selected' : '' ?>>On Hold (Ditunda sementara)</option>
+                    <option value="On Hold" <?= $project['status'] === 'On Hold' ? 'selected' : '' ?>>On Hold (Ditunda / Proposal Sent)</option>
                     <option value="Completed" <?= $project['status'] === 'Completed' ? 'selected' : '' ?>>Completed (Selesai)</option>
                 </select>
             </div>
 
             <div>
-                <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Kategori & Template RAB *</label>
-                <select name="kategori_rab" id="editKategoriRabSelect" onchange="toggleEditCustomRabSection()" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs bg-white font-extrabold text-slate-700 focus:outline-none">
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Kategori & Template RAB <span class="text-red-500">*</span></label>
+                <select name="kategori_rab" id="editKategoriRabSelect" onchange="toggleEditCustomRabSection()" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
                     <option value="Website" <?= ($project['kategori_rab'] ?? '') === 'Website' ? 'selected' : '' ?>>RAB Website (Auto-Calculate)</option>
                     <option value="IoT" <?= ($project['kategori_rab'] ?? '') === 'IoT' ? 'selected' : '' ?>>RAB IoT Hardware & Cloud (Auto-Calculate)</option>
                     <option value="Mobile" <?= ($project['kategori_rab'] ?? '') === 'Mobile' ? 'selected' : '' ?>>RAB Mobile App Android/iOS (Auto-Calculate)</option>
@@ -675,13 +686,13 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             </div>
 
             <!-- SECTION DYNAMIC CUSTOM RAB (UNTUK EDITING) -->
-            <div id="editCustomRabSection" class="<?= ($project['kategori_rab'] ?? '') === 'Custom' ? '' : 'hidden' ?> bg-slate-50 border border-slate-200/80 p-3.5 rounded-xl space-y-3">
-                <div class="flex justify-between items-center border-b border-slate-200/80 pb-2">
+            <div id="editCustomRabSection" class="<?= ($project['kategori_rab'] ?? '') === 'Custom' ? '' : 'hidden' ?> bg-slate-50 border border-slate-200 p-3.5 rounded-xl space-y-3">
+                <div class="flex justify-between items-center border-b border-slate-200 pb-2">
                     <div>
-                        <span class="text-[10px] font-black uppercase text-emerald-800 block">Rincian Custom RAB (%)</span>
-                        <span class="text-[9px] font-bold text-slate-400">Total alokasi persen harus tepat 100%</span>
+                        <span class="text-xs font-bold text-emerald-800 uppercase block">Rincian Custom RAB (%)</span>
+                        <span class="text-[11px] font-normal text-slate-400">Total alokasi persen harus tepat 100%</span>
                     </div>
-                    <button type="button" onclick="addEditCustomRabRow()" class="text-[10px] font-black text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-2 py-1 rounded-lg transition">
+                    <button type="button" onclick="addEditCustomRabRow()" class="text-xs font-semibold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-2.5 py-1 rounded-lg transition">
                         + Tambah Baris
                     </button>
                 </div>
@@ -690,11 +701,11 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     <?php if (!empty($existingCustomRab)): ?>
                         <?php foreach ($existingCustomRab as $cr): ?>
                             <div class="grid grid-cols-12 gap-1.5 items-center edit-custom-rab-row">
-                                <input type="text" name="custom_komponen[]" value="<?= htmlspecialchars($cr['komponen'] ?? '') ?>" placeholder="Komponen" class="col-span-4 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none">
-                                <input type="text" name="custom_deskripsi[]" value="<?= htmlspecialchars($cr['deskripsi'] ?? '') ?>" placeholder="Deskripsi/Output" class="col-span-4 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium focus:outline-none">
-                                <div class="col-span-3 flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1.5">
+                                <input type="text" name="custom_komponen[]" value="<?= htmlspecialchars($cr['komponen'] ?? '') ?>" placeholder="Komponen" class="col-span-4 px-2.5 py-1.5 border border-slate-300 bg-white rounded-lg text-xs font-normal focus:outline-none">
+                                <input type="text" name="custom_deskripsi[]" value="<?= htmlspecialchars($cr['deskripsi'] ?? '') ?>" placeholder="Deskripsi/Output" class="col-span-4 px-2.5 py-1.5 border border-slate-300 bg-white rounded-lg text-xs font-normal focus:outline-none">
+                                <div class="col-span-3 flex items-center bg-white border border-slate-300 rounded-lg px-2 py-1.5">
                                     <input type="number" name="custom_persen[]" value="<?= $cr['persen'] ?? 0 ?>" step="0.1" min="0" max="100" oninput="calculateEditCustomPercentageTotal()" placeholder="0" class="w-full text-xs font-mono font-bold focus:outline-none edit-custom-persen-input">
-                                    <span class="text-xs font-black text-slate-400 ml-0.5">%</span>
+                                    <span class="text-xs font-bold text-slate-400 ml-0.5">%</span>
                                 </div>
                                 <button type="button" onclick="this.parentElement.remove(); calculateEditCustomPercentageTotal();" class="col-span-1 text-red-500 hover:text-red-700 font-bold text-center text-xs">
                                     &times;
@@ -703,11 +714,11 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                         <?php endforeach; ?>
                     <?php else: ?>
                         <div class="grid grid-cols-12 gap-1.5 items-center edit-custom-rab-row">
-                            <input type="text" name="custom_komponen[]" placeholder="Komponen" class="col-span-4 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none">
-                            <input type="text" name="custom_deskripsi[]" placeholder="Deskripsi/Output" class="col-span-4 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium focus:outline-none">
-                            <div class="col-span-3 flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1.5">
+                            <input type="text" name="custom_komponen[]" placeholder="Komponen" class="col-span-4 px-2.5 py-1.5 border border-slate-300 bg-white rounded-lg text-xs font-normal focus:outline-none">
+                            <input type="text" name="custom_deskripsi[]" placeholder="Deskripsi/Output" class="col-span-4 px-2.5 py-1.5 border border-slate-300 bg-white rounded-lg text-xs font-normal focus:outline-none">
+                            <div class="col-span-3 flex items-center bg-white border border-slate-300 rounded-lg px-2 py-1.5">
                                 <input type="number" name="custom_persen[]" step="0.1" min="0" max="100" oninput="calculateEditCustomPercentageTotal()" placeholder="0" class="w-full text-xs font-mono font-bold focus:outline-none edit-custom-persen-input">
-                                <span class="text-xs font-black text-slate-400 ml-0.5">%</span>
+                                <span class="text-xs font-bold text-slate-400 ml-0.5">%</span>
                             </div>
                             <button type="button" onclick="this.parentElement.remove(); calculateEditCustomPercentageTotal();" class="col-span-1 text-red-500 hover:text-red-700 font-bold text-center text-xs">
                                 &times;
@@ -716,8 +727,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     <?php endif; ?>
                 </div>
 
-                <div class="flex justify-between items-center pt-2 border-t border-slate-200/80 text-xs font-black">
-                    <span class="text-slate-500 text-[10px] uppercase">Total Persentase:</span>
+                <div class="flex justify-between items-center pt-2 border-t border-slate-200 text-xs font-semibold">
+                    <span class="text-slate-500 uppercase text-[10px]">Total Persentase:</span>
                     <span id="editTotalPersenBadge" class="px-2 py-0.5 rounded-md bg-amber-100 text-amber-700 text-xs font-mono">
                         0% / 100%
                     </span>
@@ -725,31 +736,31 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             </div>
 
             <div>
-                <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Nama Proyek *</label>
-                <input type="text" name="nama_projek" required value="<?= htmlspecialchars($project['nama_projek']) ?>" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none font-bold">
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Nama Proyek <span class="text-red-500">*</span></label>
+                <input type="text" name="nama_projek" required value="<?= htmlspecialchars($project['nama_projek']) ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-normal focus:outline-none placeholder:text-slate-400">
             </div>
 
             <div>
-                <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Nama Klien *</label>
-                <input type="text" name="klien" required value="<?= htmlspecialchars($project['klien']) ?>" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none font-bold">
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Nama Klien <span class="text-red-500">*</span></label>
+                <input type="text" name="klien" required value="<?= htmlspecialchars($project['klien']) ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-normal focus:outline-none placeholder:text-slate-400">
             </div>
 
             <div class="grid grid-cols-2 gap-3">
                 <div>
-                    <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Budget Proyek (Rp)</label>
-                    <input type="number" name="budget" value="<?= $project['budget'] ?>" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none font-mono font-bold">
+                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Budget Proyek (Rp)</label>
+                    <input type="number" name="budget" value="<?= $project['budget'] ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-mono font-semibold focus:outline-none">
                 </div>
 
                 <div>
-                    <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Target Deadline *</label>
-                    <input type="date" name="deadline" required value="<?= $project['deadline'] ?>" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none font-bold">
+                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Target Deadline <span class="text-red-500">*</span></label>
+                    <input type="date" name="deadline" required value="<?= $project['deadline'] ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-semibold focus:outline-none">
                 </div>
             </div>
 
-            <div class="flex justify-end gap-2 pt-3">
-                <button type="button" onclick="closeEditProjectModal()" class="btn-press px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold">Batal</button>
-                <button type="submit" class="btn-press px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20">
-                    <i class="fa-solid fa-floppy-disk mr-1"></i> Simpan Perubahan
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" onclick="closeEditProjectModal()" class="btn-press px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs">Batal</button>
+                <button type="submit" class="btn-press px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs shadow-xs flex items-center gap-1.5">
+                    <i class="fa-solid fa-floppy-disk text-xs"></i> Simpan Perubahan
                 </button>
             </div>
         </form>
@@ -757,32 +768,31 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 </div>
 
 <!-- Modal Catatan Revisi Admin -->
-<div id="revisionModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-        <h3 class="font-black text-slate-800 text-base mb-1 flex items-center gap-2">
+<div id="revisionModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-2xl relative text-xs sm:text-sm">
+        <h3 class="font-bold text-slate-900 text-base mb-1 flex items-center gap-2">
             <i class="fa-solid fa-pen-to-square text-amber-500"></i> Kirim Catatan Instruksi Revisi
         </h3>
-        <p class="text-xs text-slate-500 font-bold mb-4" id="modalTaskTitle">Tugas: -</p>
+        <p class="text-xs text-slate-500 font-normal mb-4" id="modalTaskTitle">Tugas: -</p>
 
-        <form action="" method="POST" class="space-y-4">
+        <form action="" method="POST" class="space-y-3.5">
             <input type="hidden" name="task_id" id="modalTaskId">
             <input type="hidden" name="qc_action" value="revision">
 
             <div>
-                <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Detail Poin Revisi *</label>
-                <textarea name="revision_notes" required rows="3" placeholder="Tuliskan instruksi penyesuaian untuk tim..." class="input-glow w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none font-medium"></textarea>
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Detail Poin Revisi <span class="text-red-500">*</span></label>
+                <textarea name="revision_notes" required rows="3" placeholder="Tuliskan instruksi penyesuaian untuk tim..." class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-900 font-normal focus:outline-none placeholder:text-slate-400"></textarea>
             </div>
 
             <div class="flex justify-end gap-2 pt-2">
-                <button type="button" onclick="closeRevisionModal()" class="btn-press px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold">Batal</button>
-                <button type="submit" class="btn-press px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow">Kirim Instruksi</button>
+                <button type="button" onclick="closeRevisionModal()" class="btn-press px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs">Batal</button>
+                <button type="submit" class="btn-press px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl text-xs shadow-xs">Kirim Instruksi</button>
             </div>
         </form>
     </div>
 </div>
 
 <script>
-// Toggle & Calculation untuk Custom RAB di Edit Modal
 function toggleEditCustomRabSection() {
     const val = document.getElementById('editKategoriRabSelect').value;
     const sec = document.getElementById('editCustomRabSection');
@@ -799,11 +809,11 @@ function addEditCustomRabRow() {
     const newRow = document.createElement('div');
     newRow.className = 'grid grid-cols-12 gap-1.5 items-center edit-custom-rab-row';
     newRow.innerHTML = `
-        <input type="text" name="custom_komponen[]" placeholder="Komponen" class="col-span-4 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none">
-        <input type="text" name="custom_deskripsi[]" placeholder="Deskripsi/Output" class="col-span-4 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium focus:outline-none">
-        <div class="col-span-3 flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1.5">
+        <input type="text" name="custom_komponen[]" placeholder="Komponen" class="col-span-4 px-2.5 py-1.5 border border-slate-300 bg-white rounded-lg text-xs font-normal focus:outline-none">
+        <input type="text" name="custom_deskripsi[]" placeholder="Deskripsi/Output" class="col-span-4 px-2.5 py-1.5 border border-slate-300 bg-white rounded-lg text-xs font-normal focus:outline-none">
+        <div class="col-span-3 flex items-center bg-white border border-slate-300 rounded-lg px-2 py-1.5">
             <input type="number" name="custom_persen[]" step="0.1" min="0" max="100" oninput="calculateEditCustomPercentageTotal()" placeholder="0" class="w-full text-xs font-mono font-bold focus:outline-none edit-custom-persen-input">
-            <span class="text-xs font-black text-slate-400 ml-0.5">%</span>
+            <span class="text-xs font-bold text-slate-400 ml-0.5">%</span>
         </div>
         <button type="button" onclick="this.parentElement.remove(); calculateEditCustomPercentageTotal();" class="col-span-1 text-red-500 hover:text-red-700 font-bold text-center text-xs">
             &times;
@@ -843,7 +853,6 @@ function validateEditCustomRabSubmit() {
     return true;
 }
 
-// Filter Live Search Nama & Divisi Karyawan
 function filterUserList() {
     const searchVal = document.getElementById('userSearchInput').value.toLowerCase();
     const roleVal   = document.getElementById('userRoleFilter').value.toLowerCase();
@@ -866,7 +875,6 @@ function filterUserList() {
     });
 }
 
-// Modal Toggles
 function openEditProjectModal() { 
     document.getElementById('editProjectModal').classList.remove('hidden');
     calculateEditCustomPercentageTotal();
@@ -905,7 +913,6 @@ function openNoteModal(taskName, userName, userNote, revNote, driveLink) {
 }
 function closeNoteModal() { document.getElementById('noteModal').classList.add('hidden'); }
 
-// Chart.js Donut Graphic
 document.addEventListener('DOMContentLoaded', function() {
     const ctx = document.getElementById('projectProgressChart').getContext('2d');
     new Chart(ctx, {
@@ -930,14 +937,11 @@ document.addEventListener('DOMContentLoaded', function() {
     initPagination();
 });
 
-// Live Search & Paginasi
 const rowsPerPage = 5;
 let currentPage = 1;
 let filteredRows = [];
 
-function initPagination() {
-    filterTasks();
-}
+function initPagination() { filterTasks(); }
 
 function filterTasks() {
     const searchVal = document.getElementById('taskSearchInput').value.toLowerCase();
@@ -983,8 +987,8 @@ function renderPagination() {
     if (totalPages <= 1) return;
 
     const prevBtn = document.createElement('button');
-    prevBtn.innerHTML = '<i class="fa-solid fa-chevron-left"></i>';
-    prevBtn.className = `px-2.5 py-1 rounded-lg font-bold ${currentPage === 1 ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
+    prevBtn.innerHTML = '<i class="fa-solid fa-chevron-left text-xs"></i>';
+    prevBtn.className = `btn-press px-2.5 py-1 rounded-lg font-semibold text-xs ${currentPage === 1 ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
     prevBtn.disabled = currentPage === 1;
     prevBtn.onclick = () => { if(currentPage > 1) { currentPage--; renderPagination(); } };
     controls.appendChild(prevBtn);
@@ -992,16 +996,16 @@ function renderPagination() {
     for (let i = 1; i <= totalPages; i++) {
         const pageBtn = document.createElement('button');
         pageBtn.innerText = i;
-        pageBtn.className = `px-3 py-1 rounded-lg font-bold ${i === currentPage ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
+        pageBtn.className = `btn-press px-3 py-1 rounded-lg font-semibold text-xs ${i === currentPage ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
         pageBtn.onclick = () => { currentPage = i; renderPagination(); };
         controls.appendChild(pageBtn);
     }
 
     const nextBtn = document.createElement('button');
-    nextBtn.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
-    nextBtn.className = `px-2.5 py-1 rounded-lg font-bold ${currentPage === totalPages ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
+    nextBtn.innerHTML = '<i class="fa-solid fa-chevron-right text-xs"></i>';
+    nextBtn.className = `btn-press px-2.5 py-1 rounded-lg font-semibold text-xs ${currentPage === totalPages ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
     nextBtn.disabled = currentPage === totalPages;
-    nextBtn.onclick = () => { if(currentPage < totalPages) { currentPage--; renderPagination(); } };
+    nextBtn.onclick = () => { if(currentPage < totalPages) { currentPage++; renderPagination(); } };
     controls.appendChild(nextBtn);
 }
 </script>

@@ -131,68 +131,124 @@ function getPaginationUrl($pageNum) {
 }
 ?>
 
-<main class="flex-1 p-4 md:p-8 overflow-y-auto bg-slate-50 relative font-sans">
+<!-- Google Fonts: Plus Jakarta Sans -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+    body, input, select, button, h1, h2, h3, h4, h5, h6, textarea { 
+        font-family: 'Plus Jakarta Sans', sans-serif !important; 
+    }
+
+    .btn-press { 
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
+    }
+    .btn-press:active { 
+        transform: translateY(1px); 
+    }
+
+    .input-glow { 
+        transition: box-shadow .2s ease, border-color .2s ease; 
+    }
+    .input-glow:focus { 
+        border-color: #059669; 
+        box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.12); 
+    }
+
+    .task-card { 
+        transition: transform .25s cubic-bezier(.22,.68,0,1), box-shadow .25s ease, border-color .25s ease; 
+    }
+    .task-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 12px 24px -8px rgba(15,23,42,.1);
+        border-color: rgba(5,150,105,.4);
+    }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+</style>
+
+<main class="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto w-full min-w-0 bg-[#f8fafc] text-slate-800 selection:bg-emerald-600 selection:text-white relative">
     
-    <!-- Top Header Bar -->
-    <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
-        <div>
-            <div class="flex items-center gap-2 text-emerald-700 font-semibold text-xs tracking-wider uppercase mb-1">
-                <i class="fa-solid fa-circle text-[8px]"></i> Modul 2
+    <!-- Top Header Banner Navigation -->
+    <div class="flex flex-col md:flex-row justify-between md:items-center gap-5 mb-6 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs">
+        <div class="shrink-0">
+            <div class="flex items-center gap-2 mb-1">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span class="text-xs font-semibold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-0.5 rounded-full">
+                    MODUL 2 • WORKLOAD & PRIORITY HUB
+                </span>
             </div>
-            <h2 class="text-2xl font-bold text-slate-800">Workload & Priority Hub</h2>
-            <p class="text-slate-500 text-xs mt-0.5">Monitoring tugas prioritas harian karyawan PT. CTC & update status pengerjaan</p>
+            <h1 class="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Workload & Priority Hub</h1>
+            <p class="text-xs sm:text-sm text-slate-500 font-normal mt-0.5">Monitoring tugas prioritas harian karyawan PT. CTC & update status pengerjaan.</p>
         </div>
 
-        <button onclick="openGanttModal()" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold transition shadow-md flex items-center justify-center gap-2 shrink-0">
+        <button onclick="openGanttModal()" class="btn-press bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs sm:text-sm px-4 py-2.5 rounded-xl transition shadow-xs flex items-center justify-center gap-2 shrink-0">
             <i class="fa-solid fa-chart-gantt text-emerald-400"></i> Lihat Gantt Chart Interactive
         </button>
     </div>
 
-    <!-- Stats Bar -->
+    <!-- Metric Counter Badges / Stats Bar -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div class="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+        <div class="bg-white border border-slate-200/90 p-4 rounded-2xl shadow-xs hover:border-slate-300 transition">
             <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Tugas</span>
-                <i class="fa-solid fa-list-check text-slate-400"></i>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Tugas</span>
+                <div class="w-7 h-7 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-list-check"></i>
+                </div>
             </div>
-            <p class="text-2xl font-bold text-slate-800"><?= number_format($totalTasks) ?></p>
+            <p class="text-2xl font-bold text-slate-900 font-mono"><?= number_format($totalTasks) ?></p>
         </div>
-        <div class="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+
+        <div class="bg-white border border-slate-200/90 p-4 rounded-2xl shadow-xs hover:border-red-200 transition">
             <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-semibold text-red-500 uppercase tracking-wider">Prioritas Urgent</span>
-                <i class="fa-solid fa-triangle-exclamation text-red-500"></i>
+                <span class="text-[10px] font-bold text-red-500 uppercase tracking-wider">Prioritas Urgent</span>
+                <div class="w-7 h-7 rounded-lg bg-red-50 text-red-500 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
             </div>
-            <p class="text-2xl font-bold text-red-600"><?= number_format($urgentTasks) ?></p>
+            <p class="text-2xl font-bold text-red-600 font-mono"><?= number_format($urgentTasks) ?></p>
         </div>
-        <div class="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+
+        <div class="bg-white border border-slate-200/90 p-4 rounded-2xl shadow-xs hover:border-blue-200 transition">
             <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-semibold text-blue-500 uppercase tracking-wider">Sedang Dikerjakan</span>
-                <i class="fa-solid fa-spinner text-blue-500"></i>
+                <span class="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Sedang Dikerjakan</span>
+                <div class="w-7 h-7 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-spinner"></i>
+                </div>
             </div>
-            <p class="text-2xl font-bold text-blue-600"><?= number_format($inProgressTasks) ?></p>
+            <p class="text-2xl font-bold text-blue-600 font-mono"><?= number_format($inProgressTasks) ?></p>
         </div>
-        <div class="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+
+        <div class="bg-white border border-slate-200/90 p-4 rounded-2xl shadow-xs hover:border-emerald-200 transition">
             <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-semibold text-emerald-600 uppercase tracking-wider">Selesai (Done)</span>
-                <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Selesai (Done)</span>
+                <div class="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-circle-check"></i>
+                </div>
             </div>
-            <p class="text-2xl font-bold text-emerald-600"><?= number_format($completedTasks) ?></p>
+            <p class="text-2xl font-bold text-emerald-600 font-mono"><?= number_format($completedTasks) ?></p>
         </div>
     </div>
 
     <!-- Filter & Search Bar -->
-    <div class="bg-white border border-slate-200 rounded-2xl p-4 md:p-5 mb-6 shadow-sm">
+    <div class="bg-white border border-slate-200/90 rounded-2xl p-4 md:p-5 mb-6 shadow-xs">
         <form method="GET" class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
             
             <div class="relative flex-1">
-                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-                <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Cari tugas, projek, atau nama karyawan..." class="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition">
+                <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Cari tugas, projek, atau nama karyawan..." class="input-glow w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 bg-white font-normal text-slate-800 focus:outline-none placeholder:text-slate-400">
+                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                </div>
             </div>
 
             <div class="flex flex-wrap items-center gap-3">
                 <div class="flex items-center gap-2">
-                    <label class="text-xs font-bold text-slate-500 uppercase">Status:</label>
-                    <select name="status" onchange="this.form.submit()" class="px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Status:</label>
+                    <select name="status" onchange="this.form.submit()" class="input-glow px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white font-semibold text-slate-700 focus:outline-none cursor-pointer">
                         <option value="All" <?= $filter_status === 'All' ? 'selected' : '' ?>>Semua Status</option>
                         <option value="To Do" <?= $filter_status === 'To Do' ? 'selected' : '' ?>>To Do</option>
                         <option value="In Progress" <?= $filter_status === 'In Progress' ? 'selected' : '' ?>>In Progress</option>
@@ -202,8 +258,8 @@ function getPaginationUrl($pageNum) {
                 </div>
 
                 <div class="flex items-center gap-2">
-                    <label class="text-xs font-bold text-slate-500 uppercase">Karyawan:</label>
-                    <select name="user_id" onchange="this.form.submit()" class="px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Karyawan:</label>
+                    <select name="user_id" onchange="this.form.submit()" class="input-glow px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white font-semibold text-slate-700 focus:outline-none cursor-pointer">
                         <option value="All" <?= $filter_user === 'All' ? 'selected' : '' ?>>Semua Karyawan</option>
                         <?php foreach ($users as $u): ?>
                             <option value="<?= $u['id'] ?>" <?= $filter_user == $u['id'] ? 'selected' : '' ?>><?= htmlspecialchars($u['nama']) ?></option>
@@ -212,8 +268,8 @@ function getPaginationUrl($pageNum) {
                 </div>
 
                 <div class="flex items-center gap-2">
-                    <label class="text-xs font-bold text-slate-500 uppercase">Urutan:</label>
-                    <select name="sort" onchange="this.form.submit()" class="px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Urutan:</label>
+                    <select name="sort" onchange="this.form.submit()" class="input-glow px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white font-semibold text-slate-700 focus:outline-none cursor-pointer">
                         <option value="priority" <?= $sort === 'priority' ? 'selected' : '' ?>>Prioritas Utama</option>
                         <option value="deadline" <?= $sort === 'deadline' ? 'selected' : '' ?>>Deadline Terdekat</option>
                         <option value="latest" <?= $sort === 'latest' ? 'selected' : '' ?>>Tugas Terbaru</option>
@@ -221,7 +277,7 @@ function getPaginationUrl($pageNum) {
                 </div>
 
                 <?php if ($filter_status !== 'All' || $filter_user !== 'All' || $search !== '' || $sort !== 'priority'): ?>
-                    <a href="index.php" class="text-xs text-red-500 hover:text-red-700 font-semibold ml-auto lg:ml-0 flex items-center gap-1 transition">
+                    <a href="index.php" class="btn-press px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-semibold border border-red-200 transition flex items-center gap-1">
                         <i class="fa-solid fa-xmark"></i> Reset
                     </a>
                 <?php endif; ?>
@@ -230,45 +286,47 @@ function getPaginationUrl($pageNum) {
     </div>
 
     <!-- Tasks Grid Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
         <?php if (empty($tasks)): ?>
-            <div class="col-span-full bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 shadow-sm">
-                <i class="fa-solid fa-clipboard-check text-4xl mb-3 text-slate-300"></i>
-                <p class="font-medium text-slate-600">Tidak ada tugas ditemukan.</p>
-                <p class="text-sm text-slate-400 mt-1">Atur ulang kata kunci atau filter pencarian Anda.</p>
+            <div class="col-span-full bg-white border border-slate-200/90 rounded-2xl p-12 text-center text-slate-400 shadow-xs">
+                <div class="w-16 h-16 mx-auto mb-3 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl">
+                    <i class="fa-solid fa-clipboard-check"></i>
+                </div>
+                <p class="font-bold text-slate-800 text-sm sm:text-base">Tidak ada tugas ditemukan.</p>
+                <p class="text-xs sm:text-sm text-slate-400 mt-1 font-normal">Atur ulang kata kunci atau filter pencarian Anda.</p>
             </div>
         <?php else: ?>
             <?php foreach ($tasks as $t): ?>
-                <div onclick="openTaskDrawer(<?= htmlspecialchars(json_encode($t), ENT_QUOTES, 'UTF-8') ?>)" class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-emerald-500/40 transition cursor-pointer flex flex-col justify-between group">
+                <div onclick="openTaskDrawer(<?= htmlspecialchars(json_encode($t), ENT_QUOTES, 'UTF-8') ?>)" class="task-card bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs hover:shadow-md transition cursor-pointer flex flex-col justify-between group relative overflow-hidden">
                     <div>
-                        <div class="flex justify-between items-start mb-3">
-                            <span class="px-2.5 py-1 text-[10px] font-bold uppercase rounded-lg tracking-wider
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="px-2.5 py-1 text-[10px] font-semibold uppercase rounded-lg tracking-wider border
                                 <?php
                                     switch($t['prioritas']) {
-                                        case 'Urgent': echo 'bg-red-50 text-red-600 border border-red-200'; break;
-                                        case 'High': echo 'bg-amber-50 text-amber-600 border border-amber-200'; break;
-                                        case 'Medium': echo 'bg-blue-50 text-blue-600 border border-blue-200'; break;
-                                        default: echo 'bg-slate-100 text-slate-600 border border-slate-200';
+                                        case 'Urgent': echo 'bg-red-50 text-red-700 border-red-200'; break;
+                                        case 'High': echo 'bg-amber-50 text-amber-700 border-amber-200'; break;
+                                        case 'Medium': echo 'bg-blue-50 text-blue-700 border-blue-200'; break;
+                                        default: echo 'bg-slate-100 text-slate-600 border-slate-200';
                                     }
                                 ?>">
-                                <i class="fa-solid fa-flag mr-1"></i> <?= $t['prioritas'] ?>
+                                <i class="fa-solid fa-flag mr-1 text-[9px]"></i> <?= $t['prioritas'] ?>
                             </span>
 
-                            <span class="text-xs font-semibold text-slate-400 flex items-center gap-1">
-                                <i class="fa-regular fa-calendar text-slate-400"></i> <?= date('d M Y', strtotime($t['deadline'])) ?>
+                            <span class="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
+                                <i class="fa-regular fa-calendar-check text-slate-400"></i> <?= date('d M Y', strtotime($t['deadline'])) ?>
                             </span>
                         </div>
 
-                        <h4 class="font-bold text-slate-800 text-base mb-1 line-clamp-2 group-hover:text-emerald-700 transition"><?= htmlspecialchars($t['nama_tugas']) ?></h4>
+                        <h4 class="font-bold text-slate-900 text-base mb-1 line-clamp-2 group-hover:text-emerald-700 transition leading-snug"><?= htmlspecialchars($t['nama_tugas']) ?></h4>
                         
                         <p class="text-xs text-emerald-700 font-semibold mb-4 flex items-center gap-1.5">
                             <i class="fa-solid fa-folder text-emerald-600"></i>
                             <span class="truncate max-w-[200px]"><?= htmlspecialchars($t['nama_projek']) ?></span>
                         </p>
 
-                        <div class="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100 mb-4">
+                        <div class="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200/80 mb-4">
                             <div class="flex items-center gap-2.5">
-                                <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                                <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shadow-2xs">
                                     <?= strtoupper(substr($t['nama_karyawan'], 0, 1)) ?>
                                 </div>
                                 <div>
@@ -276,17 +334,17 @@ function getPaginationUrl($pageNum) {
                                     <span class="text-[10px] text-slate-400 font-medium"><?= htmlspecialchars($t['jabatan']) ?></span>
                                 </div>
                             </div>
-                            <span class="text-[10px] font-semibold text-slate-400 bg-white px-2 py-1 rounded-lg border border-slate-200">
+                            <span class="text-[10px] font-semibold text-slate-500 bg-white px-2 py-1 rounded-md border border-slate-200 shadow-2xs">
                                 Detail <i class="fa-solid fa-chevron-right ml-0.5 text-[8px]"></i>
                             </span>
                         </div>
                     </div>
 
-                    <div class="pt-3 border-t border-slate-100 flex items-center justify-between" onclick="event.stopPropagation()">
-                        <span class="text-xs font-semibold text-slate-400">Status:</span>
+                    <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs" onclick="event.stopPropagation()">
+                        <span class="text-xs font-medium text-slate-400">Status Modul:</span>
                         <form action="update.php" method="POST" class="inline-block">
                             <input type="hidden" name="task_id" value="<?= $t['id'] ?>">
-                            <select name="status" onchange="this.form.submit()" class="px-3 py-1 rounded-lg border text-xs font-semibold bg-white focus:ring-2 focus:ring-emerald-500 cursor-pointer shadow-sm
+                            <select name="status" onchange="this.form.submit()" class="input-glow px-2.5 py-1 rounded-lg border text-xs font-semibold focus:outline-none cursor-pointer shadow-2xs
                                 <?php
                                     switch($t['status']) {
                                         case 'Done': echo 'text-emerald-700 bg-emerald-50 border-emerald-300'; break;
@@ -309,37 +367,37 @@ function getPaginationUrl($pageNum) {
 
     <!-- Pagination -->
     <?php if ($total_pages > 1): ?>
-        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-            <p class="text-xs text-slate-500 font-medium">
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs text-xs text-slate-500">
+            <p class="font-medium">
                 Menampilkan <span class="font-bold text-slate-800"><?= min($offset + 1, $total_rows) ?></span> - <span class="font-bold text-slate-800"><?= min($offset + $limit, $total_rows) ?></span> dari <span class="font-bold text-slate-800"><?= $total_rows ?></span> tugas
             </p>
 
             <div class="flex items-center gap-1.5">
                 <?php if ($page > 1): ?>
-                    <a href="<?= getPaginationUrl($page - 1) ?>" class="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-emerald-600 hover:text-white transition">
-                        <i class="fa-solid fa-chevron-left mr-1"></i> Prev
+                    <a href="<?= getPaginationUrl($page - 1) ?>" class="btn-press px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition">
+                        <i class="fa-solid fa-chevron-left mr-1 text-[10px]"></i> Prev
                     </a>
                 <?php else: ?>
-                    <span class="px-3 py-1.5 text-xs font-semibold text-slate-300 bg-slate-50 rounded-xl cursor-not-allowed">
-                        <i class="fa-solid fa-chevron-left mr-1"></i> Prev
+                    <span class="px-3 py-1.5 text-xs font-semibold text-slate-300 bg-slate-100 rounded-xl cursor-not-allowed">
+                        <i class="fa-solid fa-chevron-left mr-1 text-[10px]"></i> Prev
                     </span>
                 <?php endif; ?>
 
                 <?php for ($i = 1; $i <= $total_pages; $i++): ?>
-                    <?php if ($i ==$page): ?>
-                        <span class="px-3 py-1.5 text-xs font-bold bg-emerald-600 text-white rounded-xl shadow-sm"><?= $i ?></span>
+                    <?php if ($i == $page): ?>
+                        <span class="px-3 py-1.5 text-xs font-bold bg-emerald-600 text-white rounded-xl shadow-xs"><?= $i ?></span>
                     <?php else: ?>
-                        <a href="<?= getPaginationUrl($i) ?>" class="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-50 hover:bg-slate-200 rounded-xl transition"><?= $i ?></a>
+                        <a href="<?= getPaginationUrl($i) ?>" class="btn-press px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition"><?= $i ?></a>
                     <?php endif; ?>
                 <?php endfor; ?>
 
-                <?php if ($page <$total_pages): ?>
-                    <a href="<?= getPaginationUrl($page + 1) ?>" class="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-emerald-600 hover:text-white transition">
-                        Next <i class="fa-solid fa-chevron-right ml-1"></i>
+                <?php if ($page < $total_pages): ?>
+                    <a href="<?= getPaginationUrl($page + 1) ?>" class="btn-press px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition">
+                        Next <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
                     </a>
                 <?php else: ?>
-                    <span class="px-3 py-1.5 text-xs font-semibold text-slate-300 bg-slate-50 rounded-xl cursor-not-allowed">
-                        Next <i class="fa-solid fa-chevron-right ml-1"></i>
+                    <span class="px-3 py-1.5 text-xs font-semibold text-slate-300 bg-slate-100 rounded-xl cursor-not-allowed">
+                        Next <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
                     </span>
                 <?php endif; ?>
             </div>
@@ -349,28 +407,28 @@ function getPaginationUrl($pageNum) {
 </main>
 
 <!-- MODAL POP-UP GANTT CHART INTERACTIVE -->
-<div id="ganttModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
-    <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-5xl shadow-2xl overflow-hidden relative flex flex-col max-h-[92vh]">
+<div id="ganttModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-5xl shadow-2xl overflow-hidden relative flex flex-col max-h-[92vh] text-xs sm:text-sm">
         
-        <div class="px-6 py-4 bg-emerald-950 text-white flex justify-between items-center shrink-0">
+        <div class="px-6 py-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
             <div>
                 <h3 class="font-bold text-base flex items-center gap-2">
                     <i class="fa-solid fa-chart-gantt text-emerald-400"></i> Gantt Chart & Status Progress Realtime
                 </h3>
-                <p class="text-xs text-emerald-300 mt-0.5">Pantau estimasi jadwal, progres modul, dan indikator minggu pengerjaan</p>
+                <p class="text-xs text-slate-400 mt-0.5 font-normal">Pantau estimasi jadwal, progres modul, dan indikator minggu pengerjaan</p>
             </div>
-            <button onclick="closeGanttModal()" class="text-emerald-300 hover:text-white transition">
-                <i class="fa-solid fa-xmark text-xl"></i>
+            <button onclick="closeGanttModal()" class="w-7 h-7 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition focus:outline-none">
+                <i class="fa-solid fa-xmark text-xs"></i>
             </button>
         </div>
 
         <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 shrink-0">
             <div class="flex flex-1 items-center gap-2">
                 <div class="relative flex-1">
-                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
-                    <input type="text" id="ganttSearchInput" onkeyup="filterGanttProjects()" placeholder="Cari nama proyek..." class="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-semibold text-slate-700">
+                    <input type="text" id="ganttSearchInput" onkeyup="filterGanttProjects()" placeholder="Cari nama proyek..." class="input-glow w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none font-normal text-slate-800">
+                    <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-slate-400 text-xs"></i>
                 </div>
-                <select id="ganttStatusFilter" onchange="filterGanttProjects()" class="px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 shrink-0">
+                <select id="ganttStatusFilter" onchange="filterGanttProjects()" class="input-glow px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-300 bg-white text-slate-800 focus:outline-none shrink-0">
                     <option value="ALL">Semua Status Proyek</option>
                     <option value="In Progress">In Progress</option>
                     <option value="Completed">Completed</option>
@@ -379,10 +437,10 @@ function getPaginationUrl($pageNum) {
             </div>
 
             <div class="flex items-center gap-2 shrink-0">
-                <button onclick="exportGanttExcel()" class="px-3.5 py-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-emerald-300">
-                    <i class="fa-solid fa-file-excel text-emerald-700"></i> Export Excel
+                <button onclick="exportGanttExcel()" class="btn-press px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 border border-emerald-200">
+                    <i class="fa-solid fa-file-excel text-emerald-600"></i> Export Excel
                 </button>
-                <button onclick="printGanttPDF()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-md flex items-center gap-1.5">
+                <button onclick="printGanttPDF()" class="btn-press px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center gap-1.5">
                     <i class="fa-solid fa-print"></i> Cetak PDF / Print
                 </button>
             </div>
@@ -390,10 +448,10 @@ function getPaginationUrl($pageNum) {
 
         <div class="p-6 overflow-y-auto space-y-5 flex-1">
             
-            <div class="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <label class="text-xs font-bold text-slate-600 uppercase shrink-0">Pilih Proyek Target:</label>
-                <select id="ganttProjectSelect" onchange="renderGanttChart()" class="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-bold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                    <?php foreach ($projectsGantt as$pG): ?>
+            <div class="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+                <label class="text-xs font-bold text-slate-700 uppercase shrink-0">Pilih Proyek Target:</label>
+                <select id="ganttProjectSelect" onchange="renderGanttChart()" class="input-glow w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold bg-white text-slate-900 focus:outline-none">
+                    <?php foreach ($projectsGantt as $pG): ?>
                         <option value="<?= $pG['id'] ?>" 
                                 data-nama="<?= htmlspecialchars($pG['nama_projek']) ?>"
                                 data-klien="<?= htmlspecialchars($pG['klien']) ?>"
@@ -408,19 +466,19 @@ function getPaginationUrl($pageNum) {
             </div>
 
             <!-- Legend Warna Keterangan Status -->
-            <div class="flex flex-wrap items-center justify-between text-[11px] font-bold text-slate-600 bg-slate-100/70 px-4 py-2 rounded-xl border border-slate-200">
+            <div class="flex flex-wrap items-center justify-between text-[11px] font-semibold text-slate-600 bg-slate-100/80 px-4 py-2 rounded-xl border border-slate-200">
                 <div class="flex items-center gap-4 flex-wrap">
                     <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-emerald-600 inline-block"></span> Selesai (Done)</span>
                     <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-blue-600 inline-block"></span> Sedang Dikerjakan</span>
                     <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-amber-500 inline-block"></span> Terlambat / Warning</span>
                     <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-slate-800 inline-block"></span> Rencana Pengerjaan</span>
                 </div>
-                <div class="flex items-center gap-1 text-emerald-800 font-extrabold">
+                <div class="flex items-center gap-1.5 text-emerald-800 font-bold">
                     <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span> Garis Hijau: Minggu Aktif Saat Ini
                 </div>
             </div>
 
-            <div id="ganttTableContainer" class="overflow-x-auto border border-slate-300 rounded-xl bg-white">
+            <div id="ganttTableContainer" class="overflow-x-auto border border-slate-200 rounded-xl bg-white">
                 <!-- Render Gantt Chart JS -->
             </div>
 
@@ -428,7 +486,7 @@ function getPaginationUrl($pageNum) {
 
         <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center text-xs shrink-0">
             <span class="text-slate-500 font-medium">Standardization SPK BAST Document PT. CTC</span>
-            <button onclick="closeGanttModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold transition">
+            <button onclick="closeGanttModal()" class="btn-press px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition">
                 Tutup Window
             </button>
         </div>
@@ -436,60 +494,60 @@ function getPaginationUrl($pageNum) {
 </div>
 
 <!-- SLIDE-OVER DRAWER DETAIL TUGAS & GOOGLE DRIVE -->
-<div id="drawerOverlay" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden opacity-0 transition-opacity duration-300" onclick="closeTaskDrawer()"></div>
+<div id="drawerOverlay" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 hidden opacity-0 transition-opacity duration-300" onclick="closeTaskDrawer()"></div>
 
-<div id="taskDrawer" class="fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col justify-between overflow-y-auto">
+<div id="taskDrawer" class="fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col justify-between overflow-y-auto text-xs sm:text-sm">
     <div class="p-6 bg-slate-900 text-white flex justify-between items-start">
         <div>
-            <span id="drawerPriority" class="px-2.5 py-0.5 text-[10px] font-bold uppercase rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 mb-2 inline-block">
+            <span id="drawerPriority" class="px-2.5 py-0.5 text-[10px] font-semibold uppercase rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 mb-2 inline-block">
                 Urgent
             </span>
-            <h3 id="drawerTaskTitle" class="text-xl font-bold leading-snug">Nama Tugas</h3>
+            <h3 id="drawerTaskTitle" class="text-lg font-bold leading-snug">Nama Tugas</h3>
             <p id="drawerProjectName" class="text-xs text-emerald-400 mt-1 font-medium flex items-center gap-1">
                 <i class="fa-solid fa-folder"></i> <span>-</span>
             </p>
         </div>
-        <button type="button" onclick="closeTaskDrawer()" class="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition">
-            <i class="fa-solid fa-xmark"></i>
+        <button type="button" onclick="closeTaskDrawer()" class="w-7 h-7 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition focus:outline-none">
+            <i class="fa-solid fa-xmark text-xs"></i>
         </button>
     </div>
 
-    <div class="p-6 space-y-6 flex-1">
-        <div class="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+    <div class="p-6 space-y-5 flex-1">
+        <div class="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
             <div>
                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Status Modul</span>
-                <span id="drawerStatus" class="text-xs font-bold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-200 inline-block shadow-sm">-</span>
+                <span id="drawerStatus" class="text-xs font-bold text-slate-800 bg-white px-2.5 py-1 rounded-lg border border-slate-200 inline-block shadow-2xs">-</span>
             </div>
             <div>
                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Tenggat Waktu</span>
-                <span id="drawerDeadline" class="text-xs font-bold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-200 inline-block shadow-sm">-</span>
+                <span id="drawerDeadline" class="text-xs font-bold text-slate-800 bg-white px-2.5 py-1 rounded-lg border border-slate-200 inline-block shadow-2xs">-</span>
             </div>
         </div>
 
         <div>
-            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Penanggung Jawab</h4>
-            <div class="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200 shadow-sm">
-                <div id="drawerAvatar" class="w-10 h-10 rounded-xl bg-emerald-600 text-white font-bold flex items-center justify-center text-sm shadow-sm">
+            <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Penanggung Jawab</h4>
+            <div class="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                <div id="drawerAvatar" class="w-9 h-9 rounded-xl bg-emerald-600 text-white font-bold flex items-center justify-center text-xs shadow-2xs">
                     A
                 </div>
                 <div>
-                    <p id="drawerAssignee" class="text-xs font-bold text-slate-800">Nama Karyawan</p>
-                    <p id="drawerRole" class="text-[10px] text-slate-400">Jabatan</p>
+                    <p id="drawerAssignee" class="text-xs font-bold text-slate-900">Nama Karyawan</p>
+                    <p id="drawerRole" class="text-[10px] text-slate-400 font-medium">Jabatan</p>
                 </div>
             </div>
         </div>
 
         <div>
-            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Lampiran Google Drive</h4>
+            <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Lampiran Google Drive</h4>
             <div id="drawerDriveBox" class="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200/60 flex items-center justify-between">
                 <div class="flex items-center gap-2.5">
                     <i class="fa-brands fa-google-drive text-emerald-600 text-xl"></i>
                     <div>
-                        <p class="text-xs font-bold text-slate-800">File & Deliverables</p>
-                        <p id="drawerDriveText" class="text-[10px] text-slate-400">Google Drive Repository</p>
+                        <p class="text-xs font-bold text-slate-900">File & Deliverables</p>
+                        <p id="drawerDriveText" class="text-[10px] text-slate-400 font-normal">Google Drive Repository</p>
                     </div>
                 </div>
-                <a href="#" target="_blank" id="driveButton" class="px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition shadow-sm">
+                <a href="#" target="_blank" id="driveButton" class="btn-press px-3.5 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition shadow-xs">
                     Buka Drive
                 </a>
             </div>
@@ -497,26 +555,26 @@ function getPaginationUrl($pageNum) {
 
         <div class="space-y-3">
             <div>
-                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Laporan Karyawan</h4>
+                <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Laporan Karyawan</h4>
                 <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-xs text-slate-600 leading-relaxed italic" id="drawerProgressNotes">
                     Belum ada catatan pengerjaan.
                 </div>
             </div>
 
             <div id="drawerRevSection">
-                <h4 class="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1.5">Instruksi Revisi PM</h4>
-                <div class="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-800 leading-relaxed font-medium" id="drawerRevisionNotes">
+                <h4 class="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-1.5">Instruksi Revisi PM</h4>
+                <div class="p-3 bg-amber-50 rounded-xl border border-amber-200/80 text-xs text-amber-800 leading-relaxed font-medium" id="drawerRevisionNotes">
                     Tidak ada revisi.
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-        <a id="drawerProjectLink" href="#" class="text-xs text-emerald-700 hover:underline font-bold flex items-center gap-1">
+    <div class="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+        <a id="drawerProjectLink" href="#" class="text-xs text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1">
             <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i> Buka Proyek
         </a>
-        <button type="button" onclick="closeTaskDrawer()" class="px-5 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition">
+        <button type="button" onclick="closeTaskDrawer()" class="btn-press px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition">
             Tutup
         </button>
     </div>
@@ -621,7 +679,7 @@ function renderGanttChart() {
     ];
 
     let html = `
-        <div class="p-3 bg-slate-100 border-b border-slate-300 font-bold text-xs text-slate-800 flex justify-between items-center">
+        <div class="p-3 bg-slate-100 border-b border-slate-200 font-bold text-xs text-slate-800 flex justify-between items-center">
             <span>PROYEKSI & JADWAL PELAKSANAAN PROYEK "${namaProjek.toUpperCase()}"</span>
             <span class="text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded font-mono text-[11px]">Durasi: ${durasiBulan} Bulan (${totalMinggu} Minggu)</span>
         </div>
@@ -676,7 +734,7 @@ function renderGanttChart() {
 
             html += `
                 <td class="p-1 text-center border-r border-slate-300 ${isCurrent ? 'bg-emerald-50/80 border-x-2 border-x-emerald-500' : ''}">
-                    ${isScheduleFilled ? `<div class="w-4 h-4 ${blockBg} rounded mx-auto shadow-sm" title="${titleText}"></div>` : ''}
+                    ${isScheduleFilled ? `<div class="w-4 h-4 ${blockBg} rounded mx-auto shadow-2xs" title="${titleText}"></div>` : ''}
                 </td>
             `;
         }

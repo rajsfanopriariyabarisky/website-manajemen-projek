@@ -337,148 +337,67 @@ if ($selected_project !== 'All') {
 }
 ?>
 
-<!-- STYLE KHUSUS ISOLASI PRINT PDF (FULL WIDTH 100% BEBAS SIDEBAR & BEBAS SCREEN BLANK) -->
+<!-- Google Fonts: Plus Jakarta Sans -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
 <style>
-/* Kontainer Khusus Cetak Sembunyi di Layar Web */
-#print-area-pdf { 
-    display: none; 
-}
-
-@media print {
-    /* 1. SEMBUNYIKAN SELURUH BODY ASLI & UI WEB */
-    body > * {
-        display: none !important;
+    body, input, select, button, h1, h2, h3, h4, h5, h6, textarea { 
+        font-family: 'Plus Jakarta Sans', sans-serif !important; 
     }
 
-    /* 2. HANYA TAMPILKAN KONTAINER CETAK KHUSUS DENGAN POSISI MENTOK KIRI (100% FULL WIDTH) */
-    #print-area-pdf {
-        display: block !important;
-        position: absolute !important;
-        left: 0 !important;
-        top: 0 !important;
-        width: 100% !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        background: #ffffff !important;
-        color: #0f172a !important;
-        font-family: 'Segoe UI', Arial, sans-serif !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
+    .btn-press { 
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
+    }
+    .btn-press:active { 
+        transform: translateY(1px); 
     }
 
-    @page {
-        size: A4 portrait;
-        margin: 10mm 12mm 10mm 12mm;
+    .input-glow { 
+        transition: box-shadow .2s ease, border-color .2s ease; 
+    }
+    .input-glow:focus { 
+        border-color: #059669; 
+        box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.12); 
     }
 
-    /* 3. KOP SURAT FORMAL */
-    .print-header-pdf {
-        width: 100% !important;
-        margin-bottom: 15px !important;
-        padding-bottom: 8px !important;
-        border-bottom: 3px double #047857 !important;
-    }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-    .print-logo-img {
-        width: 52px !important;
-        height: 52px !important;
-        object-fit: cover !important;
-        border-radius: 6px !important;
-    }
+    #print-area-pdf { display: none; }
 
-    /* 4. TABEL STYLING AUDITING */
-    .pdf-table {
-        width: 100% !important;
-        border-collapse: collapse !important;
-        font-size: 9.5px !important;
-        margin-bottom: 15px !important;
+    @media print {
+        body > * { display: none !important; }
+        #print-area-pdf {
+            display: block !important;
+            position: absolute !important;
+            left: 0 !important; top: 0 !important;
+            width: 100% !important; margin: 0 !important; padding: 0 !important;
+            background: #ffffff !important; color: #0f172a !important;
+            font-family: 'Segoe UI', Arial, sans-serif !important;
+            -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+        }
+        @page { size: A4 portrait; margin: 10mm 12mm 10mm 12mm; }
+        .print-header-pdf { width: 100% !important; margin-bottom: 15px !important; padding-bottom: 8px !important; border-bottom: 3px double #047857 !important; }
+        .print-logo-img { width: 52px !important; height: 52px !important; object-fit: cover !important; border-radius: 6px !important; }
+        .pdf-table { width: 100% !important; border-collapse: collapse !important; font-size: 9.5px !important; margin-bottom: 15px !important; }
+        .pdf-table th { background-color: #065f46 !important; color: #ffffff !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 8.5px !important; padding: 6px 6px !important; border: 1px solid #065f46 !important; }
+        .pdf-table td { border: 1px solid #cbd5e1 !important; padding: 6px 7px !important; color: #1e293b !important; }
+        .pdf-summary-table { width: 100% !important; border-collapse: collapse !important; margin-bottom: 15px !important; }
+        .pdf-summary-table th { background-color: #047857 !important; color: #ffffff !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 8.5px !important; padding: 6px 8px !important; border: 1px solid #047857 !important; text-align: center !important; }
+        .pdf-summary-table td { font-weight: 800 !important; color: #0f172a !important; font-size: 10px !important; padding: 6px 8px !important; border: 1px solid #cbd5e1 !important; text-align: center !important; background-color: #f8fafc !important; }
+        .pdf-badge { border: 1px solid #047857 !important; background: #ecfdf5 !important; padding: 1px 5px !important; font-weight: 800 !important; font-size: 7.5px !important; text-transform: uppercase !important; white-space: nowrap !important; color: #047857 !important; border-radius: 3px !important; }
+        .pdf-signatures { display: flex !important; justify-content: space-between !important; margin-top: 30px !important; page-break-inside: avoid !important; width: 100% !important; }
+        .pdf-sig-box { text-align: center !important; width: 30% !important; font-size: 9.5px !important; color: #334155 !important; }
+        .pdf-sig-line { margin-top: 45px !important; font-weight: 800 !important; text-decoration: underline !important; color: #0f172a !important; }
     }
-
-    .pdf-table th {
-        background-color: #065f46 !important;
-        color: #ffffff !important;
-        font-weight: 800 !important;
-        text-transform: uppercase !important;
-        font-size: 8.5px !important;
-        padding: 6px 6px !important;
-        border: 1px solid #065f46 !important;
-    }
-
-    .pdf-table td {
-        border: 1px solid #cbd5e1 !important;
-        padding: 6px 7px !important;
-        color: #1e293b !important;
-    }
-
-    .pdf-summary-table {
-        width: 100% !important;
-        border-collapse: collapse !important;
-        margin-bottom: 15px !important;
-    }
-
-    .pdf-summary-table th {
-        background-color: #047857 !important;
-        color: #ffffff !important;
-        font-weight: 800 !important;
-        text-transform: uppercase !important;
-        font-size: 8.5px !important;
-        padding: 6px 8px !important;
-        border: 1px solid #047857 !important;
-        text-align: center !important;
-    }
-
-    .pdf-summary-table td {
-        font-weight: 800 !important;
-        color: #0f172a !important;
-        font-size: 10px !important;
-        padding: 6px 8px !important;
-        border: 1px solid #cbd5e1 !important;
-        text-align: center !important;
-        background-color: #f8fafc !important;
-    }
-
-    .pdf-badge {
-        border: 1px solid #047857 !important;
-        background: #ecfdf5 !important;
-        padding: 1px 5px !important;
-        font-weight: 800 !important;
-        font-size: 7.5px !important;
-        text-transform: uppercase !important;
-        white-space: nowrap !important;
-        color: #047857 !important;
-        border-radius: 3px !important;
-    }
-
-    /* 5. BLOK TANDA TANGAN */
-    .pdf-signatures {
-        display: flex !important;
-        justify-content: space-between !important;
-        margin-top: 30px !important;
-        page-break-inside: avoid !important;
-        width: 100% !important;
-    }
-
-    .pdf-sig-box {
-        text-align: center !important;
-        width: 30% !important;
-        font-size: 9.5px !important;
-        color: #334155 !important;
-    }
-
-    .pdf-sig-line {
-        margin-top: 45px !important;
-        font-weight: 800 !important;
-        text-decoration: underline !important;
-        color: #0f172a !important;
-    }
-}
 </style>
 
-<!-- ================================================================= -->
-<!-- AREA KHUSUS ISOLASI CETAK PDF (HANYA AKTIF SAAT WINDOW.PRINT)     -->
-<!-- ================================================================= -->
+<!-- PDF Print Template Area -->
 <div id="print-area-pdf">
-    <!-- Kop Surat Resmi -->
     <div class="print-header-pdf">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 14px;">
@@ -486,8 +405,8 @@ if ($selected_project !== 'All') {
                 <div>
                     <h1 style="font-size: 13pt; font-weight: 900; color: #0f172a; margin: 0; text-transform: uppercase;">PT. CIPTA TEKNOLOGI CENDEKIA</h1>
                     <p style="font-size: 8.5pt; font-weight: 700; color: #047857; margin: 2px 0 0 0;">Enterprise IT Solution, Software Development & Financial Control</p>
-                    <p style="font-size: 7.5pt; color: #64748b; margin: 2px 0 0 0;">Perumahan Cahaya Garuda Residence Kav. 31, Bojongsari, Kota Depok, Jawa Bar |</p>
-                    <p class="text-[11px] font-sans text-slate-500">Email: ciptateknologicendekia@gmail.com | Website: https://ctc-nusantara.com</p>
+                    <p style="font-size: 7.5pt; color: #64748b; margin: 2px 0 0 0;">Perumahan Cahaya Garuda Residence Kav. 31, Bojongsari, Kota Depok, Jawa Barat |</p>
+                    <p style="font-size: 7.5pt; color: #64748b; margin: 1px 0 0 0;">Email: ciptateknologicendekia@gmail.com | Website: https://ctc-nusantara.com</p>
                 </div>
             </div>
             <div style="text-align: right; font-size: 8pt; color: #475569;">
@@ -502,7 +421,6 @@ if ($selected_project !== 'All') {
         </div>
     </div>
 
-    <!-- Tabel Ringkasan Metrik -->
     <table class="pdf-summary-table">
         <thead>
             <tr>
@@ -522,7 +440,6 @@ if ($selected_project !== 'All') {
         </tbody>
     </table>
 
-    <!-- Tabel Utama Laporan Profitabilitas -->
     <table class="pdf-table">
         <thead>
             <tr>
@@ -576,7 +493,6 @@ if ($selected_project !== 'All') {
         </tbody>
     </table>
 
-    <!-- Rincian Expense Jika Filter 1 Proyek -->
     <?php if ($selected_project !== 'All'): ?>
         <div style="margin-top: 15px;">
             <h3 style="font-size: 10pt; font-weight: 800; color: #0f172a; margin-bottom: 6px;">Item Pengeluaran Operasional Proyek</h3>
@@ -609,7 +525,6 @@ if ($selected_project !== 'All') {
         </div>
     <?php endif; ?>
 
-    <!-- Blok Pengesahan Tanda Tangan -->
     <div class="pdf-signatures">
         <div class="pdf-sig-box">
             <p><strong>Dibuat Oleh:</strong></p>
@@ -629,44 +544,95 @@ if ($selected_project !== 'All') {
     </div>
 </div>
 
-<!-- ================================================================= -->
-<!-- TAMPILAN DASHBOARD WEB BIASA (NORMAL WEB APPLICATION INTERFACE)  -->
-<!-- ================================================================= -->
-<main class="flex-1 p-4 md:p-8 overflow-y-auto bg-slate-50 min-h-screen w-full font-sans">
+<main class="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto w-full min-w-0 bg-[#f8fafc] text-slate-800 selection:bg-emerald-600 selection:text-white relative">
 
-    <!-- Top Header Bar (Layar Web) -->
-    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
-        <div>
-            <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
-                MODUL 4
-            </span>
-            <h1 class="text-xl md:text-2xl font-bold text-slate-800 mt-2">Laporan Keuangan & Profitabilitas</h1>
-            <p class="text-xs text-slate-500 mt-0.5">Analisis realisasi dana masuk, pengeluaran operasional, dan margin profit PT. CTC.</p>
+    <!-- Top Header Banner Navigation -->
+    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-5 mb-6 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs">
+        <div class="shrink-0">
+            <div class="flex items-center gap-2 mb-1">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span class="text-xs font-semibold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-0.5 rounded-full">
+                    MODUL 4 • LAPORAN KEUANGAN & PROFITABILITAS
+                </span>
+            </div>
+            <h1 class="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Laporan Keuangan & Profitabilitas</h1>
+            <p class="text-xs sm:text-sm text-slate-500 font-normal mt-0.5">Analisis realisasi dana masuk, pengeluaran operasional, dan margin profit PT. CTC.</p>
         </div>
         
-        <div class="flex flex-wrap items-center gap-2">
-            <a href="index.php?project_id=<?= $selected_project ?>&search=<?= urlencode($search_query) ?>&export=excel" class="bg-emerald-700 hover:bg-emerald-800 text-white font-medium px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition text-xs shadow-md">
-                <i class="fa-solid fa-file-excel text-emerald-300"></i> Export Excel (.xls Formula Active)
+        <div class="flex items-center gap-2.5 shrink-0 flex-wrap sm:flex-nowrap">
+            <a href="index.php?project_id=<?= $selected_project ?>&search=<?= urlencode($search_query) ?>&export=excel" class="btn-press bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2.5 rounded-xl text-xs sm:text-sm transition shadow-xs flex items-center justify-center gap-2">
+                <i class="fa-solid fa-file-excel text-emerald-200 text-xs sm:text-sm"></i> Export Excel (.xls Formula Active)
             </a>
-            <button onclick="window.print()" class="bg-slate-800 hover:bg-slate-900 text-white font-medium px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition text-xs shadow-md">
-                <i class="fa-solid fa-print"></i> Cetak PDF / Print
+            <button onclick="window.print()" class="btn-press bg-slate-900 hover:bg-slate-800 text-white font-semibold px-4 py-2.5 rounded-xl text-xs sm:text-sm transition shadow-xs flex items-center justify-center gap-2">
+                <i class="fa-solid fa-print text-xs sm:text-sm"></i> Cetak PDF / Print
             </button>
         </div>
     </div>
 
-    <!-- Search Bar & Filter Scope Laporan -->
-    <div class="bg-white border border-slate-200 rounded-2xl p-4 mb-6 shadow-sm">
+    <!-- Stat Counter Cards Overview -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-slate-300 transition">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">REALIZED REVENUE (PAID)</span>
+                <div class="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-wallet"></i>
+                </div>
+            </div>
+            <h3 class="text-xl md:text-2xl font-bold text-slate-900 font-mono">Rp <?= number_format($grandRealizedPaid, 0, ',', '.') ?></h3>
+            <span class="text-xs text-emerald-700 font-medium mt-1 flex items-center gap-1"><i class="fa-solid fa-circle-check text-[10px]"></i> Dana terbayar di kas</span>
+        </div>
+
+        <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-amber-200 transition">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">OPERATIONAL EXPENSE</span>
+                <div class="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-receipt"></i>
+                </div>
+            </div>
+            <h3 class="text-xl md:text-2xl font-bold text-amber-600 font-mono">Rp <?= number_format($grandExpense, 0, ',', '.') ?></h3>
+            <span class="text-xs text-amber-700 font-medium mt-1 block">Realisasi pengeluaran</span>
+        </div>
+
+        <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-slate-300 transition">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">NET PROFIT REAL</span>
+                <div class="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-chart-line"></i>
+                </div>
+            </div>
+            <h3 class="text-xl md:text-2xl font-bold font-mono <?= $grandNetProfit >= 0 ? 'text-emerald-600' : 'text-red-600' ?>">
+                Rp <?= number_format($grandNetProfit, 0, ',', '.') ?>
+            </h3>
+            <span class="text-xs text-emerald-700 font-medium mt-1 flex items-center gap-1"><i class="fa-solid fa-arrow-up text-[10px]"></i> Profit terbayar bersih</span>
+        </div>
+
+        <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-slate-300 transition">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">UNPAID / PIUTANG KLIEN</span>
+                <div class="w-7 h-7 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-clock"></i>
+                </div>
+            </div>
+            <h3 class="text-xl md:text-2xl font-bold text-slate-800 font-mono">Rp <?= number_format($grandUnpaid, 0, ',', '.') ?></h3>
+            <span class="text-xs text-amber-700 font-medium mt-1 block">Tagihan belum lunas</span>
+        </div>
+    </div>
+
+    <!-- Search Bar & Filter Scope Laporan Integrated -->
+    <div class="bg-white border border-slate-200/90 rounded-2xl p-4 mb-6 shadow-xs">
         <form method="GET" class="flex flex-col md:flex-row items-center justify-between gap-3 w-full">
             <div class="relative w-full md:w-80">
-                <input type="text" name="search" value="<?= htmlspecialchars($search_query) ?>" placeholder="Cari nama proyek / klien..." class="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                <input type="text" name="search" value="<?= htmlspecialchars($search_query) ?>" placeholder="Cari nama proyek / klien..." class="input-glow w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-normal text-slate-800 bg-white focus:outline-none placeholder:text-slate-400">
+                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                </div>
             </div>
 
             <div class="flex items-center gap-2 w-full md:w-auto">
-                <label class="text-xs font-bold text-slate-500 uppercase flex items-center gap-1.5 shrink-0">
+                <label class="text-xs font-bold text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1.5">
                     <i class="fa-solid fa-filter text-emerald-600"></i> Scope:
                 </label>
-                <select name="project_id" onchange="this.form.submit()" class="w-full md:w-auto px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <select name="project_id" onchange="this.form.submit()" class="input-glow w-full md:w-auto px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold bg-white text-slate-700 focus:outline-none">
                     <option value="All" <?= $selected_project === 'All' ? 'selected' : '' ?>>📊 Seluruh Proyek (Konsolidasi Portfolio)</option>
                     <?php foreach ($projectsList as $pl): ?>
                         <option value="<?= $pl['id'] ?>" <?= $selected_project == $pl['id'] ? 'selected' : '' ?>>
@@ -675,68 +641,49 @@ if ($selected_project !== 'All') {
                     <?php endforeach; ?>
                 </select>
                 
-                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-xl text-xs transition">
+                <button type="submit" class="btn-press bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2.5 rounded-xl text-xs sm:text-sm transition shadow-xs">
                     Cari
                 </button>
+
+                <?php if ($selected_project !== 'All' || !empty($search_query)): ?>
+                    <a href="index.php" class="btn-press px-3 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-semibold border border-red-200 transition flex items-center gap-1">
+                        <i class="fa-solid fa-xmark"></i> Reset
+                    </a>
+                <?php endif; ?>
             </div>
         </form>
     </div>
 
-    <!-- METRIC STATS CARDS (Khusus Tampilan Layar Web) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">REALIZED REVENUE (PAID)</span>
-            <h3 class="text-xl font-bold text-slate-800">Rp <?= number_format($grandRealizedPaid, 0, ',', '.') ?></h3>
-            <p class="text-[11px] text-emerald-600 font-semibold mt-1 flex items-center gap-1">
-                <i class="fa-solid fa-circle-check"></i> Dana terbayar di kas
-            </p>
-        </div>
-
-        <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">OPERATIONAL EXPENSE</span>
-            <h3 class="text-xl font-bold text-amber-600">Rp <?= number_format($grandExpense, 0, ',', '.') ?></h3>
-            <span class="text-[11px] text-slate-400 mt-1 block">Realisasi pengeluaran</span>
-        </div>
-
-        <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">NET PROFIT REAL</span>
-            <h3 class="text-xl font-bold <?= $grandNetProfit >= 0 ? 'text-emerald-600' : 'text-red-600' ?>">
-                Rp <?= number_format($grandNetProfit, 0, ',', '.') ?>
-            </h3>
-            <span class="text-[11px] text-emerald-600 font-semibold mt-1 block"><i class="fa-solid fa-arrow-up"></i> Profit terbayar bersih</span>
-        </div>
-
-        <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">UNPAID / PIUTANG KLIENT</span>
-            <h3 class="text-xl font-bold text-slate-700">Rp <?= number_format($grandUnpaid, 0, ',', '.') ?></h3>
-            <span class="text-[11px] text-amber-600 font-semibold mt-1 block"><i class="fa-solid fa-clock"></i> Tagihan belum lunas</span>
-        </div>
-    </div>
-
-    <!-- TABEL UTAMA LAPORAN PROFITABILITAS WEB -->
-    <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm mb-8">
-        <h3 class="text-base font-bold text-slate-800 mb-5">
-            <?= $selected_project === 'All' ? 'Laporan Profitabilitas Seluruh Proyek' : 'Ringkasan Keuangan Proyek' ?>
+    <!-- Main Table Card -->
+    <div class="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs mb-8">
+        <h3 class="font-bold text-slate-900 text-base mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-chart-line text-emerald-600"></i> <?= $selected_project === 'All' ? 'Laporan Profitabilitas Seluruh Proyek' : 'Ringkasan Keuangan Proyek' ?>
         </h3>
 
-        <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs border-collapse">
+        <!-- Desktop View (Tabel) -->
+        <div class="hidden md:block overflow-x-auto">
+            <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[800px]">
                 <thead>
-                    <tr class="bg-slate-50 text-slate-400 uppercase font-bold text-[10px] border-b border-slate-200">
-                        <th class="py-3 px-4">Nama Proyek</th>
-                        <th class="py-3 px-4">Klien</th>
-                        <th class="py-3 px-4 text-center">Status</th>
-                        <th class="py-3 px-4 text-right">Nilai Kontrak</th>
-                        <th class="py-3 px-4 text-right">Paid (Dana Masuk)</th>
-                        <th class="py-3 px-4 text-right">Unpaid (Piutang)</th>
-                        <th class="py-3 px-4 text-right">Pengeluaran</th>
-                        <th class="py-3 px-4 text-right">Net Profit Real</th>
+                    <tr class="bg-slate-50 text-slate-500 uppercase font-semibold text-xs tracking-wider border-b border-slate-200">
+                        <th class="py-3.5 px-4">NAMA PROYEK</th>
+                        <th class="py-3.5 px-4">KLIEN</th>
+                        <th class="py-3.5 px-4 text-center">STATUS</th>
+                        <th class="py-3.5 px-4 text-right">NILAI KONTRAK</th>
+                        <th class="py-3.5 px-4 text-right">PAID (DANA MASUK)</th>
+                        <th class="py-3.5 px-4 text-right">UNPAID (PIUTANG)</th>
+                        <th class="py-3.5 px-4 text-right">PENGELUARAN</th>
+                        <th class="py-3.5 px-4 text-right">NET PROFIT REAL</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                     <?php if (empty($reports)): ?>
                         <tr>
-                            <td colspan="8" class="text-center py-6 text-slate-400 italic">Data laporan tidak ditemukan.</td>
+                            <td colspan="8" class="text-center py-10 text-slate-400 font-normal">
+                                <div class="w-12 h-12 mx-auto mb-2 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center text-xl">
+                                    <i class="fa-solid fa-chart-line"></i>
+                                </div>
+                                Data laporan tidak ditemukan.
+                            </td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($reports as $r): 
@@ -747,10 +694,10 @@ if ($selected_project !== 'All') {
                             $netProfitReal = $paidRevenue - $expense;
                         ?>
                             <tr class="hover:bg-slate-50/80 transition">
-                                <td class="py-3.5 px-4 font-bold text-slate-800"><?= htmlspecialchars($r['nama_projek']) ?></td>
-                                <td class="py-3.5 px-4 text-slate-600"><?= htmlspecialchars($r['klien']) ?></td>
+                                <td class="py-3.5 px-4 font-bold text-slate-900"><?= htmlspecialchars($r['nama_projek']) ?></td>
+                                <td class="py-3.5 px-4 text-slate-600 font-normal"><?= htmlspecialchars($r['klien']) ?></td>
                                 <td class="py-3.5 px-4 text-center">
-                                    <span class="px-2.5 py-0.5 rounded-full text-[10px] uppercase font-bold inline-block border
+                                    <span class="px-2.5 py-1 rounded-lg text-xs font-semibold uppercase inline-block border tracking-wider
                                         <?php
                                             switch($r['status']) {
                                                 case 'In Progress': echo 'bg-blue-50 text-blue-700 border-blue-200'; break;
@@ -762,23 +709,23 @@ if ($selected_project !== 'All') {
                                         <?= htmlspecialchars($r['status']) ?>
                                     </span>
                                 </td>
-                                <td class="py-3.5 px-4 text-right font-semibold text-slate-800">
+                                <td class="py-3.5 px-4 text-right font-mono font-semibold text-slate-800">
                                     <?php if ($isHold): ?>
-                                        <span class="text-amber-600 font-normal">Rp 0 <span class="text-[10px] bg-amber-50 px-1 py-0.5 rounded border border-amber-200 font-semibold">Hold</span></span>
+                                        <span class="text-amber-600 font-normal">Rp 0 <span class="text-[10px] bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-semibold">Hold</span></span>
                                     <?php else: ?>
                                         Rp <?= number_format($r['budget'], 0, ',', '.') ?>
                                     <?php endif; ?>
                                 </td>
-                                <td class="py-3.5 px-4 text-right font-bold text-emerald-600">
+                                <td class="py-3.5 px-4 text-right font-mono font-bold text-emerald-600">
                                     Rp <?= number_format($paidRevenue, 0, ',', '.') ?>
                                 </td>
-                                <td class="py-3.5 px-4 text-right font-semibold text-slate-500">
+                                <td class="py-3.5 px-4 text-right font-mono font-semibold text-slate-500">
                                     Rp <?= number_format($unpaid, 0, ',', '.') ?>
                                 </td>
-                                <td class="py-3.5 px-4 text-right font-semibold text-amber-600">
+                                <td class="py-3.5 px-4 text-right font-mono font-semibold text-amber-600">
                                     Rp <?= number_format($expense, 0, ',', '.') ?>
                                 </td>
-                                <td class="py-3.5 px-4 text-right font-bold <?= $netProfitReal >= 0 ? 'text-emerald-700' : 'text-red-600' ?>">
+                                <td class="py-3.5 px-4 text-right font-mono font-bold <?= $netProfitReal >= 0 ? 'text-emerald-700' : 'text-red-600' ?>">
                                     Rp <?= number_format($netProfitReal, 0, ',', '.') ?>
                                 </td>
                             </tr>
@@ -788,30 +735,73 @@ if ($selected_project !== 'All') {
             </table>
         </div>
 
-        <!-- PAGINASI WEB -->
+        <!-- Mobile View (Cards) -->
+        <div class="md:hidden space-y-3">
+            <?php if (empty($reports)): ?>
+                <p class="text-center py-6 text-xs text-slate-400 font-normal">Data laporan tidak ditemukan.</p>
+            <?php else: ?>
+                <?php foreach ($reports as $r): 
+                    $paidRevenue = $r['realized_paid'];
+                    $expense = $r['total_expense'];
+                    $netProfitReal = $paidRevenue - $expense;
+                ?>
+                    <div class="p-4 border border-slate-200/90 rounded-xl bg-slate-50/50 space-y-2">
+                        <div class="flex justify-between items-start gap-2">
+                            <div>
+                                <h4 class="font-bold text-slate-900 text-xs sm:text-sm"><?= htmlspecialchars($r['nama_projek']) ?></h4>
+                                <p class="text-xs text-slate-500 font-normal">Klien: <?= htmlspecialchars($r['klien']) ?></p>
+                            </div>
+                            <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase bg-white border border-slate-200 text-slate-700 shrink-0">
+                                <?= htmlspecialchars($r['status']) ?>
+                            </span>
+                        </div>
+                        <div class="pt-2 border-t border-slate-200/80 grid grid-cols-2 gap-2 text-xs font-mono">
+                            <div>
+                                <span class="text-slate-400 block font-sans text-[10px]">Paid Revenue:</span>
+                                <span class="font-bold text-emerald-600">Rp <?= number_format($paidRevenue, 0, ',', '.') ?></span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block font-sans text-[10px]">Net Profit:</span>
+                                <span class="font-bold <?= $netProfitReal >= 0 ? 'text-emerald-700' : 'text-red-600' ?>">Rp <?= number_format($netProfitReal, 0, ',', '.') ?></span>
+                            </div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+
+        <!-- FITUR PAGINASI NUMERIK -->
         <?php if ($totalPages > 1): ?>
-            <div class="mt-6 flex flex-col sm:flex-row justify-between items-center gap-3 border-t border-slate-100 pt-4">
-                <span class="text-xs font-semibold text-slate-500">
-                    Menampilkan Halaman <strong><?= $page ?></strong> dari <strong><?= $totalPages ?></strong> (Total <?= $totalRows ?> Proyek)
+            <div class="mt-6 flex flex-col sm:flex-row justify-between items-center gap-3 border-t border-slate-100 pt-4 text-xs text-slate-500">
+                <span class="font-medium">
+                    Menampilkan Halaman <strong class="text-slate-800"><?= $page ?></strong> dari <strong class="text-slate-800"><?= $totalPages ?></strong> (Total <?= $totalRows ?> Proyek)
                 </span>
 
                 <div class="flex items-center gap-1.5">
                     <?php if ($page > 1): ?>
-                        <a href="?project_id=<?= $selected_project ?>&search=<?= urlencode($search_query) ?>&page=<?= $page - 1 ?>" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100 transition">
-                            <i class="fa-solid fa-chevron-left mr-1"></i> Prev
+                        <a href="?project_id=<?= $selected_project ?>&search=<?= urlencode($search_query) ?>&page=<?= $page - 1 ?>" class="btn-press px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">
+                            <i class="fa-solid fa-chevron-left mr-1 text-[10px]"></i> Prev
                         </a>
+                    <?php else: ?>
+                        <span class="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-300 bg-slate-50 cursor-not-allowed">
+                            <i class="fa-solid fa-chevron-left mr-1 text-[10px]"></i> Prev
+                        </span>
                     <?php endif; ?>
 
                     <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                        <a href="?project_id=<?= $selected_project ?>&search=<?= urlencode($search_query) ?>&page=<?= $i ?>" class="px-3 py-1.5 rounded-lg border text-xs font-bold transition <?= $page == $i ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100' ?>">
+                        <a href="?project_id=<?= $selected_project ?>&search=<?= urlencode($search_query) ?>&page=<?= $i ?>" class="btn-press px-3 py-1.5 rounded-xl border text-xs font-semibold transition <?= $page == $i ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50' ?>">
                             <?= $i ?>
                         </a>
                     <?php endfor; ?>
 
                     <?php if ($page < $totalPages): ?>
-                        <a href="?project_id=<?= $selected_project ?>&search=<?= urlencode($search_query) ?>&page=<?= $page + 1 ?>" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100 transition">
-                            Next <i class="fa-solid fa-chevron-right ml-1"></i>
+                        <a href="?project_id=<?= $selected_project ?>&search=<?= urlencode($search_query) ?>&page=<?= $page + 1 ?>" class="btn-press px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">
+                            Next <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
                         </a>
+                    <?php else: ?>
+                        <span class="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-300 bg-slate-50 cursor-not-allowed">
+                            Next <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
+                        </span>
                     <?php endif; ?>
                 </div>
             </div>
@@ -821,30 +811,32 @@ if ($selected_project !== 'All') {
 
     <!-- RINCIAN EXPENSE SPESIFIK PROYEK WEB -->
     <?php if ($selected_project !== 'All'): ?>
-        <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-            <h3 class="text-base font-bold text-slate-800 mb-4">Item Pengeluaran Operasional Proyek</h3>
+        <div class="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs mb-8">
+            <h3 class="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-receipt text-emerald-600"></i> Item Pengeluaran Operasional Proyek
+            </h3>
             <div class="overflow-x-auto">
-                <table class="w-full text-left text-xs text-slate-600 border-collapse">
-                    <thead class="uppercase bg-slate-50 text-slate-400 font-bold border-b border-slate-200 text-[10px]">
-                        <tr>
-                            <th class="py-2.5 px-3">Tanggal</th>
-                            <th class="py-2.5 px-3">Kategori</th>
-                            <th class="py-2.5 px-3">Keterangan</th>
-                            <th class="py-2.5 px-3 text-right">Biaya (Rp)</th>
+                <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[600px]">
+                    <thead>
+                        <tr class="bg-slate-50 text-slate-500 uppercase font-semibold text-xs tracking-wider border-b border-slate-200">
+                            <th class="py-3 px-4">TANGGAL</th>
+                            <th class="py-3 px-4">KATEGORI</th>
+                            <th class="py-3 px-4">KETERANGAN</th>
+                            <th class="py-3 px-4 text-right">BIAYA (RP)</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         <?php if (empty($expensesDetails)): ?>
                             <tr>
-                                <td colspan="4" class="text-center py-6 text-slate-400">Belum ada catatan biaya operasional pada proyek ini.</td>
+                                <td colspan="4" class="text-center py-6 text-slate-400 font-normal">Belum ada catatan biaya operasional pada proyek ini.</td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($expensesDetails as $ex): ?>
-                                <tr>
-                                    <td class="py-3 px-3 text-slate-500"><?= date('d M Y', strtotime($ex['tanggal_pengeluaran'])) ?></td>
-                                    <td class="py-3 px-3 font-semibold text-slate-700"><?= htmlspecialchars($ex['kategori']) ?></td>
-                                    <td class="py-3 px-3 text-slate-600"><?= htmlspecialchars($ex['keterangan'] ?: '-') ?></td>
-                                    <td class="py-3 px-3 text-right font-bold text-slate-800">Rp <?= number_format($ex['jumlah_biaya'], 0, ',', '.') ?></td>
+                                <tr class="hover:bg-slate-50/80 transition">
+                                    <td class="py-3 px-4 text-slate-500 font-normal whitespace-nowrap"><?= date('d M Y', strtotime($ex['tanggal_pengeluaran'])) ?></td>
+                                    <td class="py-3 px-4 font-semibold text-slate-800"><?= htmlspecialchars($ex['kategori']) ?></td>
+                                    <td class="py-3 px-4 text-slate-600 font-normal"><?= htmlspecialchars($ex['keterangan'] ?: '-') ?></td>
+                                    <td class="py-3 px-4 text-right font-bold font-mono text-slate-900">Rp <?= number_format($ex['jumlah_biaya'], 0, ',', '.') ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>

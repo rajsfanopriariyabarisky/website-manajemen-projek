@@ -1,10 +1,12 @@
 <?php
+session_start();
+date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../../config/database.php';
 
-$project_id = $_GET['project_id'] ?? null;
+$project_id = $_GET['project_id'] ?? $_GET['id'] ?? null;
 
 if (!$project_id) {
-    header("Location: index.php");
+    header("Location: ../projects/index.php");
     exit;
 }
 
@@ -27,10 +29,46 @@ if (!$project) {
             'budget' => $prop['nilai_penawaran'],
             'tanggal_mulai' => $prop['created_at'],
             'deadline' => date('Y-m-d', strtotime('+30 days', strtotime($prop['created_at']))),
-            'kategori_rab' => 'Website'
+            'kategori_rab' => 'Website',
+            'status' => 'On Hold'
         ];
     } else {
-        header("Location: index.php");
+        header("Location: ../projects/index.php");
+        exit;
+    }
+}
+
+// ACTION: KIRIM PROPOSAL KE CLIENT PORTAL & CHAT LOBBY
+if (isset($_GET['action']) && $_GET['action'] === 'send_client') {
+    // Cari requirement_id terkait
+    $reqId = $project['requirement_id'] ?? null;
+    
+    if (!$reqId) {
+        // Fallback pencarian berdasarkan nama proyek atau nama klien
+        $stmtFindReq = $pdo->prepare("SELECT id FROM client_requirements WHERE LOWER(title) LIKE LOWER(?) OR LOWER(client_name) LIKE LOWER(?) ORDER BY id DESC LIMIT 1");
+        $stmtFindReq->execute(['%' . $project['nama_projek'] . '%', '%' . $project['klien'] . '%']);
+        $reqId = $stmtFindReq->fetchColumn();
+    }
+
+    if ($reqId) {
+        // Update Status Requirement Klien -> Proposal Sent
+        $stmtUpReq = $pdo->prepare("UPDATE client_requirements SET status = 'Proposal Sent' WHERE id = ?");
+        $stmtUpReq->execute([$reqId]);
+
+        // Update Status Proyek -> On Hold
+        $stmtUpProj = $pdo->prepare("UPDATE projects SET status = 'On Hold' WHERE id = ?");
+        $stmtUpProj->execute([$project['id']]);
+
+        // Kirim Pesan Otomatis System ke Deal Chats Lobi Klien
+        $msgContent = "[SYSTEM] Surat Penawaran Harga (SPH) & Rincian RAB Resmi telah diterbitkan oleh Tim PT. Cipta Teknologi Cendekia untuk proyek: " . $project['nama_projek'] . ".\n\nAnda dapat mengunduh serta meninjau dokumen proposal resmi kapan saja melalui tombol Proposal PDF di atas.";
+        
+        $stmtInsertChat = $pdo->prepare("INSERT INTO deal_chats (requirement_id, sender_type, sender_name, message, client_read, created_at) VALUES (?, 'system', 'System CTC', ?, 0, NOW())");
+        $stmtInsertChat->execute([$reqId, $msgContent]);
+
+        header("Location: print_proposal.php?project_id=" . $project['id'] . "&msg=proposal_sent");
+        exit;
+    } else {
+        header("Location: print_proposal.php?project_id=" . $project['id'] . "&msg=req_not_found");
         exit;
     }
 }
@@ -46,7 +84,7 @@ $interval = $tglMulai->diff($tglSelesai);
 $durasiBulan = max(1, $interval->m + ($interval->y * 12));
 $durasiMinggu = $durasiBulan * 4;
 
-// Penentuan Komponen RAB
+// Penentuan Komponen RAB Sesuai Kategori
 $rabItems = [];
 
 switch ($kategoriRAB) {
@@ -119,7 +157,7 @@ switch ($kategoriRAB) {
         break;
 }
 
-// Auto Generate Nomor Surat
+// Auto Generate Nomor Surat Format Resmi
 function bulanRomawi($bulan) {
     $map = [1 => 'I', 2 => 'II', 3 => 'III', 4 => 'IV', 5 => 'V', 6 => 'VI', 7 => 'VII', 8 => 'VIII', 9 => 'IX', 10 => 'X', 11 => 'XI', 12 => 'XII'];
     return $map[(int)$bulan] ?? 'I';
@@ -147,11 +185,13 @@ function terbilang($angka) {
     <title>Surat Penawaran - <?= htmlspecialchars($project['nama_projek']) ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <!-- jsPDF + html2canvas CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
     <style>
-        /* ===== CETAK FULL-BLEED TANPA MARGIN PUTIH ===== */
+        /* CETAK FULL-BLEED TANPA MARGIN PUTIH */
         @page {
             size: A4 portrait;
             margin: 0 !important;
@@ -180,7 +220,6 @@ function terbilang($angka) {
             font-family: 'Times New Roman', Times, serif !important;
         }
 
-        /* Container Dokumen: GAP = 0 MENCEGAH SPILL HALAMAN KOSONG */
         #proposalContainer {
             display: flex;
             flex-direction: column;
@@ -191,7 +230,6 @@ function terbilang($angka) {
             background: #ffffff;
         }
 
-        /* Halaman A4 Presisi Full-Bleed */
         .page-a4 {
             width: 210mm;
             height: 297mm;
@@ -204,7 +242,6 @@ function terbilang($angka) {
             box-sizing: border-box;
         }
 
-        /* Background Kop Surat FULL 210x297mm */
         .kop-background {
             position: absolute;
             top: 0;
@@ -218,7 +255,6 @@ function terbilang($angka) {
             display: block;
         }
 
-        /* Stempel Basah Transparan */
         .stempel-img {
             mix-blend-mode: multiply;
             filter: contrast(115%);
@@ -269,10 +305,20 @@ function terbilang($angka) {
 
     <!-- Action Bar (Browser Only) -->
     <div class="w-[210mm] mb-6 flex flex-col sm:flex-row justify-between items-center gap-3 no-print font-sans">
-        <a href="index.php" class="text-xs font-bold text-slate-300 hover:text-white flex items-center gap-1.5 transition">
-            <i class="fa-solid fa-arrow-left"></i> Kembali ke Daftar Penawaran
+        <a href="../projects/detail.php?id=<?= $project['id'] ?>" class="text-xs font-bold text-slate-300 hover:text-white flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-arrow-left"></i> Kembali ke Detail Proyek
         </a>
+
+        <?php if (isset($_GET['msg']) && $_GET['msg'] === 'proposal_sent'): ?>
+            <div class="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <i class="fa-solid fa-circle-check"></i> Proposal berhasil dikirim ke Client Portal & Lobi Chat!
+            </div>
+        <?php endif; ?>
+
         <div class="flex items-center gap-3">
+            <a href="print_proposal.php?project_id=<?= $project['id'] ?>&action=send_client" onclick="return confirm('Kirimkan dokumen proposal penawaran harga ini secara resmi ke Client Portal?')" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition text-xs shadow">
+                <i class="fa-solid fa-paper-plane"></i> Kirim ke Klien Portal
+            </a>
             <button onclick="window.print()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition text-xs shadow">
                 <i class="fa-solid fa-print"></i> Cetak Browser
             </button>
@@ -285,7 +331,7 @@ function terbilang($angka) {
     <!-- Wrapper Utama Dokumen PDF (Eksak 2 Halaman) -->
     <div id="proposalContainer">
 
-        <!-- ================= HALAMAN 1 (KOP SURAT UTAMA kopsurat-ctc.png) ================= -->
+        <!-- ================= HALAMAN 1 (KOP SURAT UTAMA) ================= -->
         <div class="page-a4">
             <img src="../../assets/images/kopsurat-ctc.png"
                  alt="Kop Surat Utama"
@@ -305,14 +351,13 @@ function terbilang($angka) {
                         <div class="pt-2">
                             <p>Kepada Yth.</p>
                             <p class="font-bold text-[12px]">Pimpinan / Direksi Management</p>
-                            <!-- Nama Klien dibuat Hitam Tegas + Underline -->
                             <p class="font-bold text-black text-[12px] underline"><?= htmlspecialchars($project['klien']) ?></p>
                             <p>Di Tempat</p>
                         </div>
                         <p class="pt-2"><strong>Hal: Penawaran Pengembangan <?= htmlspecialchars($project['nama_projek']) ?></strong></p>
                     </div>
 
-                    <!-- Pembuka (Rata Kanan-Kiri) -->
+                    <!-- Pembuka -->
                     <p class="mb-2.5 leading-relaxed text-justify">Dengan hormat,</p>
                     <p class="mb-2.5 leading-relaxed text-justify">
                         Menindaklanjuti rencana kerja sama dan integrasi sistem pada <strong><?= htmlspecialchars($project['klien']) ?></strong>, kami dari <strong>PT. Cipta Teknologi Cendekia</strong> mengajukan penawaran resmi untuk pengembangan <strong>"<?= htmlspecialchars($project['nama_projek']) ?>"</strong>.
@@ -321,7 +366,7 @@ function terbilang($angka) {
                         Sistem ini dirancang khusus berbasis arsitektur modern, aman, dan dapat diandalkan untuk meningkatkan efisiensi operasional bisnis mitra secara terukur. Total nilai investasi komersial pengembangan sistem ini adalah sebesar <strong>Rp <?= number_format($totalBudget, 0, ',', '.') ?>,-</strong> (<em><?= terbilang($totalBudget) ?> Rupiah</em>) dengan estimasi durasi pengerjaan selama <strong><?= $durasiMinggu ?> Minggu (<?= $durasiBulan ?> Bulan)</strong>.
                     </p>
 
-                    <!-- Executive Summary (Flexbox Rapi Tanpa Bug Marker Floating) -->
+                    <!-- Executive Summary -->
                     <div class="p-3.5 border-l-4 border-emerald-800 bg-slate-50/90 mb-5 font-sans rounded-r-lg shadow-sm">
                         <h3 class="font-bold text-[11.5px] text-slate-900 mb-1.5 uppercase tracking-wide">RINGKASAN EKSEKUTIF (EXECUTIVE SUMMARY)</h3>
                         <p class="mb-2 text-[11px] text-slate-800 text-justify">Pengembangan sistem <strong><?= htmlspecialchars($project['nama_projek']) ?></strong> berfokus pada 3 Pilar Utama Keunggulan Teknologi:</p>
@@ -342,7 +387,7 @@ function terbilang($angka) {
                         </div>
                     </div>
 
-                    <!-- Scope of Work (Flexbox Bullet Presisi Rapi) -->
+                    <!-- Scope of Work -->
                     <div class="space-y-2.5 font-sans">
                         <h3 class="font-bold text-[12px] text-slate-900 border-b-2 border-slate-300 pb-2 mb-3.5 uppercase tracking-wide">
                             1. RUANG LINGKUP PEKERJAAN (SCOPE OF WORK)
@@ -380,7 +425,7 @@ function terbilang($angka) {
             </div>
         </div>
 
-        <!-- ================= HALAMAN 2 (KOP SURAT HALAMAN 2+ kopsurat-ctc-2.png) ================= -->
+        <!-- ================= HALAMAN 2 (KOP SURAT HALAMAN 2+) ================= -->
         <div class="page-a4">
             <img src="../../assets/images/kopsurat-ctc-2.png"
                  alt="Kop Surat Halaman 2"
@@ -452,14 +497,13 @@ function terbilang($angka) {
                                 </div>
                             </div>
 
-                            <!-- Sisi PT CTC: Stempel bergeser ke kanan menimpa di atas kata Mohammad -->
+                            <!-- Sisi PT CTC -->
                             <div class="flex flex-col justify-between h-48 border border-emerald-200 bg-emerald-50/40 p-4 rounded-xl relative">
                                 <div>
                                     <p class="font-bold text-slate-900 text-[11.5px]">Untuk &amp; Atas Nama</p>
                                     <p class="text-emerald-900 font-bold text-[11px]">PT. CIPTA TEKNOLOGI CENDEKIA</p>
                                 </div>
 
-                                <!-- Area TTD + Stempel basah transparan menimpa atas kata Mohammad -->
                                 <div class="relative h-20 w-full flex items-center justify-center">
                                     <img src="../../assets/images/Stempel.png"
                                          alt="Stempel PT CTC"
@@ -483,7 +527,6 @@ function terbilang($angka) {
 
     </div>
 
-    <!-- ===== Script: Hapus background putih Stempel + Download PDF per-halaman full-bleed ===== -->
     <script>
     function waitForImages() {
         const imgs = Array.from(document.querySelectorAll('#proposalContainer img'));
@@ -560,7 +603,7 @@ function terbilang($angka) {
             for (let i = 0; i < pages.length; i++) {
                 const page = pages[i];
                 const canvas = await html2canvas(page, {
-                    scale: 3, // Kualitas cetak HD tajam
+                    scale: 3,
                     useCORS: true,
                     allowTaint: false,
                     logging: false,

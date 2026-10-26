@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 21, 2026 at 11:44 AM
+-- Generation Time: Oct 26, 2026 at 11:43 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -45,8 +45,7 @@ CREATE TABLE `clients` (
 --
 
 INSERT INTO `clients` (`id`, `nama`, `email`, `password`, `is_verified`, `otp_code`, `otp_expiry`, `reset_token`, `reset_token_expiry`, `created_at`) VALUES
-(1, 'Kenneth', 'kennethputh@gmail.com', '$2y$10$iggEYwP2QlWtA17jsdhIouLYnh4ARoTxtj6Jy.lyueGKNMF1SKSwO', 1, NULL, NULL, NULL, NULL, '2026-10-21 08:37:11'),
-(2, 'Ival', 'ivalviary@gmail.com', '$2y$10$2KSeEQnNMYPMjT20cpbiRumcD/egFExNvthy/a1k9aiX.NkMSPXHe', 1, NULL, NULL, NULL, NULL, '2026-10-21 08:41:48');
+(1, 'Valen Tanjung', 'ivalviary@gmail.com', '$2y$10$jBSI0ehLPa2HqEOwKTxy9OdqlmFDnpJLq6opXEHd82eZD1nitClbS', 1, NULL, NULL, NULL, NULL, '2026-10-26 10:22:04');
 
 -- --------------------------------------------------------
 
@@ -75,8 +74,7 @@ CREATE TABLE `client_requirements` (
 --
 
 INSERT INTO `client_requirements` (`id`, `client_name`, `client_email`, `client_phone`, `company_name`, `title`, `description`, `file_attachment`, `budget_estimation`, `status`, `user_id`, `client_id`, `created_at`) VALUES
-(1, 'Kenneth', 'kennethputh@gmail.com', '081322221112', 'PT. Puth Family', 'Website Company Profile', 'Bikin landing page, company profile yang bagus dan mewah', 'BRD_1792571831_32aee711.pdf', 20000000.00, 'Under Review', NULL, 1, '2026-10-21 08:37:11'),
-(2, 'Ival', 'ivalviary@gmail.com', '081323153334', 'PT. VIARY INDONESIA', 'Mobile Application Smart', 'Tester', 'BRD_1792572108_1184b74d.pdf', 10000000.00, 'Deal / Accepted', NULL, 2, '2026-10-21 08:41:48');
+(4, 'Valen Tanjung', 'ivalviary@gmail.com', '081383838399', 'PT. Djarum', 'Website Company Profile', 'Intinya bikin website bagus, budget aman', 'BRD_1793010124_95f8d8da.pdf', 20000000.00, 'Deal / Accepted', NULL, 1, '2026-10-26 10:22:04');
 
 -- --------------------------------------------------------
 
@@ -101,7 +99,7 @@ CREATE TABLE `contracts` (
 --
 
 INSERT INTO `contracts` (`id`, `project_id`, `nomor_kontrak`, `durasi_bulan`, `tanggal_mulai`, `tanggal_selesai`, `nilai_kontrak`, `file_pdf`, `created_at`) VALUES
-(1, 1, '001/CTC-SPK/10/2026', 3, '2026-10-21', '2027-01-21', 10000000.00, NULL, '2026-10-21 09:28:23');
+(1, 5, '005/CTC-SPK/10/2026', 3, '2026-10-26', '2027-01-26', 20000000.00, NULL, '2026-10-26 10:26:42');
 
 -- --------------------------------------------------------
 
@@ -126,14 +124,13 @@ CREATE TABLE `deal_chats` (
 --
 
 INSERT INTO `deal_chats` (`id`, `requirement_id`, `sender_type`, `sender_name`, `message`, `attachment_file`, `admin_read`, `client_read`, `created_at`) VALUES
-(55, 1, 'client', 'Kenneth', 'Halo Tim Konsultan PT. CTC, kami telah mengajukan dokumen requirement proyek: \"Website Company Profile\". Mohon dapat ditinjau untuk penyusunan Surat Penawaran Resmi.', NULL, 1, 1, '2026-10-21 08:37:11'),
-(56, 1, 'admin', 'Pak Taufik', 'Baik, sedang dalam peninjauan mohon ditunggu', NULL, 1, 1, '2026-10-21 08:39:05'),
-(57, 1, 'client', 'Kenneth', 'Baik', NULL, 1, 1, '2026-10-21 08:39:23'),
-(58, 2, 'client', 'Ival', 'Halo Tim Konsultan PT. CTC, kami telah mengajukan dokumen requirement proyek: \"Mobile Application Smart\". Mohon dapat ditinjau untuk penyusunan Surat Penawaran Resmi.', NULL, 1, 1, '2026-10-21 08:41:48'),
-(59, 2, 'admin', 'Administrator', 'Baik, mohon ditunggu ya pak', NULL, 1, 1, '2026-10-21 08:59:02'),
-(60, 2, 'client', 'Ival', 'Gimana pak?', NULL, 1, 1, '2026-10-21 09:26:28'),
-(61, 2, 'admin', 'Administrator', 'Mohon bersabar mas', NULL, 1, 1, '2026-10-21 09:27:14'),
-(62, 2, 'admin', 'System CTC', 'Requirement resmi disetujui & dikonversi menjadi Proyek Aktif: [ Mobile Application Smart ]', NULL, 0, 1, '2026-10-21 09:28:23');
+(1, 4, 'client', 'Valen Tanjung', 'Halo Tim Konsultan PT. CTC, kami telah mengajukan dokumen requirement proyek: \"Website Company Profile\". Mohon dapat ditinjau untuk penyusunan Surat Penawaran Resmi.', NULL, 1, 1, '2026-10-26 10:22:04'),
+(2, 4, 'admin', 'Administrator', 'Baik, akan kita lakukan check terlebih dahulu, mohon ditunggu', NULL, 1, 1, '2026-10-26 10:25:52'),
+(3, 4, 'admin', 'System CTC', 'Penawaran resmi proyek [ Website Company Profile ] telah dibuat (Proposal Sent). Status proyek diset \'On Hold\' hingga persetujuan Klien.', NULL, 1, 1, '2026-10-26 10:26:42'),
+(4, 4, 'client', 'Valen Tanjung', 'Oke saya setuju dengan penawarannya', NULL, 1, 1, '2026-10-26 10:27:20'),
+(5, 4, 'admin', 'Administrator', 'Baik, akan kita kerjakan projek nya sesuai yang tertata di penawaran', NULL, 1, 1, '2026-10-26 10:27:43'),
+(6, 4, 'admin', 'Administrator', 'Terimakasih', NULL, 1, 1, '2026-10-26 10:27:48'),
+(7, 4, 'admin', 'System CTC', 'Status pengajuan diperbarui menjadi: [ Deal / Accepted ]', NULL, 1, 1, '2026-10-26 10:28:35');
 
 -- --------------------------------------------------------
 
@@ -186,6 +183,7 @@ CREATE TABLE `projects` (
   `kategori_rab` enum('Website','IoT','Mobile','Custom') NOT NULL DEFAULT 'Website',
   `rab_custom_data` longtext DEFAULT NULL,
   `client_token` varchar(64) DEFAULT NULL,
+  `requirement_id` int(11) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -193,8 +191,8 @@ CREATE TABLE `projects` (
 -- Dumping data for table `projects`
 --
 
-INSERT INTO `projects` (`id`, `nama_projek`, `klien`, `budget`, `tanggal_mulai`, `deadline`, `status`, `kategori_rab`, `rab_custom_data`, `client_token`, `created_at`) VALUES
-(1, 'Mobile Application Smart', 'Ival', 10000000.00, '2026-10-21', '2027-01-21', 'On Hold', 'Mobile', NULL, NULL, '2026-10-21 09:28:23');
+INSERT INTO `projects` (`id`, `nama_projek`, `klien`, `budget`, `tanggal_mulai`, `deadline`, `status`, `kategori_rab`, `rab_custom_data`, `client_token`, `requirement_id`, `created_at`) VALUES
+(5, 'Website Company Profile', 'Valen Tanjung', 20000000.00, '2026-10-26', '2027-01-26', 'In Progress', 'Website', NULL, NULL, 4, '2026-10-26 10:26:42');
 
 -- --------------------------------------------------------
 
@@ -213,6 +211,13 @@ CREATE TABLE `project_files` (
   `uploaded_by` int(11) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `project_files`
+--
+
+INSERT INTO `project_files` (`id`, `project_id`, `task_id`, `nama_file`, `kategori`, `file_path`, `ukuran_file`, `uploaded_by`, `created_at`) VALUES
+(9, 5, 38, 'SPK_001_CTC-SPK_10_2026.pdf', 'Deliverable / Code', '8185e4929b71de298fbe91f594c6f4d8.pdf', 2408092, 2, '2026-10-26 10:34:13');
 
 -- --------------------------------------------------------
 
@@ -235,7 +240,12 @@ CREATE TABLE `project_logs` (
 --
 
 INSERT INTO `project_logs` (`id`, `project_id`, `user_id`, `nama_user`, `aktivitas`, `tipe`, `created_at`) VALUES
-(110, 1, 6, 'Administrator', 'Memperbarui konfigurasi proyek, status \'On Hold\' & Kategori RAB \'Mobile\'', 'info', '2026-10-21 09:28:57');
+(1, 5, 6, 'Administrator', 'Mengalokasikan modul baru \'Web Developer\' ke Tim: (Billianz Yusuf Hema S., Febrian Valentino)', 'task', '2026-10-26 10:32:11'),
+(2, 5, 2, 'Febrian Valentino', 'Memperbarui progress \'Web Developer\' menjadi status: In Progress', 'info', '2026-10-26 10:33:04'),
+(3, 5, 6, 'Administrator', 'Mengirimkan catatan instruksi revisi pada modul \'Web Developer\'', 'warning', '2026-10-26 10:33:28'),
+(4, 5, 2, 'Febrian Valentino', 'Memperbarui progress \'Web Developer\' menjadi status: Ready for Review', 'info', '2026-10-26 10:34:13'),
+(5, 5, 2, 'Febrian Valentino', 'Memperbarui progress \'Web Developer\' menjadi status: Ready for Review', 'info', '2026-10-26 10:34:28'),
+(6, 5, 6, 'Administrator', 'Menyetujui (Approved) pengerjaan modul \'Web Developer\'', 'success', '2026-10-26 10:34:51');
 
 -- --------------------------------------------------------
 
@@ -278,6 +288,13 @@ CREATE TABLE `tasks` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `tasks`
+--
+
+INSERT INTO `tasks` (`id`, `project_id`, `assigned_to`, `user_id`, `nama_tugas`, `prioritas`, `status`, `progress_notes`, `updated_by_user_id`, `revision_notes`, `drive_link`, `deadline`, `updated_at`) VALUES
+(38, 5, 4, 4, 'Web Developer', 'High', 'Done', 'sudah saya kerjakan', 2, NULL, 'https://www.drive.google.com', '2026-10-26', '2026-10-26 10:34:51');
+
 -- --------------------------------------------------------
 
 --
@@ -290,6 +307,14 @@ CREATE TABLE `task_assignees` (
   `user_id` int(11) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `task_assignees`
+--
+
+INSERT INTO `task_assignees` (`id`, `task_id`, `user_id`, `created_at`) VALUES
+(28, 38, 4, '2026-10-26 10:32:11'),
+(29, 38, 2, '2026-10-26 10:32:11');
 
 -- --------------------------------------------------------
 
@@ -313,7 +338,7 @@ CREATE TABLE `users` (
 
 INSERT INTO `users` (`id`, `nama`, `email`, `password`, `role`, `jabatan`, `created_at`) VALUES
 (1, 'Pak Taufik', 'taufik@gmail.com', '$2y$10$6T9Gt5TbtK3JaQQK3jGHRu39tRoDocO0q1u07SsB6UkwkLhEl1UTm', 'admin', 'Project Manager', '2026-10-21 08:33:06'),
-(2, 'Febrian Valentino', 'febrian@gmail.com', '$2y$10$cek87vPT1s.PZmGSiTil6O4dau4JkK/DjHI5OUoN8HiaPi1O8pnqW', 'karyawan', 'Web Developer', '2026-10-21 08:33:36'),
+(2, 'Febrian Valentino', 'febrian@gmail.com', '$2y$10$ZvpuyC4at2BG1hNkolk0U.8xOwoXsZWxXVyYLIJPOrdwhrnhWWt92', 'karyawan', 'Web Developer', '2026-10-21 08:33:36'),
 (3, 'Rajsfano Priariya B.', 'rajsfano@gmail.com', '$2y$10$aoiSx6ngIOaUAWmBTXNQ9OxJudxeuw6HNtizoElmhQSj4PtZNl77q', 'karyawan', 'UI Designer', '2026-10-21 08:33:56'),
 (4, 'Billianz Yusuf Hema S.', 'billianz@gmail.com', '$2y$10$6PcwVz3tSs7/xGXtLkYp1ONtccy0SkaMeQANmfgiD4ky0uL527AVK', 'karyawan', 'Backend Developer', '2026-10-21 08:34:21'),
 (5, 'Muhammad Fackhri', 'fackhri@gmail.com', '$2y$10$z26k7CXNwIGq7OtH6Fj8oeITpN656PsTiE77n1DzE6Uz1Cz8aem7G', 'karyawan', 'IT Consultant', '2026-10-21 08:34:59'),
@@ -423,13 +448,13 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT for table `clients`
 --
 ALTER TABLE `clients`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `client_requirements`
 --
 ALTER TABLE `client_requirements`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `contracts`
@@ -441,7 +466,7 @@ ALTER TABLE `contracts`
 -- AUTO_INCREMENT for table `deal_chats`
 --
 ALTER TABLE `deal_chats`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=63;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `expenses`
@@ -459,19 +484,19 @@ ALTER TABLE `invoices`
 -- AUTO_INCREMENT for table `projects`
 --
 ALTER TABLE `projects`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `project_files`
 --
 ALTER TABLE `project_files`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- AUTO_INCREMENT for table `project_logs`
 --
 ALTER TABLE `project_logs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=111;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT for table `proposals`
@@ -483,19 +508,19 @@ ALTER TABLE `proposals`
 -- AUTO_INCREMENT for table `tasks`
 --
 ALTER TABLE `tasks`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=38;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=39;
 
 --
 -- AUTO_INCREMENT for table `task_assignees`
 --
 ALTER TABLE `task_assignees`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=28;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=30;
 
 --
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- Constraints for dumped tables

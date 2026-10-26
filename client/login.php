@@ -120,22 +120,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['forgot_password_acti
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Client Portal Access - PT. Cipta Teknologi Cendekia</title>
 
-    <link rel="icon" type="image/jpeg" href="../assets/images/logo.jpg">
-    <link rel="shortcut icon" type="image/jpeg" href="../assets/images/logo.jpg">
+    <link rel="icon" type="image/png" href="../assets/images/logo.png">
+    <link rel="shortcut icon" type="image/png" href="../assets/images/logo.png">
+
+    <!-- Google Fonts: Plus Jakarta Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
-        .gpu {
-            will-change: opacity, transform;
-            transform: translateZ(0);
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
         }
         
         @keyframes pageFadeIn {
             from {
                 opacity: 0;
-                transform: translateY(12px) scale(0.98);
+                transform: translateY(10px) scale(0.99);
             }
             to {
                 opacity: 1;
@@ -144,97 +148,117 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['forgot_password_acti
         }
 
         .animate-fade-in {
-            animation: pageFadeIn 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            animation: pageFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
-        .btn-press { transition: all .2s cubic-bezier(0.4, 0, 0.2, 1); }
-        .btn-press:active { transform: scale(.97); }
-        .input-glow:focus { border-color: #059669; box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.15); }
+        .btn-press { 
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
+        }
+        .btn-press:active { 
+            transform: translateY(1px); 
+        }
+        .input-glow:focus { 
+            border-color: #059669; 
+            box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.12); 
+        }
     </style>
 </head>
-<body class="bg-slate-100 text-slate-800 min-h-screen flex items-center justify-center p-4 font-sans relative overflow-hidden select-none">
+<body class="bg-slate-100 text-slate-800 min-h-screen flex items-center justify-center p-4 selection:bg-emerald-600 selection:text-white relative">
 
-    <div class="fixed inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden">
-        <img src="../assets/images/logo.jpg" alt="Watermark CTC" class="w-[1000px] max-w-[90vw] h-auto object-contain opacity-[0.10] mix-blend-multiply">
-    </div>
+    <div class="animate-fade-in w-full max-w-md my-auto relative z-10">
 
-    <div class="animate-fade-in gpu w-full max-w-md bg-white/90 border border-white/80 rounded-3xl shadow-2xl shadow-slate-300/80 p-6 sm:p-8 relative z-10 backdrop-blur-md">
-        
-        <div class="text-center mb-6">
-            <div class="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-3 flex items-center justify-center p-1 bg-white rounded-2xl shadow-sm border border-slate-200/80">
-                <img src="../assets/images/logo.jpg" alt="Logo PT. CTC" class="w-full h-full object-contain">
+        <!-- Card Login Utama Clean -->
+        <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xl shadow-slate-200/60 p-6 sm:p-8">
+            
+            <!-- Header Login Clean -->
+            <div class="text-center mb-6 pb-5 border-b border-slate-100">
+                <!-- Logo PNG Transparan Tanpa Box -->
+                <img src="../assets/images/logo.png" alt="Logo PT. CTC" class="h-16 sm:h-20 w-auto mx-auto mb-3 object-contain">
+
+                <span class="text-[11px] font-bold uppercase tracking-widest text-emerald-800 bg-emerald-50 border border-emerald-200 px-3.5 py-1 rounded-full inline-block mb-2">
+                    PT. CIPTA TEKNOLOGI CENDEKIA
+                </span>
+                <h1 class="text-xl font-bold text-slate-900 tracking-tight">Client Portal Access</h1>
+                <p class="text-xs text-slate-500 mt-1">Masuk untuk memantau status proyek & negosiasi</p>
             </div>
 
-            <span class="text-[10px] font-mono font-black uppercase tracking-[0.2em] text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-3 py-1 rounded-full inline-block mb-2 shadow-sm">
-                Welcome CTC Client
-            </span>
-            <h1 class="text-xl font-black text-slate-900 tracking-tight uppercase">CLIENT PORTAL ACCESS</h1>
-            <p class="text-xs text-slate-500 mt-1 font-bold">PT. Cipta Teknologi Cendekia</p>
+            <!-- Pesan Sukses -->
+            <?php if (!empty($success_msg)): ?>
+                <div class="mb-5 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs sm:text-sm flex items-start gap-3 shadow-xs">
+                    <i class="fa-solid fa-circle-check text-emerald-600 text-lg shrink-0 mt-0.5"></i>
+                    <span class="font-medium leading-relaxed"><?= $success_msg ?></span>
+                </div>
+            <?php endif; ?>
+
+            <!-- Pesan Error -->
+            <?php if (!empty($error_msg)): ?>
+                <div class="mb-5 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs sm:text-sm flex items-start gap-3 shadow-xs">
+                    <i class="fa-solid fa-circle-exclamation text-red-500 text-lg shrink-0 mt-0.5"></i>
+                    <span class="font-medium leading-relaxed"><?= htmlspecialchars($error_msg) ?></span>
+                </div>
+            <?php endif; ?>
+
+            <form method="POST" class="space-y-4">
+                <div>
+                    <label class="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5">
+                        Email Resmi Klien / Perusahaan <span class="text-red-500">*</span>
+                    </label>
+                    <div class="relative">
+                        <input type="email" name="email" required placeholder="nama@perusahaan.com" 
+                               class="input-glow w-full px-3.5 py-2.5 pl-10 rounded-xl border border-slate-300 bg-white text-slate-900 text-sm font-normal focus:outline-none transition-all placeholder:text-slate-400">
+                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <i class="fa-solid fa-envelope text-sm"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="block text-xs sm:text-sm font-medium text-slate-700">
+                            Password Portal <span class="text-red-500">*</span>
+                        </label>
+                        <button type="button" onclick="openForgotModal()" class="text-xs font-semibold text-emerald-600 hover:underline focus:outline-none">
+                            Lupa Password?
+                        </button>
+                    </div>
+                    <div class="relative">
+                        <input type="password" id="loginPassword" name="password" required placeholder="Masukkan password Anda..." 
+                               class="input-glow w-full px-3.5 py-2.5 pl-10 pr-10 rounded-xl border border-slate-300 bg-white text-slate-900 text-sm font-normal focus:outline-none transition-all placeholder:text-slate-400">
+                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <i class="fa-solid fa-lock text-sm"></i>
+                        </div>
+                        <button type="button" onclick="toggleLoginPassword()" 
+                                class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-emerald-700 focus:outline-none transition-colors">
+                            <i id="eyeIconLogin" class="fa-solid fa-eye text-sm"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="pt-2">
+                    <button type="submit" class="btn-press w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow-md hover:shadow-lg text-sm flex items-center justify-center gap-2 transition-all">
+                        <i class="fa-solid fa-right-to-bracket text-sm"></i> Masuk ke Portal Klien
+                    </button>
+                </div>
+            </form>
+
+            <div class="mt-6 pt-4 border-t border-slate-100 text-center text-xs sm:text-sm text-slate-500">
+                Belum mengajukan proyek? <a href="request.php" class="text-emerald-600 font-semibold hover:underline">Kirim Requirement Baru</a>
+            </div>
         </div>
 
-        <?php if (!empty($success_msg)): ?>
-            <div class="mb-5 p-4 bg-emerald-50/90 border border-emerald-200 rounded-2xl text-emerald-800 text-xs flex items-center gap-3 shadow-sm">
-                <i class="fa-solid fa-circle-check text-emerald-600 text-base shrink-0"></i>
-                <span class="font-bold leading-relaxed"><?= $success_msg ?></span>
-            </div>
-        <?php endif; ?>
-
-        <?php if (!empty($error_msg)): ?>
-            <div class="mb-5 p-4 bg-red-50/90 border border-red-200 rounded-2xl text-red-700 text-xs flex items-start gap-3 shadow-sm">
-                <i class="fa-solid fa-circle-exclamation text-red-500 text-base shrink-0 mt-0.5"></i>
-                <span class="font-medium leading-relaxed"><?= htmlspecialchars($error_msg) ?></span>
-            </div>
-        <?php endif; ?>
-
-        <form method="POST" class="space-y-4 text-xs">
-            <div>
-                <label class="block font-black text-slate-700 uppercase tracking-wider mb-2 text-[10px]">
-                    EMAIL RESMI KLIEN / PERUSAHAAN
-                </label>
-                <div class="relative">
-                    <input type="email" name="email" required placeholder="nama@perusahaan.com" 
-                           class="input-glow w-full px-4 py-3.5 pl-11 rounded-2xl border border-slate-300 bg-slate-50/80 text-slate-900 font-bold focus:bg-white focus:outline-none transition-all placeholder:text-slate-400 placeholder:font-normal">
-                    <i class="fa-solid fa-envelope absolute left-4 top-4 text-slate-400 text-sm"></i>
-                </div>
-            </div>
-
-            <div>
-                <div class="flex items-center justify-between mb-2">
-                    <label class="block font-black text-slate-700 uppercase tracking-wider text-[10px]">
-                        PASSWORD PORTAL
-                    </label>
-                    <button type="button" onclick="openForgotModal()" class="text-[11px] font-extrabold text-emerald-700 hover:underline focus:outline-none">
-                        Lupa Password?
-                    </button>
-                </div>
-                <div class="relative">
-                    <input type="password" id="loginPassword" name="password" required placeholder="Masukkan password Anda..." 
-                           class="input-glow w-full px-4 py-3.5 pl-11 pr-11 rounded-2xl border border-slate-300 bg-slate-50/80 text-slate-900 font-bold focus:bg-white focus:outline-none transition-all placeholder:text-slate-400 placeholder:font-normal">
-                    <i class="fa-solid fa-lock absolute left-4 top-4 text-slate-400 text-sm"></i>
-                    <button type="button" onclick="toggleLoginPassword()" class="absolute right-4 top-4 text-slate-400 hover:text-slate-600 focus:outline-none">
-                        <i id="eyeIconLogin" class="fa-solid fa-eye text-sm"></i>
-                    </button>
-                </div>
-            </div>
-
-            <button type="submit" class="btn-press w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl shadow-lg shadow-emerald-600/30 text-xs uppercase tracking-wider flex items-center justify-center gap-2 mt-2">
-                <i class="fa-solid fa-right-to-bracket text-sm"></i> MASUK KE PORTAL
-            </button>
-        </form>
-
-        <div class="mt-8 pt-5 border-t border-slate-200/60 text-center text-xs text-slate-500 font-medium">
-            Belum mengajukan proyek? <a href="request.php" class="text-emerald-700 font-bold hover:underline">Kirim Requirement Baru</a>
+        <div class="text-center text-xs text-slate-400 font-medium mt-4">
+            &copy; <?= date('Y') ?> PT. Cipta Teknologi Cendekia. Enterprise Software Solution.
         </div>
     </div>
 
     <!-- MODAL POPUP LUPA PASSWORD -->
-    <div id="forgotModal" class="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
-        <div class="bg-white border border-slate-200 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative animate-fade-in text-xs">
+    <div id="forgotModal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs hidden flex items-center justify-center p-4">
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden relative animate-fade-in text-xs sm:text-sm">
             
             <div class="p-4 bg-slate-900 text-white flex items-center justify-between">
                 <div class="flex items-center gap-2">
                     <i class="fa-solid fa-key text-emerald-400 text-sm"></i>
-                    <h3 class="text-xs font-black uppercase tracking-wider">Reset Password Portal</h3>
+                    <h3 class="text-xs font-bold uppercase tracking-wider">Reset Password Portal</h3>
                 </div>
                 <button onclick="closeForgotModal()" class="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition focus:outline-none">
                     <i class="fa-solid fa-xmark text-xs"></i>
@@ -244,33 +268,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['forgot_password_acti
             <form method="POST" class="p-5 space-y-4">
                 <input type="hidden" name="forgot_password_action" value="1">
 
-                <p class="text-slate-600 font-medium leading-relaxed">
-                    Masukkan email resmi terdaftar Anda. Kami akan mengirimkan link verifikasi khusus untuk mereset password Anda[cite: 32].
+                <p class="text-slate-600 font-normal leading-relaxed">
+                    Masukkan email resmi terdaftar Anda. Kami akan mengirimkan link verifikasi khusus untuk mereset password Anda[cite: 28].
                 </p>
 
                 <div>
-                    <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Email Perusahaan</label>
-                    <div class="relative flex items-center">
-                        <input type="email" name="forgot_email" required placeholder="nama@perusahaan.com" class="input-glow w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 pl-9 text-xs text-slate-800 focus:outline-none focus:bg-white font-semibold">
-                        <i class="fa-regular fa-envelope absolute left-3 text-slate-400 text-xs pointer-events-none"></i>
+                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Email Perusahaan</label>
+                    <div class="relative">
+                        <input type="email" name="forgot_email" required placeholder="nama@perusahaan.com" 
+                               class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 pl-10 text-xs sm:text-sm text-slate-900 font-normal focus:outline-none placeholder:text-slate-400">
+                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <i class="fa-regular fa-envelope text-sm"></i>
+                        </div>
                     </div>
                 </div>
 
-                <div class="flex items-center justify-end gap-2 pt-1">
-                    <button type="button" onclick="closeForgotModal()" class="btn-press px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">
+                <div class="flex items-center justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeForgotModal()" class="btn-press px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs">
                         Batal
                     </button>
-                    <button type="submit" class="btn-press px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl uppercase tracking-wider text-xs shadow-md shadow-emerald-600/20">
+                    <button type="submit" class="btn-press px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs shadow-sm">
                         Kirim Link Reset
                     </button>
                 </div>
             </form>
 
         </div>
-    </div>
-
-    <div class="absolute bottom-4 text-center text-[10px] text-slate-400 font-bold font-mono">
-        &copy; <?= date('Y') ?> PT. Cipta Teknologi Cendekia. Enterprise Client Portal.
     </div>
 
     <script>

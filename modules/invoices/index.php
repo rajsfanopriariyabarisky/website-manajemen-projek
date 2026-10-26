@@ -153,40 +153,70 @@ require_once __DIR__ . '/../../includes/header.php';
 require_once __DIR__ . '/../../includes/sidebar.php';
 ?>
 
-<style>
-#print-area-pdf { display: none; }
+<!-- Google Fonts: Plus Jakarta Sans -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-@media print {
-    body > * { display: none !important; }
-    #print-area-pdf {
-        display: block !important;
-        position: absolute !important;
-        left: 0 !important; top: 0 !important;
-        width: 100% !important; margin: 0 !important; padding: 0 !important;
-        background: #ffffff !important; color: #0f172a !important;
-        font-family: 'Segoe UI', Arial, sans-serif !important;
-        -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+<style>
+    body, input, select, button, h1, h2, h3, h4, h5, h6, textarea { 
+        font-family: 'Plus Jakarta Sans', sans-serif !important; 
     }
-    @page { size: A4 portrait; margin: 10mm 12mm 10mm 12mm; }
-    .print-header-pdf { width: 100% !important; margin-bottom: 15px !important; padding-bottom: 8px !important; border-bottom: 3px double #047857 !important; }
-    .print-logo-img { width: 52px !important; height: 52px !important; object-fit: cover !important; border-radius: 6px !important; }
-    .pdf-table { width: 100% !important; border-collapse: collapse !important; font-size: 9.5px !important; margin-bottom: 15px !important; }
-    .pdf-table th { background-color: #065f46 !important; color: #ffffff !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 8.5px !important; padding: 6px 6px !important; border: 1px solid #065f46 !important; }
-    .pdf-table td { border: 1px solid #cbd5e1 !important; padding: 6px 7px !important; color: #1e293b !important; }
-    .pdf-badge { border: 1px solid #047857 !important; background: #ecfdf5 !important; padding: 1px 5px !important; font-weight: 800 !important; font-size: 7.5px !important; text-transform: uppercase !important; white-space: nowrap !important; color: #047857 !important; border-radius: 3px !important; }
-}
+
+    .btn-press { 
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
+    }
+    .btn-press:active { 
+        transform: translateY(1px); 
+    }
+
+    .input-glow { 
+        transition: box-shadow .2s ease, border-color .2s ease; 
+    }
+    .input-glow:focus { 
+        border-color: #059669; 
+        box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.12); 
+    }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+    #print-area-pdf { display: none; }
+
+    @media print {
+        body > * { display: none !important; }
+        #print-area-pdf {
+            display: block !important;
+            position: absolute !important;
+            left: 0 !important; top: 0 !important;
+            width: 100% !important; margin: 0 !important; padding: 0 !important;
+            background: #ffffff !important; color: #0f172a !important;
+            font-family: 'Segoe UI', Arial, sans-serif !important;
+            -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+        }
+        @page { size: A4 portrait; margin: 10mm 12mm 10mm 12mm; }
+        .print-header-pdf { width: 100% !important; margin-bottom: 15px !important; padding-bottom: 8px !important; border-bottom: 3px double #047857 !important; }
+        .print-logo-img { width: 52px !important; height: 52px !important; object-fit: cover !important; border-radius: 6px !important; }
+        .pdf-table { width: 100% !important; border-collapse: collapse !important; font-size: 9.5px !important; margin-bottom: 15px !important; }
+        .pdf-table th { background-color: #065f46 !important; color: #ffffff !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 8.5px !important; padding: 6px 6px !important; border: 1px solid #065f46 !important; }
+        .pdf-table td { border: 1px solid #cbd5e1 !important; padding: 6px 7px !important; color: #1e293b !important; }
+        .pdf-badge { border: 1px solid #047857 !important; background: #ecfdf5 !important; padding: 1px 5px !important; font-weight: 800 !important; font-size: 7.5px !important; text-transform: uppercase !important; white-space: nowrap !important; color: #047857 !important; border-radius: 3px !important; }
+    }
 </style>
 
+<!-- PDF Print Template Area -->
 <div id="print-area-pdf">
     <div class="print-header-pdf">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; justify-between: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 14px;">
                 <img src="/website%20manajemen%20projek/assets/images/logo.jpg" alt="Logo PT CTC" class="print-logo-img">
                 <div>
                     <h1 style="font-size: 13pt; font-weight: 900; color: #0f172a; margin: 0; text-transform: uppercase;">PT. CIPTA TEKNOLOGI CENDEKIA</h1>
                     <p style="font-size: 8.5pt; font-weight: 700; color: #047857; margin: 2px 0 0 0;">Enterprise IT Solution, Software Development & Financial Control</p>
                     <p style="font-size: 7.5pt; color: #64748b; margin: 2px 0 0 0;">Perumahan Cahaya Garuda Residence Kav. 31, Bojongsari, Kota Depok, Jawa Barat |</p>
-                    <p class="text-[11px] font-sans text-slate-500">Email: ciptateknologicendekia@gmail.com | Website: https://ctc-nusantara.com/</p>
+                    <p style="font-size: 7.5pt; color: #64748b; margin: 1px 0 0 0;">Email: ciptateknologicendekia@gmail.com | Website: https://ctc-nusantara.com/</p>
                 </div>
             </div>
             <div style="text-align: right; font-size: 8pt; color: #475569;">
@@ -230,27 +260,33 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     </table>
 </div>
 
-<main class="flex-1 p-4 md:p-8 overflow-y-auto bg-slate-50 min-h-screen w-full font-sans">
-    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
-        <div>
-            <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
-                MODUL BILLING SYSTEM
-            </span>
-            <h1 class="text-xl md:text-2xl font-bold text-slate-800 mt-2">Invoice & Penagihan Klien</h1>
-            <p class="text-xs text-slate-500 mt-0.5">Kelola tagihan termin, status penagihan, dan cetak kuitansi resmi PT. CTC.</p>
+<main class="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto w-full min-w-0 bg-[#f8fafc] text-slate-800 selection:bg-emerald-600 selection:text-white relative">
+    
+    <!-- Top Header Banner Navigation -->
+    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-5 mb-6 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs">
+        <div class="shrink-0">
+            <div class="flex items-center gap-2 mb-1">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span class="text-xs font-semibold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-0.5 rounded-full">
+                    MODUL BILLING SYSTEM • INVOICE & PENAGIHAN
+                </span>
+            </div>
+            <h1 class="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Invoice & Penagihan Klien</h1>
+            <p class="text-xs sm:text-sm text-slate-500 font-normal mt-0.5">Kelola tagihan termin, status penagihan, dan cetak kuitansi resmi PT. CTC.</p>
         </div>
 
-        <div class="flex items-center gap-2">
-            <button onclick="window.print()" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold transition shadow-md flex items-center justify-center gap-2">
-                <i class="fa-solid fa-print"></i> Cetak Rekap PDF
+        <div class="flex items-center gap-2.5 shrink-0 flex-wrap sm:flex-nowrap">
+            <button onclick="window.print()" class="btn-press px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs sm:text-sm font-semibold transition shadow-xs flex items-center justify-center gap-2">
+                <i class="fa-solid fa-print text-xs sm:text-sm"></i> Cetak Rekap PDF
             </button>
-            <button onclick="openInvoiceModal()" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2">
-                <i class="fa-solid fa-plus-circle"></i> Terbitkan Invoice Baru
+            <button onclick="openInvoiceModal()" class="btn-press px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-semibold transition shadow-xs flex items-center justify-center gap-2">
+                <i class="fa-solid fa-plus-circle text-xs sm:text-sm"></i> Terbitkan Invoice Baru
             </button>
         </div>
     </div>
 
-    <div class="mb-6 bg-gradient-to-r from-emerald-900 to-teal-900 border border-emerald-700 p-4 rounded-2xl text-white shadow-md">
+    <!-- Instruction Banner -->
+    <div class="mb-6 bg-gradient-to-r from-emerald-900 to-teal-900 border border-emerald-700/80 p-4 rounded-2xl text-white shadow-xs">
         <div class="flex items-start gap-3.5">
             <div class="p-2.5 bg-emerald-500/20 rounded-xl text-emerald-300 border border-emerald-400/30 shrink-0">
                 <i class="fa-solid fa-shield-halved text-xl"></i>
@@ -259,91 +295,121 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-300 flex items-center gap-2">
                     Instruksi Prosedur & Otomatisasi Ledger Keuangan
                 </h4>
-                <p class="text-xs text-emerald-100/90 leading-relaxed mt-1">
+                <p class="text-xs text-emerald-100/90 leading-relaxed mt-1 font-normal">
                     <strong>Penting untuk Tim Finance & Billing:</strong> Pastikan untuk selalu melakukan pembaharuan status tagihan menjadi <span class="bg-emerald-500/30 text-white px-1.5 py-0.5 rounded border border-emerald-400/30 font-bold">Paid (Lunas)</span> segera setelah pembayaran termin diverifikasi masuk. Kuitansi Pelunasan BAST Gabungan 100% otomatis aktif khusus pada baris termin terakhir jika seluruh termin telah dilunasi.
                 </p>
             </div>
         </div>
     </div>
 
+    <!-- Alert Notifications -->
     <?php if (isset($_GET['msg']) && $_GET['msg'] === 'created'): ?>
-        <div class="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-xl text-xs font-semibold mb-6 flex items-center gap-2 shadow-sm">
-            <i class="fa-solid fa-circle-check text-base"></i> Invoice penagihan baru berhasil diterbitkan!
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
+            <i class="fa-solid fa-circle-check text-emerald-600 text-base shrink-0"></i> Invoice penagihan baru berhasil diterbitkan!
         </div>
     <?php endif; ?>
 
     <?php if ($error): ?>
-        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-xs font-semibold mb-6 flex items-center gap-2 shadow-sm">
-            <i class="fa-solid fa-triangle-exclamation text-base text-red-600"></i> <?= $error ?>
+        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
+            <i class="fa-solid fa-triangle-exclamation text-red-500 text-base shrink-0"></i> <?= $error ?>
         </div>
     <?php endif; ?>
 
+    <!-- Stat Counter Cards Overview -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Total Tagihan Diterbitkan</span>
-            <h3 class="text-xl font-bold text-slate-800">Rp <?= number_format($totalInvoiced, 0, ',', '.') ?></h3>
-            <span class="text-[11px] text-slate-400 mt-1 block">Akumulasi seluruh termin</span>
+        <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-slate-300 transition">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Tagihan Diterbitkan</span>
+                <div class="w-7 h-7 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-file-invoice-dollar"></i>
+                </div>
+            </div>
+            <h3 class="text-xl md:text-2xl font-bold text-slate-900 font-mono">Rp <?= number_format($totalInvoiced, 0, ',', '.') ?></h3>
+            <span class="text-xs text-slate-400 font-normal mt-1 block">Akumulasi seluruh termin</span>
         </div>
 
-        <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
-            <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block mb-1">Total Sudah Dilunasi (Paid)</span>
-            <h3 class="text-xl font-bold text-emerald-600">Rp <?= number_format($totalPaid, 0, ',', '.') ?></h3>
-            <span class="text-[11px] text-emerald-600 font-semibold mt-1 block"><i class="fa-solid fa-check-double mr-1"></i> Masuk ke kas perusahaan</span>
+        <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-slate-300 transition">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Total Sudah Dilunasi (Paid)</span>
+                <div class="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-check-double"></i>
+                </div>
+            </div>
+            <h3 class="text-xl md:text-2xl font-bold text-emerald-600 font-mono">Rp <?= number_format($totalPaid, 0, ',', '.') ?></h3>
+            <span class="text-xs text-emerald-700 font-medium mt-1 flex items-center gap-1"><i class="fa-solid fa-circle-check text-[10px]"></i> Masuk ke kas perusahaan</span>
         </div>
 
-        <div class="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
-            <span class="text-[10px] font-bold text-amber-600 uppercase tracking-wider block mb-1">Piutang / Unpaid</span>
-            <h3 class="text-xl font-bold text-amber-600">Rp <?= number_format($totalUnpaid, 0, ',', '.') ?></h3>
-            <span class="text-[11px] text-amber-600 font-semibold mt-1 block"><i class="fa-solid fa-clock mr-1"></i> Menunggu pembayaran klien</span>
+        <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-amber-200 transition">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Piutang / Unpaid</span>
+                <div class="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-clock"></i>
+                </div>
+            </div>
+            <h3 class="text-xl md:text-2xl font-bold text-amber-600 font-mono">Rp <?= number_format($totalUnpaid, 0, ',', '.') ?></h3>
+            <span class="text-xs text-amber-700 font-medium mt-1 block">Menunggu pembayaran klien</span>
         </div>
     </div>
 
-    <div class="bg-white border border-slate-200 rounded-2xl p-4 mb-6 shadow-sm">
+    <!-- Filter & Search Bar Integrated -->
+    <div class="bg-white border border-slate-200/90 rounded-2xl p-4 mb-6 shadow-xs">
         <form method="GET" class="flex flex-col md:flex-row items-center justify-between gap-3 w-full">
+            
             <div class="relative w-full md:w-80">
-                <input type="text" name="search" value="<?= htmlspecialchars($search_query) ?>" placeholder="Cari no. invoice, proyek, atau klien..." class="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                <input type="text" name="search" value="<?= htmlspecialchars($search_query) ?>" placeholder="Cari no. invoice, proyek, atau klien..." class="input-glow w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-normal text-slate-800 bg-white focus:outline-none placeholder:text-slate-400">
+                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                </div>
             </div>
 
             <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
                 <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-                    <a href="?status_filter=All&search=<?= urlencode($search_query) ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold transition <?= $filter_status === 'All' ? 'bg-white text-emerald-800 shadow-sm' : 'text-slate-500 hover:text-slate-800' ?>">Semua</a>
-                    <a href="?status_filter=Unpaid&search=<?= urlencode($search_query) ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold transition <?= $filter_status === 'Unpaid' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800' ?>">Unpaid</a>
-                    <a href="?status_filter=Paid&search=<?= urlencode($search_query) ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold transition <?= $filter_status === 'Paid' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800' ?>">Paid</a>
+                    <a href="?status_filter=All&search=<?= urlencode($search_query) ?>" class="btn-press px-3 py-1.5 rounded-lg text-xs font-semibold transition <?= $filter_status === 'All' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-500 hover:text-slate-800' ?>">Semua</a>
+                    <a href="?status_filter=Unpaid&search=<?= urlencode($search_query) ?>" class="btn-press px-3 py-1.5 rounded-lg text-xs font-semibold transition <?= $filter_status === 'Unpaid' ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800' ?>">Unpaid</a>
+                    <a href="?status_filter=Paid&search=<?= urlencode($search_query) ?>" class="btn-press px-3 py-1.5 rounded-lg text-xs font-semibold transition <?= $filter_status === 'Paid' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800' ?>">Paid</a>
                 </div>
 
-                <select name="termin_filter" onchange="this.form.submit()" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <select name="termin_filter" onchange="this.form.submit()" class="input-glow px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold bg-white text-slate-700 focus:outline-none">
                     <option value="All" <?= $filter_termin === 'All' ? 'selected' : '' ?>>Semua Termin</option>
                     <option value="1" <?= $filter_termin === '1' ? 'selected' : '' ?>>Termin 1 (DP 50%)</option>
                     <option value="2" <?= $filter_termin === '2' ? 'selected' : '' ?>>Termin 2 (Pelunasan)</option>
                     <option value="3" <?= $filter_termin === '3' ? 'selected' : '' ?>>Full Payment (100%)</option>
                 </select>
 
-                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-xl text-xs transition">Cari</button>
+                <button type="submit" class="btn-press bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2.5 rounded-xl text-xs sm:text-sm transition shadow-xs">
+                    Cari
+                </button>
             </div>
         </form>
     </div>
 
-    <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm mb-8">
-        <h3 class="font-bold text-slate-800 text-base mb-5">Daftar Tagihan & Monitoring Termin</h3>
+    <!-- Main Table Card -->
+    <div class="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs mb-8">
+        <h3 class="font-bold text-slate-900 text-base mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-list-check text-emerald-600"></i> Daftar Tagihan & Monitoring Termin
+        </h3>
 
+        <!-- Desktop View (Tabel) -->
         <div class="hidden md:block overflow-x-auto">
-            <table class="w-full text-left text-xs border-collapse">
+            <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[750px]">
                 <thead>
-                    <tr class="bg-slate-50 text-slate-400 uppercase font-bold text-[10px] border-b border-slate-200">
-                        <th class="py-3 px-4">No. Invoice</th>
-                        <th class="py-3 px-4">Proyek & Klien</th>
-                        <th class="py-3 px-4">Status Termin</th>
-                        <th class="py-3 px-4 text-right">Jumlah Tagihan</th>
-                        <th class="py-3 px-4">Jatuh Tempo</th>
-                        <th class="py-3 px-4 text-center">Status Bayar</th>
-                        <th class="py-3 px-4 text-center">Aksi / Dokumen</th>
+                    <tr class="bg-slate-50 text-slate-500 uppercase font-semibold text-xs tracking-wider border-b border-slate-200">
+                        <th class="py-3.5 px-4">NO. INVOICE</th>
+                        <th class="py-3.5 px-4">PROYEK & KLIEN</th>
+                        <th class="py-3.5 px-4">STATUS TERMIN</th>
+                        <th class="py-3.5 px-4 text-right">JUMLAH TAGIHAN</th>
+                        <th class="py-3.5 px-4">JATUH TEMPO</th>
+                        <th class="py-3.5 px-4 text-center">STATUS BAYAR</th>
+                        <th class="py-3.5 px-4 text-center">AKSI / DOKUMEN</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                     <?php if (empty($invoices)): ?>
                         <tr>
-                            <td colspan="7" class="text-center py-10 text-slate-400 font-medium">
+                            <td colspan="7" class="text-center py-10 text-slate-400 font-normal">
+                                <div class="w-12 h-12 mx-auto mb-2 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center text-xl">
+                                    <i class="fa-solid fa-file-invoice"></i>
+                                </div>
                                 Belum ada data invoice yang sesuai kriteria pencarian.
                             </td>
                         </tr>
@@ -357,30 +423,30 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                               && ($inv['status'] === 'Paid');
                         ?>
                             <tr class="hover:bg-slate-50/80 transition">
-                                <td class="py-3.5 px-4 font-mono font-bold text-slate-800"><?= htmlspecialchars($inv['nomor_invoice']) ?></td>
+                                <td class="py-3.5 px-4 font-mono font-bold text-slate-900 whitespace-nowrap"><?= htmlspecialchars($inv['nomor_invoice']) ?></td>
                                 <td class="py-3.5 px-4">
-                                    <p class="font-bold text-slate-800 text-xs leading-tight"><?= htmlspecialchars($inv['nama_projek']) ?></p>
-                                    <span class="text-[11px] text-slate-400"><?= htmlspecialchars($inv['klien']) ?></span>
+                                    <p class="font-bold text-slate-900 text-xs sm:text-sm leading-tight mb-0.5"><?= htmlspecialchars($inv['nama_projek']) ?></p>
+                                    <span class="text-xs text-slate-400 font-normal"><?= htmlspecialchars($inv['klien']) ?></span>
                                 </td>
                                 <td class="py-3.5 px-4 text-slate-700">
-                                    <span class="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block text-[10px] mb-0.5">
+                                    <span class="font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 inline-block text-[10px] uppercase tracking-wider mb-0.5">
                                         Termin <?= $inv['termin_ke'] ?>
                                     </span>
-                                    <span class="block text-[10px] text-slate-400 font-normal"><?= htmlspecialchars($inv['keterangan_termin']) ?></span>
+                                    <span class="block text-xs text-slate-400 font-normal"><?= htmlspecialchars($inv['keterangan_termin']) ?></span>
                                 </td>
-                                <td class="py-3.5 px-4 text-right font-bold text-slate-800">
+                                <td class="py-3.5 px-4 text-right font-bold text-slate-900 font-mono whitespace-nowrap">
                                     Rp <?= number_format($inv['jumlah_tagihan'], 0, ',', '.') ?>
                                 </td>
-                                <td class="py-3.5 px-4 text-slate-500">
+                                <td class="py-3.5 px-4 text-slate-500 whitespace-nowrap font-normal">
                                     <?= date('d M Y', strtotime($inv['jatuh_tempo'])) ?>
                                     <?php if ($isOverdue): ?>
-                                        <span class="block text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 mt-0.5 w-max">Overdue</span>
+                                        <span class="block text-[9px] font-bold uppercase tracking-wider text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 mt-0.5 w-max">Overdue</span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="py-3.5 px-4 text-center">
                                     <form action="update_status.php" method="POST" class="inline-block">
                                         <input type="hidden" name="invoice_id" value="<?= $inv['id'] ?>">
-                                        <select name="status" onchange="this.form.submit()" class="px-2.5 py-1 rounded-lg text-xs font-bold border cursor-pointer focus:outline-none
+                                        <select name="status" onchange="this.form.submit()" class="input-glow px-2.5 py-1 rounded-lg text-xs font-semibold border cursor-pointer focus:outline-none shadow-2xs
                                             <?php
                                                 switch($inv['status']) {
                                                     case 'Paid': echo 'bg-emerald-50 text-emerald-700 border-emerald-300'; break;
@@ -395,16 +461,16 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                     </form>
                                 </td>
                                 <td class="py-3.5 px-4 text-center">
-                                    <div class="flex items-center justify-center gap-1.5">
-                                        <!-- PDF STANDAR PER TERMIN (UNTUK AUDIT PER TERMIN) -->
-                                        <a href="print_pdf.php?id=<?= $inv['id'] ?>" target="_blank" title="Cetak Invoice Termin Ini" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold transition inline-flex items-center gap-1 shadow">
-                                            <i class="fa-solid fa-print"></i> PDF
+                                    <div class="flex items-center justify-center gap-1.5 flex-wrap">
+                                        <!-- PDF STANDAR PER TERMIN -->
+                                        <a href="print_pdf.php?id=<?= $inv['id'] ?>" target="_blank" title="Cetak Invoice Termin Ini" class="btn-press px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition inline-flex items-center gap-1 shadow-xs">
+                                            <i class="fa-solid fa-print text-xs"></i> PDF
                                         </a>
 
-                                        <!-- KUITANSI PELUNASAN GABUNGAN 100% (HANYA AKTIF DI TERMIN AKHIR JIKA SUDAH LUNAS TOTAL) -->
+                                        <!-- KUITANSI PELUNASAN GABUNGAN 100% -->
                                         <?php if ($canPrintPelunasan): ?>
-                                            <a href="print_pdf.php?project_id=<?= $inv['project_id'] ?>&type=pelunasan" target="_blank" title="Proyek Lunas 100%! Cetak Kuitansi Pelunasan BAST Gabungan" class="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition inline-flex items-center gap-1 shadow">
-                                                <i class="fa-solid fa-certificate"></i> Kuitansi Pelunasan
+                                            <a href="print_pdf.php?project_id=<?= $inv['project_id'] ?>&type=pelunasan" target="_blank" title="Proyek Lunas 100%! Cetak Kuitansi Pelunasan BAST Gabungan" class="btn-press px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition inline-flex items-center gap-1 shadow-xs">
+                                                <i class="fa-solid fa-certificate text-xs"></i> Kuitansi Pelunasan
                                             </a>
                                         <?php endif; ?>
                                     </div>
@@ -416,6 +482,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             </table>
         </div>
 
+        <!-- Mobile View (Cards) -->
         <div class="md:hidden space-y-3">
             <?php if (!empty($invoices)): ?>
                 <?php foreach ($invoices as $inv): 
@@ -423,27 +490,27 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                       && ($inv['termin_ke'] == $inv['max_termin_project']) 
                                       && ($inv['status'] === 'Paid');
                 ?>
-                    <div class="p-4 border border-slate-200 rounded-xl bg-slate-50 space-y-3">
-                        <div class="flex justify-between items-start">
+                    <div class="p-4 border border-slate-200/90 rounded-xl bg-slate-50/50 space-y-3">
+                        <div class="flex justify-between items-start gap-2">
                             <div>
-                                <span class="font-mono text-[10px] font-bold text-emerald-700 block mb-0.5"><?= htmlspecialchars($inv['nomor_invoice']) ?></span>
-                                <h4 class="font-bold text-slate-800 text-xs"><?= htmlspecialchars($inv['nama_projek']) ?></h4>
-                                <p class="text-[11px] text-slate-500">Klien: <?= htmlspecialchars($inv['klien']) ?></p>
+                                <span class="font-mono text-xs font-bold text-emerald-700 block mb-0.5"><?= htmlspecialchars($inv['nomor_invoice']) ?></span>
+                                <h4 class="font-bold text-slate-900 text-xs sm:text-sm"><?= htmlspecialchars($inv['nama_projek']) ?></h4>
+                                <p class="text-xs text-slate-500 font-normal">Klien: <?= htmlspecialchars($inv['klien']) ?></p>
                             </div>
                         </div>
 
-                        <div class="pt-2 border-t border-slate-200/80 flex justify-between items-center text-[11px]">
+                        <div class="pt-2 border-t border-slate-200/80 flex justify-between items-center text-xs">
                             <div>
-                                <span class="text-slate-400 block">Tagihan (Termin <?= $inv['termin_ke'] ?>):</span>
-                                <span class="font-bold text-slate-800">Rp <?= number_format($inv['jumlah_tagihan'], 0, ',', '.') ?></span>
+                                <span class="text-slate-400 block font-normal">Tagihan (Termin <?= $inv['termin_ke'] ?>):</span>
+                                <span class="font-bold text-slate-900 font-mono">Rp <?= number_format($inv['jumlah_tagihan'], 0, ',', '.') ?></span>
                             </div>
-                            <div class="flex gap-1">
-                                <a href="print_pdf.php?id=<?= $inv['id'] ?>" target="_blank" class="px-2.5 py-1 rounded-lg bg-slate-800 text-white text-[10px] font-bold">
-                                    <i class="fa-solid fa-print"></i> PDF
+                            <div class="flex gap-1.5">
+                                <a href="print_pdf.php?id=<?= $inv['id'] ?>" target="_blank" class="btn-press px-2.5 py-1 rounded-lg bg-slate-900 text-white text-xs font-semibold shadow-2xs">
+                                    <i class="fa-solid fa-print text-[10px]"></i> PDF
                                 </a>
                                 <?php if ($canPrintPelunasan): ?>
-                                    <a href="print_pdf.php?project_id=<?= $inv['project_id'] ?>&type=pelunasan" target="_blank" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[10px] font-bold">
-                                        Kuitansi Lunas
+                                    <a href="print_pdf.php?project_id=<?= $inv['project_id'] ?>&type=pelunasan" target="_blank" class="btn-press px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-semibold shadow-2xs">
+                                        Lunas
                                     </a>
                                 <?php endif; ?>
                             </div>
@@ -453,18 +520,38 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             <?php endif; ?>
         </div>
 
+        <!-- FITUR PAGINASI NUMERIK -->
         <?php if ($totalPages > 1): ?>
-            <div class="mt-6 flex flex-col sm:flex-row justify-between items-center gap-3 border-t border-slate-100 pt-4">
-                <span class="text-xs font-semibold text-slate-500">Halaman <strong><?= $page ?></strong> dari <strong><?= $totalPages ?></strong></span>
+            <div class="mt-6 flex flex-col sm:flex-row justify-between items-center gap-3 border-t border-slate-100 pt-4 text-xs text-slate-500">
+                <span class="font-medium">
+                    Menampilkan Halaman <strong class="text-slate-800"><?= $page ?></strong> dari <strong class="text-slate-800"><?= $totalPages ?></strong> (Total <?= $totalRows ?> Invoice)
+                </span>
+
                 <div class="flex items-center gap-1.5">
                     <?php if ($page > 1): ?>
-                        <a href="?page=<?= $page - 1 ?>&search=<?= urlencode($search_query) ?>" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700">Prev</a>
+                        <a href="?page=<?= $page - 1 ?>&search=<?= urlencode($search_query) ?>&status_filter=<?= urlencode($filter_status) ?>&termin_filter=<?= urlencode($filter_termin) ?>" class="btn-press px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">
+                            <i class="fa-solid fa-chevron-left mr-1 text-[10px]"></i> Prev
+                        </a>
+                    <?php else: ?>
+                        <span class="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-300 bg-slate-50 cursor-not-allowed">
+                            <i class="fa-solid fa-chevron-left mr-1 text-[10px]"></i> Prev
+                        </span>
                     <?php endif; ?>
+
                     <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                        <a href="?page=<?= $i ?>&search=<?= urlencode($search_query) ?>" class="px-3 py-1.5 rounded-lg border text-xs font-bold <?= $page == $i ? 'bg-emerald-600 text-white' : 'bg-white text-slate-700' ?>"><?= $i ?></a>
+                        <a href="?page=<?= $i ?>&search=<?= urlencode($search_query) ?>&status_filter=<?= urlencode($filter_status) ?>&termin_filter=<?= urlencode($filter_termin) ?>" class="btn-press px-3 py-1.5 rounded-xl border text-xs font-semibold transition <?= $page == $i ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50' ?>">
+                            <?= $i ?>
+                        </a>
                     <?php endfor; ?>
+
                     <?php if ($page < $totalPages): ?>
-                        <a href="?page=<?= $page + 1 ?>&search=<?= urlencode($search_query) ?>" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700">Next</a>
+                        <a href="?page=<?= $page + 1 ?>&search=<?= urlencode($search_query) ?>&status_filter=<?= urlencode($filter_status) ?>&termin_filter=<?= urlencode($filter_termin) ?>" class="btn-press px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">
+                            Next <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
+                        </a>
+                    <?php else: ?>
+                        <span class="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-300 bg-slate-50 cursor-not-allowed">
+                            Next <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
+                        </span>
                     <?php endif; ?>
                 </div>
             </div>
@@ -473,28 +560,28 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 </main>
 
 <!-- Modal Pop-up Terbit Invoice Baru -->
-<div id="invoiceModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
-    <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden relative">
-        <div class="px-6 py-4 bg-emerald-950 text-white flex justify-between items-center">
-            <h3 class="font-bold text-base flex items-center gap-2">
-                <i class="fa-solid fa-file-invoice text-emerald-400"></i> Terbitkan Invoice Baru
+<div id="invoiceModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center hidden p-4 overflow-y-auto">
+    <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-lg shadow-2xl relative my-8 text-xs sm:text-sm">
+        <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-100 p-6 pb-0">
+            <h3 class="font-bold text-slate-900 text-base flex items-center gap-2">
+                <i class="fa-solid fa-file-invoice text-emerald-600"></i> Terbitkan Invoice Baru
             </h3>
-            <button onclick="closeInvoiceModal()" class="text-emerald-300 hover:text-white transition">
-                <i class="fa-solid fa-xmark text-lg"></i>
+            <button onclick="closeInvoiceModal()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition focus:outline-none">
+                <i class="fa-solid fa-xmark text-xs"></i>
             </button>
         </div>
 
-        <form action="" method="POST" class="p-6 space-y-4">
+        <form action="" method="POST" class="p-6 pt-2 space-y-3.5">
             <input type="hidden" name="add_invoice" value="1">
 
             <div>
-                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Nomor Invoice Auto</label>
-                <input type="text" name="nomor_invoice" readonly value="<?= $autoNomorInvoice ?>" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono font-bold bg-slate-50 text-emerald-800">
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Nomor Invoice Auto</label>
+                <input type="text" name="nomor_invoice" readonly value="<?= $autoNomorInvoice ?>" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono font-bold bg-slate-50 text-emerald-800 focus:outline-none">
             </div>
 
             <div>
-                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Pilih Proyek Acuan *</label>
-                <select name="project_id" id="project_select" onchange="autoFillInvoice()" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs bg-white focus:ring-2 focus:ring-emerald-500 font-medium">
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Pilih Proyek Acuan <span class="text-red-500">*</span></label>
+                <select name="project_id" id="project_select" onchange="autoFillInvoice()" required class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
                     <?php if (empty($projectsAvailable)): ?>
                         <option value="">-- Semua Proyek Sudah Lunas 100% --</option>
                     <?php else: ?>
@@ -510,38 +597,38 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
             <div class="grid grid-cols-2 gap-3">
                 <div>
-                    <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Termin Ke *</label>
-                    <select name="termin_ke" id="termin_select" onchange="calcTermin()" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs bg-white font-medium">
+                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Termin Ke <span class="text-red-500">*</span></label>
+                    <select name="termin_ke" id="termin_select" onchange="calcTermin()" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
                         <option value="1" id="opt_termin_1">Termin 1 (DP 50%)</option>
                         <option value="2" id="opt_termin_2">Termin 2 (Pelunasan 50%)</option>
                         <option value="3" id="opt_termin_3">Full Payment (100%)</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Keterangan Termin *</label>
-                    <input type="text" name="keterangan_termin" id="keterangan_termin" required value="DP 50% Penandatanganan SPK" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs">
+                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Keterangan Termin <span class="text-red-500">*</span></label>
+                    <input type="text" name="keterangan_termin" id="keterangan_termin" required value="DP 50% Penandatanganan SPK" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-normal focus:outline-none">
                 </div>
             </div>
 
             <div>
-                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Jumlah Tagihan (Rp) *</label>
-                <input type="text" name="jumlah_tagihan" id="jumlah_tagihan" required onkeyup="formatRupiah(this)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 font-mono">
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Jumlah Tagihan (Rp) <span class="text-red-500">*</span></label>
+                <input type="text" name="jumlah_tagihan" id="jumlah_tagihan" required onkeyup="formatRupiah(this)" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-mono font-semibold focus:outline-none">
             </div>
 
             <div class="grid grid-cols-2 gap-3">
                 <div>
-                    <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Tanggal Tagihan</label>
-                    <input type="date" name="tanggal_tagihan" required value="<?= date('Y-m-d') ?>" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs">
+                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Tanggal Tagihan <span class="text-red-500">*</span></label>
+                    <input type="date" name="tanggal_tagihan" required value="<?= date('Y-m-d') ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-semibold focus:outline-none">
                 </div>
                 <div>
-                    <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Tanggal Jatuh Tempo</label>
-                    <input type="date" name="jatuh_tempo" required value="<?= date('Y-m-d', strtotime('+14 days')) ?>" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs">
+                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Tanggal Jatuh Tempo <span class="text-red-500">*</span></label>
+                    <input type="date" name="jatuh_tempo" required value="<?= date('Y-m-d', strtotime('+14 days')) ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-semibold focus:outline-none">
                 </div>
             </div>
 
             <div>
-                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Status Awal</label>
-                <select name="status" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs bg-white font-medium">
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Status Awal</label>
+                <select name="status" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
                     <option value="Unpaid" selected>Unpaid (Belum Dibayar)</option>
                     <option value="Partially Paid">Partially Paid</option>
                     <option value="Paid">Paid (Lunas)</option>
@@ -549,8 +636,12 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             </div>
 
             <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
-                <button type="button" onclick="closeInvoiceModal()" class="px-4 py-2.5 rounded-xl border text-xs font-semibold text-slate-600">Batal</button>
-                <button type="submit" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-md">Terbitkan Tagihan</button>
+                <button type="button" onclick="closeInvoiceModal()" class="btn-press px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs">
+                    Batal
+                </button>
+                <button type="submit" class="btn-press px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs shadow-xs flex items-center gap-1.5">
+                    <i class="fa-solid fa-floppy-disk text-xs"></i> Terbitkan Tagihan
+                </button>
             </div>
         </form>
     </div>
