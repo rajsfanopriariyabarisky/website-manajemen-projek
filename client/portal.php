@@ -132,10 +132,20 @@ if ($selected_id > 0) {
     </div>
 
     <div class="flex items-center gap-3">
-        <div class="hidden sm:flex items-center gap-2 px-3.5 py-1.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-700">
-            <i class="fa-solid fa-circle-user text-emerald-600 text-sm"></i>
-            <span><?= htmlspecialchars($client_nama) ?></span>
-        </div>
+        <!-- Profile Link dengan Indicator Hover & Tooltip -->
+        <a href="profile.php" class="group relative btn-press flex items-center gap-2 px-3.5 py-1.5 bg-slate-50 hover:bg-emerald-50/80 hover:border-emerald-300 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-700 hover:text-emerald-800 transition-all shadow-2xs" title="Lihat Profil">
+            <i class="fa-solid fa-circle-user text-emerald-600 text-sm group-hover:scale-110 transition-transform"></i>
+            <span class="truncate max-w-[110px] sm:max-w-none"><?= htmlspecialchars($client_nama) ?></span>
+            <i class="fa-solid fa-chevron-right text-[10px] text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all"></i>
+
+            <!-- Floating Sub-Label Tooltip Saat Hover -->
+            <div class="absolute top-full left-1/2 -translate-x-1/2 mt-2 hidden group-hover:flex items-center gap-1.5 bg-slate-900 text-white text-[10px] font-medium py-1 px-2.5 rounded-lg shadow-xl whitespace-nowrap z-50 pointer-events-none transition-all">
+                <i class="fa-solid fa-id-card text-emerald-400"></i>
+                <span>Profile Saya</span>
+                <!-- Panah Segitiga Tooltip -->
+                <div class="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 rotate-45"></div>
+            </div>
+        </a>
 
         <a href="portal.php?action=logout" class="btn-press px-3.5 py-1.5 bg-red-50 hover:bg-red-100/80 text-red-600 border border-red-200/80 rounded-xl text-xs font-semibold transition flex items-center gap-2">
             <i class="fa-solid fa-right-from-bracket"></i>
@@ -145,132 +155,142 @@ if ($selected_id > 0) {
 </header>
 
 <!-- Main Portal Container -->
-<main class="max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 flex-1">
+<main class="max-w-7xl w-full mx-auto p-4 md:p-6 flex-1 flex flex-col gap-4">
 
-    <!-- Sidebar Requirements -->
-    <div class="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm flex flex-col h-[400px] lg:h-[650px]">
+    <?php if (isset($_GET['msg']) && $_GET['msg'] === 'submitted'): ?>
+        <div class="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs sm:text-sm font-semibold flex items-center gap-3 shadow-xs">
+            <i class="fa-solid fa-circle-check text-emerald-600 text-lg"></i>
+            <span>Pengajuan proyek baru berhasil dikirim! Tim kami akan meninjau dan merespon pengajuan Anda.</span>
+        </div>
+    <?php endif; ?>
 
-        <div class="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0 gap-2">
-            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-folder-open text-emerald-600"></i>
-                Pengajuan Proyek
-            </h2>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 flex-1">
 
-            <a href="request.php" class="btn-press px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/80 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shrink-0">
-                <i class="fa-solid fa-plus text-[10px]"></i>
-                Ajukan Baru
-            </a>
+        <!-- Sidebar Requirements -->
+        <div class="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm flex flex-col h-[400px] lg:h-[650px]">
+
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0 gap-2">
+                <h2 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-folder-open text-emerald-600"></i>
+                    Pengajuan Proyek
+                </h2>
+
+                <a href="ajukan.php" class="btn-press px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/80 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shrink-0">
+                    <i class="fa-solid fa-plus text-[10px]"></i>
+                    Ajukan Baru
+                </a>
+            </div>
+
+            <?php if (empty($requirements)): ?>
+
+                <div class="flex-1 flex flex-col items-center justify-center text-center py-8 text-slate-400 text-xs font-normal">
+                    <i class="fa-solid fa-inbox text-3xl mb-2 text-slate-300"></i>
+                    Belum ada pengajuan requirement.
+                </div>
+
+            <?php else: ?>
+
+                <div class="space-y-2 overflow-y-auto flex-1 pr-1 min-h-0">
+
+                    <?php foreach ($requirements as $r): ?>
+                        <?php $uc = (int) ($unreadMap[$r['id']] ?? 0); ?>
+
+                        <a href="portal.php?req_id=<?= $r['id'] ?>"
+                           class="block p-3.5 rounded-xl border transition-all duration-150 <?= ($active_req && $active_req['id'] == $r['id']) ? 'bg-emerald-50/60 border-emerald-500/80 shadow-xs ring-1 ring-emerald-500/20' : 'bg-white border-slate-200/80 hover:bg-slate-50 hover:border-slate-300' ?>">
+
+                            <div class="flex items-start justify-between gap-2">
+                                <p class="text-xs font-semibold text-slate-900 truncate leading-snug min-w-0">
+                                    <?= htmlspecialchars($r['title']) ?>
+                                </p>
+
+                                <span id="unreadBadge-<?= $r['id'] ?>"
+                                      class="unread-badge shrink-0 bg-red-500 text-white text-[9px] font-bold min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white shadow-xs <?= $uc > 0 ? '' : 'hidden' ?>">
+                                    <?= $uc ?>
+                                </span>
+                            </div>
+
+                            <div class="flex items-center justify-between mt-2.5 text-[10px] gap-2">
+                                <span class="text-slate-400 font-normal">
+                                    <i class="fa-regular fa-calendar mr-1"></i>
+                                    <?= date('d M Y', strtotime($r['created_at'])) ?>
+                                </span>
+
+                                <span class="px-2 py-0.5 rounded-md font-semibold uppercase text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200/70 tracking-wider truncate">
+                                    <?= htmlspecialchars($r['status']) ?>
+                                </span>
+                            </div>
+                        </a>
+                    <?php endforeach; ?>
+
+                </div>
+
+            <?php endif; ?>
         </div>
 
-        <?php if (empty($requirements)): ?>
+        <!-- Chat Lobby Container -->
+        <div class="lg:col-span-2 bg-white border border-slate-200/90 rounded-2xl flex flex-col h-[560px] sm:h-[620px] lg:h-[650px] shadow-sm overflow-hidden relative">
 
-            <div class="flex-1 flex flex-col items-center justify-center text-center py-8 text-slate-400 text-xs font-normal">
-                <i class="fa-solid fa-inbox text-3xl mb-2 text-slate-300"></i>
-                Belum ada pengajuan requirement.
-            </div>
+            <?php if (!$active_req): ?>
 
-        <?php else: ?>
-
-            <div class="space-y-2 overflow-y-auto flex-1 pr-1 min-h-0">
-
-                <?php foreach ($requirements as $r): ?>
-                    <?php $uc = (int) ($unreadMap[$r['id']] ?? 0); ?>
-
-                    <a href="portal.php?req_id=<?= $r['id'] ?>"
-                       class="block p-3.5 rounded-xl border transition-all duration-150 <?= ($active_req && $active_req['id'] == $r['id']) ? 'bg-emerald-50/60 border-emerald-500/80 shadow-xs ring-1 ring-emerald-500/20' : 'bg-white border-slate-200/80 hover:bg-slate-50 hover:border-slate-300' ?>">
-
-                        <div class="flex items-start justify-between gap-2">
-                            <p class="text-xs font-semibold text-slate-900 truncate leading-snug min-w-0">
-                                <?= htmlspecialchars($r['title']) ?>
-                            </p>
-
-                            <span id="unreadBadge-<?= $r['id'] ?>"
-                                  class="unread-badge shrink-0 bg-red-500 text-white text-[9px] font-bold min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white shadow-xs <?= $uc > 0 ? '' : 'hidden' ?>">
-                                <?= $uc ?>
-                            </span>
-                        </div>
-
-                        <div class="flex items-center justify-between mt-2.5 text-[10px] gap-2">
-                            <span class="text-slate-400 font-normal">
-                                <i class="fa-regular fa-calendar mr-1"></i>
-                                <?= date('d M Y', strtotime($r['created_at'])) ?>
-                            </span>
-
-                            <span class="px-2 py-0.5 rounded-md font-semibold uppercase text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200/70 tracking-wider truncate">
-                                <?= htmlspecialchars($r['status']) ?>
-                            </span>
-                        </div>
-                    </a>
-                <?php endforeach; ?>
-
-            </div>
-
-        <?php endif; ?>
-    </div>
-
-    <!-- Chat Lobby Container -->
-    <div class="lg:col-span-2 bg-white border border-slate-200/90 rounded-2xl flex flex-col h-[560px] sm:h-[620px] lg:h-[650px] shadow-sm overflow-hidden relative">
-
-        <?php if (!$active_req): ?>
-
-            <div class="flex-1 flex items-center justify-center text-slate-400 text-xs font-normal">
-                <div class="text-center">
-                    <i class="fa-solid fa-comments text-4xl mb-3 text-slate-300 block"></i>
-                    Pilih pengajuan proyek di sebelah kiri untuk memulai diskusi.
-                </div>
-            </div>
-
-        <?php else: ?>
-
-            <!-- Chat Header -->
-            <div class="p-4 sm:px-6 bg-white border-b border-slate-200/90 flex flex-col sm:flex-row items-start sm:items-center justify-between shrink-0 z-10 gap-3">
-                <div class="pr-2 min-w-0">
-                    <h2 class="text-xs sm:text-sm font-bold text-slate-900 tracking-tight uppercase truncate">
-                        <?= htmlspecialchars($active_req['title']) ?>
-                    </h2>
-                    <p class="text-[11px] text-slate-500 font-normal mt-0.5">
-                        Diskusi Scope & Surat Penawaran dengan Tim PT. CTC
-                    </p>
+                <div class="flex-1 flex items-center justify-center text-slate-400 text-xs font-normal">
+                    <div class="text-center">
+                        <i class="fa-solid fa-comments text-4xl mb-3 text-slate-300 block"></i>
+                        Pilih pengajuan proyek di sebelah kiri untuk memulai diskusi.
+                    </div>
                 </div>
 
-                <div class="flex items-center gap-2">
-                    <?php if ($linked_project || $active_req['status'] === 'Proposal Sent' || $active_req['status'] === 'Deal / Accepted'): ?>
-                        <?php $pId = $linked_project['id'] ?? $active_req['id']; ?>
-                        <a href="../modules/proposals/print_proposal.php?project_id=<?= $pId ?>" target="_blank" class="btn-press px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 shrink-0 transition">
-                            <i class="fa-solid fa-file-pdf text-xs"></i>
-                            <span>Dokumen Proposal (SPH)</span>
-                        </a>
-                    <?php endif; ?>
+            <?php else: ?>
 
-                    <span class="px-2.5 py-1 text-[9.5px] font-semibold uppercase rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 tracking-wider shrink-0">
-                        STATUS: <?= htmlspecialchars($active_req['status']) ?>
-                    </span>
+                <!-- Chat Header -->
+                <div class="p-4 sm:px-6 bg-white border-b border-slate-200/90 flex flex-col sm:flex-row items-start sm:items-center justify-between shrink-0 z-10 gap-3">
+                    <div class="pr-2 min-w-0">
+                        <h2 class="text-xs sm:text-sm font-bold text-slate-900 tracking-tight uppercase truncate">
+                            <?= htmlspecialchars($active_req['title']) ?>
+                        </h2>
+                        <p class="text-[11px] text-slate-500 font-normal mt-0.5">
+                            Diskusi Scope & Surat Penawaran dengan Tim PT. CTC
+                        </p>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <?php if ($linked_project || $active_req['status'] === 'Proposal Sent' || $active_req['status'] === 'Deal / Accepted'): ?>
+                            <?php $pId = $linked_project['id'] ?? $active_req['id']; ?>
+                            <a href="../modules/proposals/print_proposal.php?project_id=<?= $pId ?>" target="_blank" class="btn-press px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 shrink-0 transition">
+                                <i class="fa-solid fa-file-pdf text-xs"></i>
+                                <span>Dokumen Proposal (SPH)</span>
+                            </a>
+                        <?php endif; ?>
+
+                        <span class="px-2.5 py-1 text-[9.5px] font-semibold uppercase rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 tracking-wider shrink-0">
+                            STATUS: <?= htmlspecialchars($active_req['status']) ?>
+                        </span>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Chat Messages Box -->
-            <div class="flex-1 relative overflow-hidden bg-slate-50/50 min-h-0">
-                <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
-                    <img src="../assets/images/logo.png" alt="Watermark CTC" class="w-[320px] sm:w-[380px] h-auto object-contain opacity-[0.04] mix-blend-multiply">
+                <!-- Chat Messages Box -->
+                <div class="flex-1 relative overflow-hidden bg-slate-50/50 min-h-0">
+                    <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
+                        <img src="../assets/images/logo.png" alt="Watermark CTC" class="w-[320px] sm:w-[380px] h-auto object-contain opacity-[0.04] mix-blend-multiply">
+                    </div>
+
+                    <div id="chat-box" class="h-full p-4 sm:p-6 overflow-y-auto space-y-4 text-xs relative z-10">
+                        <!-- Content render via JS AJAX -->
+                    </div>
                 </div>
 
-                <div id="chat-box" class="h-full p-4 sm:p-6 overflow-y-auto space-y-4 text-xs relative z-10">
-                    <!-- Content render via JS AJAX -->
-                </div>
-            </div>
+                <!-- Chat Form Input -->
+                <form id="clientChatForm" onsubmit="sendClientChat(event)" class="p-3.5 sm:p-4 bg-white border-t border-slate-200/90 flex gap-2 shrink-0 z-10">
+                    <input type="text" id="clientChatInput" required placeholder="Tulis pesan... (Enter untuk kirim)" autocomplete="off"
+                           class="input-glow flex-1 px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm text-slate-900 focus:outline-none font-normal transition-all placeholder:text-slate-400 min-w-0">
 
-            <!-- Chat Form Input -->
-            <form id="clientChatForm" onsubmit="sendClientChat(event)" class="p-3.5 sm:p-4 bg-white border-t border-slate-200/90 flex gap-2 shrink-0 z-10">
-                <input type="text" id="clientChatInput" required placeholder="Tulis pesan... (Enter untuk kirim)" autocomplete="off"
-                       class="input-glow flex-1 px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm text-slate-900 focus:outline-none font-normal transition-all placeholder:text-slate-400 min-w-0">
+                    <button type="submit" id="clientChatBtn" class="btn-press px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold rounded-xl text-xs transition shadow-xs flex items-center gap-2 shrink-0 uppercase tracking-wider">
+                        <i class="fa-solid fa-paper-plane text-xs"></i>
+                        <span class="hidden sm:inline">Kirim</span>
+                    </button>
+                </form>
 
-                <button type="submit" id="clientChatBtn" class="btn-press px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold rounded-xl text-xs transition shadow-xs flex items-center gap-2 shrink-0 uppercase tracking-wider">
-                    <i class="fa-solid fa-paper-plane text-xs"></i>
-                    <span class="hidden sm:inline">Kirim</span>
-                </button>
-            </form>
-
-        <?php endif; ?>
+            <?php endif; ?>
+        </div>
     </div>
 </main>
 

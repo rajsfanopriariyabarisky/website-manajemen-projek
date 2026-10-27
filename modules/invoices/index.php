@@ -1,5 +1,6 @@
 <?php
 session_start();
+date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../../config/database.php';
 
 // Proteksi Halaman: Wajib Login
@@ -8,138 +9,70 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// Auto-Generate Nomor Invoice (e.g. INV/CTC/2026/10/001)
-$currentYear  = date('Y');
-$currentMonth = date('m');
-
-$stmtCount = $pdo->prepare("SELECT COUNT(*) FROM invoices WHERE YEAR(created_at) = ?");
-$stmtCount->execute([$currentYear]);
-$nextNo = $stmtCount->fetchColumn() + 1;
-
-$autoNomorInvoice = "INV/CTC/" . $currentYear . "/" . $currentMonth . "/" . sprintf("%03d", $nextNo);
-
-$error   = '';
-$success = '';
-
-// Handle Tambah Invoice Baru
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_invoice'])) {
-    $project_id        = $_POST['project_id'];
-    $nomor_invoice     = trim($_POST['nomor_invoice']);
-    $termin_ke         = (int)$_POST['termin_ke'];
-    $keterangan_termin = trim($_POST['keterangan_termin']);
-    $jumlah_tagihan    = str_replace(['.', ','], '', $_POST['jumlah_tagihan']);
-    $tanggal_tagihan   = $_POST['tanggal_tagihan'];
-    $jatuh_tempo       = $_POST['jatuh_tempo'];
-    $status            = $_POST['status'];
-
-    if (!empty($project_id) && !empty($nomor_invoice) && !empty($jumlah_tagihan)) {
-        
-        // Validasi Prevent Duplicate Termin
-        $stmtCheckTermin = $pdo->prepare("SELECT COUNT(*) FROM invoices WHERE project_id = ? AND termin_ke = ?");
-        $stmtCheckTermin->execute([$project_id, $termin_ke]);
-        $hasTermin = $stmtCheckTermin->fetchColumn();
-
-        if ($hasTermin > 0) {
-            $error = "Gagal! Invoice untuk Termin " . $termin_ke . " pada proyek ini sudah pernah diterbitkan. Silakan pilih termin selanjutnya!";
-        } else {
-            // Cek Keamanan Server-side: Apakah proyek ini sudah lunas 100%?
-            $stmtCheck = $pdo->prepare("
-                SELECT p.budget, COALESCE(SUM(i.jumlah_tagihan), 0) AS total_paid
-                FROM projects p
-                LEFT JOIN invoices i ON p.id = i.project_id AND i.status = 'Paid'
-                WHERE p.id = ?
-                GROUP BY p.id
-            ");
-            $stmtCheck->execute([$project_id]);
-            $checkData = $stmtCheck->fetch();
-
-            if ($checkData && $checkData['total_paid'] >= $checkData['budget']) {
-                $error = "Gagal! Proyek ini sudah lunas 100% dan tidak dapat diterbitkan invoice baru lagi.";
-            } else {
-                $stmtInsert = $pdo->prepare("
-                    INSERT INTO invoices (project_id, nomor_invoice, termin_ke, keterangan_termin, jumlah_tagihan, tanggal_tagihan, jatuh_tempo, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ");
-                $stmtInsert->execute([$project_id, $nomor_invoice, $termin_ke, $keterangan_termin, $jumlah_tagihan, $tanggal_tagihan, $jatuh_tempo, $status]);
-                
-                header("Location: index.php?msg=created");
-                exit;
-            }
-        }
-    } else {
-        $error = "Mohon lengkapi seluruh kolom wajib!";
-    }
-}
-
 // Params Filter & Pagination
-$search_query   = trim($_GET['search'] ?? '');
-$filter_status  = $_GET['status_filter'] ?? 'All';
-$filter_termin  = $_GET['termin_filter'] ?? 'All';
-$page           = max(1, (int)($_GET['page'] ?? 1));
-$limit          = 7;
-$offset         = ($page - 1) * $limit;
+$search_query  = trim($_GET['search'] ?? '');
+$filter_status = $_GET['status_filter'] ?? 'All';
 
-// Fetch Proyek Available
-$sqlAvailableProjects = "
-    SELECT p.id, p.nama_projek, p.klien, p.budget,
-           COALESCE(SUM(CASE WHEN i.status = 'Paid' THEN i.jumlah_tagihan ELSE 0 END), 0) AS total_paid,
-           COUNT(i.id) AS total_invoices_count,
-           GROUP_CONCAT(i.termin_ke) AS existing_termins
+// Fetch All Projects with Invoices Summary
+$sqlProjects = "
+    SELECT 
+        p.id AS project_id,
+        p.nama_projek,
+        p.klien,
+        p.budget,
+        p.tanggal_mulai,
+        p.deadline,
+        p.status AS project_status,
+        COALESCE(SUM(i.jumlah_tagihan), 0) AS total_invoiced,
+        COALESCE(SUM(CASE WHEN i.status = 'Paid' THEN i.jumlah_tagihan ELSE 0 END), 0) AS total_paid,
+        COALESCE(SUM(CASE WHEN i.status != 'Paid' THEN i.jumlah_tagihan ELSE 0 END), 0) AS total_unpaid,
+        COUNT(i.id) AS total_invoices_count,
+        MAX(i.termin_ke) AS max_termin
     FROM projects p
     LEFT JOIN invoices i ON p.id = i.project_id
-    GROUP BY p.id
-    HAVING total_paid < p.budget OR total_invoices_count = 0
-    ORDER BY p.nama_projek ASC
-";
-$projectsAvailable = $pdo->query($sqlAvailableProjects)->fetchAll();
-
-// Query Base Invoices
-$sqlBase = "
-    FROM invoices i
-    JOIN projects p ON i.project_id = p.id
     WHERE 1=1
 ";
+
 $params = [];
 
 if (!empty($search_query)) {
-    $sqlBase .= " AND (i.nomor_invoice LIKE ? OR p.nama_projek LIKE ? OR p.klien LIKE ?)";
-    $params[] = "%$search_query%";
+    $sqlProjects .= " AND (p.nama_projek LIKE ? OR p.klien LIKE ?)";
     $params[] = "%$search_query%";
     $params[] = "%$search_query%";
 }
 
-if ($filter_status !== 'All') {
-    $sqlBase .= " AND i.status = ?";
-    $params[] = $filter_status;
+$sqlProjects .= " GROUP BY p.id ORDER BY p.created_at DESC";
+
+$stmt = $pdo->prepare($sqlProjects);
+$stmt->execute($params);
+$allProjects = $stmt->fetchAll();
+
+// Filter Status Pembayaran di Level PHP
+$filteredProjects = [];
+foreach ($allProjects as $proj) {
+    $budget    = (float)$proj['budget'];
+    $totalPaid = (float)$proj['total_paid'];
+
+    if ($budget > 0 && $totalPaid >= $budget) {
+        $paymentStatus = 'Lunas';
+    } elseif ($totalPaid > 0) {
+        $paymentStatus = 'Partially Paid';
+    } else {
+        $paymentStatus = 'Unpaid';
+    }
+
+    $proj['payment_status'] = $paymentStatus;
+
+    if ($filter_status === 'All' || $filter_status === $paymentStatus) {
+        $filteredProjects[] = $proj;
+    }
 }
 
-if ($filter_termin !== 'All') {
-    $sqlBase .= " AND i.termin_ke = ?";
-    $params[] = (int)$filter_termin;
-}
-
-// Total Data
-$stmtCountInv = $pdo->prepare("SELECT COUNT(*) " . $sqlBase);
-$stmtCountInv->execute($params);
-$totalRows  = $stmtCountInv->fetchColumn();
-$totalPages = max(1, ceil($totalRows / $limit));
-
-// Fetch Paginasi
-$sqlPaged = "
-    SELECT i.*, p.nama_projek, p.klien, p.budget,
-           (SELECT COALESCE(SUM(inv.jumlah_tagihan), 0) FROM invoices inv WHERE inv.project_id = p.id AND inv.status = 'Paid') AS total_project_paid,
-           (SELECT MAX(inv2.termin_ke) FROM invoices inv2 WHERE inv2.project_id = p.id) AS max_termin_project
-    " . $sqlBase . " 
-    ORDER BY i.created_at DESC LIMIT $limit OFFSET $offset
-";
-$stmtInvoices = $pdo->prepare($sqlPaged);
-$stmtInvoices->execute($params);
-$invoices = $stmtInvoices->fetchAll();
-
-// Stats Summary
-$totalInvoiced = $pdo->query("SELECT COALESCE(SUM(jumlah_tagihan), 0) FROM invoices")->fetchColumn();
-$totalPaid     = $pdo->query("SELECT COALESCE(SUM(jumlah_tagihan), 0) FROM invoices WHERE status = 'Paid'")->fetchColumn();
-$totalUnpaid   = $pdo->query("SELECT COALESCE(SUM(jumlah_tagihan), 0) FROM invoices WHERE status != 'Paid'")->fetchColumn();
+// Grand Totals Rekapitulasi Keseluruhan Perusahaan
+$totalCompanyBudget   = $pdo->query("SELECT COALESCE(SUM(budget), 0) FROM projects")->fetchColumn();
+$totalCompanyPaid     = $pdo->query("SELECT COALESCE(SUM(jumlah_tagihan), 0) FROM invoices WHERE status = 'Paid'")->fetchColumn();
+$totalCompanyUnpaid   = $totalCompanyBudget - $totalCompanyPaid;
+if ($totalCompanyUnpaid < 0) $totalCompanyUnpaid = 0;
 
 // Data Rekap PDF
 $allInvoicesPrint = $pdo->query("
@@ -156,28 +89,16 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 <!-- Google Fonts: Plus Jakarta Sans -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 <style>
     body, input, select, button, h1, h2, h3, h4, h5, h6, textarea { 
         font-family: 'Plus Jakarta Sans', sans-serif !important; 
     }
-
-    .btn-press { 
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
-    }
-    .btn-press:active { 
-        transform: translateY(1px); 
-    }
-
-    .input-glow { 
-        transition: box-shadow .2s ease, border-color .2s ease; 
-    }
-    .input-glow:focus { 
-        border-color: #059669; 
-        box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.12); 
-    }
-
+    .btn-press { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+    .btn-press:active { transform: translateY(1px); }
+    .input-glow { transition: box-shadow .2s ease, border-color .2s ease; }
+    .input-glow:focus { border-color: #059669; box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.12); }
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
@@ -209,14 +130,12 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 <!-- PDF Print Template Area -->
 <div id="print-area-pdf">
     <div class="print-header-pdf">
-        <div style="display: flex; justify-between: space-between; align-items: center;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 14px;">
-                <img src="/website%20manajemen%20projek/assets/images/logo.jpg" alt="Logo PT CTC" class="print-logo-img">
+                <img src="../../assets/images/logo.jpg" alt="Logo PT CTC" class="print-logo-img" onerror="this.style.display='none'">
                 <div>
                     <h1 style="font-size: 13pt; font-weight: 900; color: #0f172a; margin: 0; text-transform: uppercase;">PT. CIPTA TEKNOLOGI CENDEKIA</h1>
                     <p style="font-size: 8.5pt; font-weight: 700; color: #047857; margin: 2px 0 0 0;">Enterprise IT Solution, Software Development & Financial Control</p>
-                    <p style="font-size: 7.5pt; color: #64748b; margin: 2px 0 0 0;">Perumahan Cahaya Garuda Residence Kav. 31, Bojongsari, Kota Depok, Jawa Barat |</p>
-                    <p style="font-size: 7.5pt; color: #64748b; margin: 1px 0 0 0;">Email: ciptateknologicendekia@gmail.com | Website: https://ctc-nusantara.com/</p>
                 </div>
             </div>
             <div style="text-align: right; font-size: 8pt; color: #475569;">
@@ -226,7 +145,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
         </div>
         <div style="text-align: center; margin-top: 10px; padding-top: 6px;">
             <h2 style="font-size: 10pt; font-weight: 900; text-transform: uppercase; color: #0f172a; border-bottom: 2px solid #0f172a; display: inline-block; padding-bottom: 2px; margin: 0;">
-                REKAPITULASI PENAGIHAN & STATUS INVOICE KLIEN
+                REKAPITULASI PENAGIHAN & STATUS INVOICE PER PROYEK
             </h2>
         </div>
     </div>
@@ -268,95 +187,61 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             <div class="flex items-center gap-2 mb-1">
                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span class="text-xs font-semibold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-0.5 rounded-full">
-                    MODUL BILLING SYSTEM • INVOICE & PENAGIHAN
+                    MODUL BILLING SYSTEM • INVOICE PER PROYEK
                 </span>
             </div>
-            <h1 class="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Invoice & Penagihan Klien</h1>
-            <p class="text-xs sm:text-sm text-slate-500 font-normal mt-0.5">Kelola tagihan termin, status penagihan, dan cetak kuitansi resmi PT. CTC.</p>
+            <h1 class="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Invoice & Penagihan Proyek</h1>
+            <p class="text-xs sm:text-sm text-slate-500 font-normal mt-0.5">Ringkasan status termin, penagihan pembayaran, dan pelunasan kuitansi per proyek.</p>
         </div>
 
-        <div class="flex items-center gap-2.5 shrink-0 flex-wrap sm:flex-nowrap">
+        <div class="flex items-center gap-2.5 shrink-0">
             <button onclick="window.print()" class="btn-press px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs sm:text-sm font-semibold transition shadow-xs flex items-center justify-center gap-2">
                 <i class="fa-solid fa-print text-xs sm:text-sm"></i> Cetak Rekap PDF
             </button>
-            <button onclick="openInvoiceModal()" class="btn-press px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-semibold transition shadow-xs flex items-center justify-center gap-2">
-                <i class="fa-solid fa-plus-circle text-xs sm:text-sm"></i> Terbitkan Invoice Baru
-            </button>
         </div>
     </div>
 
-    <!-- Instruction Banner -->
-    <div class="mb-6 bg-gradient-to-r from-emerald-900 to-teal-900 border border-emerald-700/80 p-4 rounded-2xl text-white shadow-xs">
-        <div class="flex items-start gap-3.5">
-            <div class="p-2.5 bg-emerald-500/20 rounded-xl text-emerald-300 border border-emerald-400/30 shrink-0">
-                <i class="fa-solid fa-shield-halved text-xl"></i>
-            </div>
-            <div>
-                <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-300 flex items-center gap-2">
-                    Instruksi Prosedur & Otomatisasi Ledger Keuangan
-                </h4>
-                <p class="text-xs text-emerald-100/90 leading-relaxed mt-1 font-normal">
-                    <strong>Penting untuk Tim Finance & Billing:</strong> Pastikan untuk selalu melakukan pembaharuan status tagihan menjadi <span class="bg-emerald-500/30 text-white px-1.5 py-0.5 rounded border border-emerald-400/30 font-bold">Paid (Lunas)</span> segera setelah pembayaran termin diverifikasi masuk. Kuitansi Pelunasan BAST Gabungan 100% otomatis aktif khusus pada baris termin terakhir jika seluruh termin telah dilunasi.
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Alert Notifications -->
-    <?php if (isset($_GET['msg']) && $_GET['msg'] === 'created'): ?>
-        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
-            <i class="fa-solid fa-circle-check text-emerald-600 text-base shrink-0"></i> Invoice penagihan baru berhasil diterbitkan!
-        </div>
-    <?php endif; ?>
-
-    <?php if ($error): ?>
-        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
-            <i class="fa-solid fa-triangle-exclamation text-red-500 text-base shrink-0"></i> <?= $error ?>
-        </div>
-    <?php endif; ?>
-
-    <!-- Stat Counter Cards Overview -->
+    <!-- Stat Counter Cards Overview (Grand Totals All Projects) -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-slate-300 transition">
             <div class="flex items-center justify-between mb-1">
-                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Tagihan Diterbitkan</span>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Nilai Kontrak Proyek</span>
                 <div class="w-7 h-7 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center text-xs">
                     <i class="fa-solid fa-file-invoice-dollar"></i>
                 </div>
             </div>
-            <h3 class="text-xl md:text-2xl font-bold text-slate-900 font-mono">Rp <?= number_format($totalInvoiced, 0, ',', '.') ?></h3>
-            <span class="text-xs text-slate-400 font-normal mt-1 block">Akumulasi seluruh termin</span>
+            <h3 class="text-xl md:text-2xl font-bold text-slate-900 font-mono">Rp <?= number_format($totalCompanyBudget, 0, ',', '.') ?></h3>
+            <span class="text-xs text-slate-400 font-normal mt-1 block">Akumulasi seluruh proyek</span>
         </div>
 
-        <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-slate-300 transition">
+        <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-emerald-300 transition">
             <div class="flex items-center justify-between mb-1">
-                <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Total Sudah Dilunasi (Paid)</span>
+                <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Total Masuk Kas (Paid)</span>
                 <div class="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs">
                     <i class="fa-solid fa-check-double"></i>
                 </div>
             </div>
-            <h3 class="text-xl md:text-2xl font-bold text-emerald-600 font-mono">Rp <?= number_format($totalPaid, 0, ',', '.') ?></h3>
-            <span class="text-xs text-emerald-700 font-medium mt-1 flex items-center gap-1"><i class="fa-solid fa-circle-check text-[10px]"></i> Masuk ke kas perusahaan</span>
+            <h3 class="text-xl md:text-2xl font-bold text-emerald-600 font-mono">Rp <?= number_format($totalCompanyPaid, 0, ',', '.') ?></h3>
+            <span class="text-xs text-emerald-700 font-medium mt-1 flex items-center gap-1"><i class="fa-solid fa-circle-check text-[10px]"></i> Total penerimaan lunas</span>
         </div>
 
         <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-amber-200 transition">
             <div class="flex items-center justify-between mb-1">
-                <span class="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Piutang / Unpaid</span>
+                <span class="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Sisa Piutang Penagihan</span>
                 <div class="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-xs">
                     <i class="fa-solid fa-clock"></i>
                 </div>
             </div>
-            <h3 class="text-xl md:text-2xl font-bold text-amber-600 font-mono">Rp <?= number_format($totalUnpaid, 0, ',', '.') ?></h3>
-            <span class="text-xs text-amber-700 font-medium mt-1 block">Menunggu pembayaran klien</span>
+            <h3 class="text-xl md:text-2xl font-bold text-amber-600 font-mono">Rp <?= number_format($totalCompanyUnpaid, 0, ',', '.') ?></h3>
+            <span class="text-xs text-amber-700 font-medium mt-1 block">Menunggu pembayaran termin</span>
         </div>
     </div>
 
     <!-- Filter & Search Bar Integrated -->
     <div class="bg-white border border-slate-200/90 rounded-2xl p-4 mb-6 shadow-xs">
-        <form method="GET" class="flex flex-col md:flex-row items-center justify-between gap-3 w-full">
-            
+        <form method="GET" id="billingFilterForm" class="flex flex-col md:flex-row items-center justify-between gap-3 w-full">
             <div class="relative w-full md:w-80">
-                <input type="text" name="search" value="<?= htmlspecialchars($search_query) ?>" placeholder="Cari no. invoice, proyek, atau klien..." class="input-glow w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-normal text-slate-800 bg-white focus:outline-none placeholder:text-slate-400">
+                <input type="text" id="billingSearchInput" name="search" value="<?= htmlspecialchars($search_query) ?>" onkeyup="filterInvoiceTable()" placeholder="Cari nama proyek atau klien..." class="input-glow w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-normal text-slate-800 bg-white focus:outline-none placeholder:text-slate-400">
                 <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                     <i class="fa-solid fa-magnifying-glass text-sm"></i>
                 </div>
@@ -364,17 +249,11 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
             <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
                 <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-                    <a href="?status_filter=All&search=<?= urlencode($search_query) ?>" class="btn-press px-3 py-1.5 rounded-lg text-xs font-semibold transition <?= $filter_status === 'All' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-500 hover:text-slate-800' ?>">Semua</a>
+                    <a href="?status_filter=All&search=<?= urlencode($search_query) ?>" class="btn-press px-3 py-1.5 rounded-lg text-xs font-semibold transition <?= $filter_status === 'All' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-500 hover:text-slate-800' ?>">Semua Status</a>
+                    <a href="?status_filter=Lunas&search=<?= urlencode($search_query) ?>" class="btn-press px-3 py-1.5 rounded-lg text-xs font-semibold transition <?= $filter_status === 'Lunas' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800' ?>">Lunas 100%</a>
+                    <a href="?status_filter=Partially Paid&search=<?= urlencode($search_query) ?>" class="btn-press px-3 py-1.5 rounded-lg text-xs font-semibold transition <?= $filter_status === 'Partially Paid' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800' ?>">Partially Paid</a>
                     <a href="?status_filter=Unpaid&search=<?= urlencode($search_query) ?>" class="btn-press px-3 py-1.5 rounded-lg text-xs font-semibold transition <?= $filter_status === 'Unpaid' ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800' ?>">Unpaid</a>
-                    <a href="?status_filter=Paid&search=<?= urlencode($search_query) ?>" class="btn-press px-3 py-1.5 rounded-lg text-xs font-semibold transition <?= $filter_status === 'Paid' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800' ?>">Paid</a>
                 </div>
-
-                <select name="termin_filter" onchange="this.form.submit()" class="input-glow px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold bg-white text-slate-700 focus:outline-none">
-                    <option value="All" <?= $filter_termin === 'All' ? 'selected' : '' ?>>Semua Termin</option>
-                    <option value="1" <?= $filter_termin === '1' ? 'selected' : '' ?>>Termin 1 (DP 50%)</option>
-                    <option value="2" <?= $filter_termin === '2' ? 'selected' : '' ?>>Termin 2 (Pelunasan)</option>
-                    <option value="3" <?= $filter_termin === '3' ? 'selected' : '' ?>>Full Payment (100%)</option>
-                </select>
 
                 <button type="submit" class="btn-press bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2.5 rounded-xl text-xs sm:text-sm transition shadow-xs">
                     Cari
@@ -383,97 +262,100 @@ require_once __DIR__ . '/../../includes/sidebar.php';
         </form>
     </div>
 
-    <!-- Main Table Card -->
-    <div class="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs mb-8">
-        <h3 class="font-bold text-slate-900 text-base mb-4 flex items-center gap-2">
-            <i class="fa-solid fa-list-check text-emerald-600"></i> Daftar Tagihan & Monitoring Termin
-        </h3>
+    <!-- Main Table Container: Daftar Proyek & Status Billing (Horizontal Table View) -->
+    <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden mb-8">
+        <div class="p-5 border-b border-slate-200/80 flex items-center justify-between">
+            <h3 class="font-bold text-slate-900 text-base flex items-center gap-2">
+                <i class="fa-solid fa-folder-tree text-emerald-600"></i> Daftar Proyek & Pengaturan Billing
+            </h3>
+            <span class="text-xs text-slate-400 font-medium">Tampilan Tabel Horizontal</span>
+        </div>
 
-        <!-- Desktop View (Tabel) -->
-        <div class="hidden md:block overflow-x-auto">
-            <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[750px]">
+        <div class="w-full overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs sm:text-sm table-fixed min-w-[980px]">
                 <thead>
-                    <tr class="bg-slate-50 text-slate-500 uppercase font-semibold text-xs tracking-wider border-b border-slate-200">
-                        <th class="py-3.5 px-4">NO. INVOICE</th>
-                        <th class="py-3.5 px-4">PROYEK & KLIEN</th>
-                        <th class="py-3.5 px-4">STATUS TERMIN</th>
-                        <th class="py-3.5 px-4 text-right">JUMLAH TAGIHAN</th>
-                        <th class="py-3.5 px-4">JATUH TEMPO</th>
-                        <th class="py-3.5 px-4 text-center">STATUS BAYAR</th>
-                        <th class="py-3.5 px-4 text-center">AKSI / DOKUMEN</th>
+                    <tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        <th class="py-3.5 px-4 w-[28%]">PROYEK & KLIEN</th>
+                        <th class="py-3.5 px-4 w-[16%] text-center">STATUS BILLING</th>
+                        <th class="py-3.5 px-4 w-[22%]">PROGRESS PELUNASAN</th>
+                        <th class="py-3.5 px-4 w-[20%]">RINGKASAN NOMINAL</th>
+                        <th class="py-3.5 px-4 w-[14%] text-center">AKSI</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100">
-                    <?php if (empty($invoices)): ?>
+                <tbody class="divide-y divide-slate-100" id="billingTableBody">
+                    <?php if (empty($filteredProjects)): ?>
                         <tr>
-                            <td colspan="7" class="text-center py-10 text-slate-400 font-normal">
+                            <td colspan="5" class="p-8 text-center text-slate-400 font-normal">
                                 <div class="w-12 h-12 mx-auto mb-2 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center text-xl">
-                                    <i class="fa-solid fa-file-invoice"></i>
+                                    <i class="fa-solid fa-folder-open"></i>
                                 </div>
-                                Belum ada data invoice yang sesuai kriteria pencarian.
+                                <p class="font-bold text-slate-800 text-sm">Belum ada data proyek yang sesuai kriteria pencarian.</p>
                             </td>
                         </tr>
                     <?php else: ?>
-                        <?php foreach ($invoices as $inv): 
-                            $isOverdue = (strtotime($inv['jatuh_tempo']) < time()) && $inv['status'] !== 'Paid';
-                            
-                            // SYARAT KHUSUS MUNCUL TOMBOL KUITANSI PELUNASAN GABUNGAN 100%:
-                            $canPrintPelunasan = ($inv['total_project_paid'] >= $inv['budget']) 
-                                              && ($inv['termin_ke'] == $inv['max_termin_project']) 
-                                              && ($inv['status'] === 'Paid');
+                        <?php foreach ($filteredProjects as $p): 
+                            $pBudget = (float)$p['budget'];
+                            $pPaid   = (float)$p['total_paid'];
+                            $pUnpaid = $pBudget - $pPaid;
+                            if ($pUnpaid < 0) $pUnpaid = 0;
+                            $percent = $pBudget > 0 ? min(100, round(($pPaid / $pBudget) * 100)) : 0;
                         ?>
-                            <tr class="hover:bg-slate-50/80 transition">
-                                <td class="py-3.5 px-4 font-mono font-bold text-slate-900 whitespace-nowrap"><?= htmlspecialchars($inv['nomor_invoice']) ?></td>
-                                <td class="py-3.5 px-4">
-                                    <p class="font-bold text-slate-900 text-xs sm:text-sm leading-tight mb-0.5"><?= htmlspecialchars($inv['nama_projek']) ?></p>
-                                    <span class="text-xs text-slate-400 font-normal"><?= htmlspecialchars($inv['klien']) ?></span>
-                                </td>
-                                <td class="py-3.5 px-4 text-slate-700">
-                                    <span class="font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 inline-block text-[10px] uppercase tracking-wider mb-0.5">
-                                        Termin <?= $inv['termin_ke'] ?>
-                                    </span>
-                                    <span class="block text-xs text-slate-400 font-normal"><?= htmlspecialchars($inv['keterangan_termin']) ?></span>
-                                </td>
-                                <td class="py-3.5 px-4 text-right font-bold text-slate-900 font-mono whitespace-nowrap">
-                                    Rp <?= number_format($inv['jumlah_tagihan'], 0, ',', '.') ?>
-                                </td>
-                                <td class="py-3.5 px-4 text-slate-500 whitespace-nowrap font-normal">
-                                    <?= date('d M Y', strtotime($inv['jatuh_tempo'])) ?>
-                                    <?php if ($isOverdue): ?>
-                                        <span class="block text-[9px] font-bold uppercase tracking-wider text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 mt-0.5 w-max">Overdue</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td class="py-3.5 px-4 text-center">
-                                    <form action="update_status.php" method="POST" class="inline-block">
-                                        <input type="hidden" name="invoice_id" value="<?= $inv['id'] ?>">
-                                        <select name="status" onchange="this.form.submit()" class="input-glow px-2.5 py-1 rounded-lg text-xs font-semibold border cursor-pointer focus:outline-none shadow-2xs
-                                            <?php
-                                                switch($inv['status']) {
-                                                    case 'Paid': echo 'bg-emerald-50 text-emerald-700 border-emerald-300'; break;
-                                                    case 'Partially Paid': echo 'bg-blue-50 text-blue-700 border-blue-300'; break;
-                                                    default: echo 'bg-amber-50 text-amber-700 border-amber-300';
-                                                }
-                                            ?>">
-                                            <option value="Unpaid" <?= $inv['status'] === 'Unpaid' ? 'selected' : '' ?>>Unpaid</option>
-                                            <option value="Partially Paid" <?= $inv['status'] === 'Partially Paid' ? 'selected' : '' ?>>Partially Paid</option>
-                                            <option value="Paid" <?= $inv['status'] === 'Paid' ? 'selected' : '' ?>>Paid (Lunas)</option>
-                                        </select>
-                                    </form>
-                                </td>
-                                <td class="py-3.5 px-4 text-center">
-                                    <div class="flex items-center justify-center gap-1.5 flex-wrap">
-                                        <!-- PDF STANDAR PER TERMIN -->
-                                        <a href="print_pdf.php?id=<?= $inv['id'] ?>" target="_blank" title="Cetak Invoice Termin Ini" class="btn-press px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition inline-flex items-center gap-1 shadow-xs">
-                                            <i class="fa-solid fa-print text-xs"></i> PDF
-                                        </a>
+                            <tr class="invoice-row hover:bg-slate-50/70 transition align-middle"
+                                data-search="<?= htmlspecialchars(strtolower($p['nama_projek'] . ' ' . $p['klien'])) ?>"
+                                data-status="<?= htmlspecialchars($p['payment_status']) ?>">
 
-                                        <!-- KUITANSI PELUNASAN GABUNGAN 100% -->
-                                        <?php if ($canPrintPelunasan): ?>
-                                            <a href="print_pdf.php?project_id=<?= $inv['project_id'] ?>&type=pelunasan" target="_blank" title="Proyek Lunas 100%! Cetak Kuitansi Pelunasan BAST Gabungan" class="btn-press px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition inline-flex items-center gap-1 shadow-xs">
-                                                <i class="fa-solid fa-certificate text-xs"></i> Kuitansi Pelunasan
-                                            </a>
-                                        <?php endif; ?>
+                                <!-- Proyek & Klien -->
+                                <td class="py-3.5 px-4">
+                                    <p class="font-bold text-slate-900 text-xs sm:text-sm leading-snug truncate">
+                                        <?= htmlspecialchars($p['nama_projek']) ?>
+                                    </p>
+                                    <p class="text-xs text-slate-500 font-normal truncate mt-0.5">
+                                        <i class="fa-solid fa-building text-slate-400 mr-1 text-[11px]"></i>Klien: <span class="font-semibold text-slate-800"><?= htmlspecialchars($p['klien']) ?></span>
+                                    </p>
+                                </td>
+
+                                <!-- Status Billing Badge -->
+                                <td class="py-3.5 px-4 text-center">
+                                    <span class="px-2.5 py-1 text-[10px] uppercase font-extrabold rounded-full border tracking-wider inline-block whitespace-nowrap
+                                        <?php
+                                            switch($p['payment_status']) {
+                                                case 'Lunas': echo 'bg-emerald-50 text-emerald-700 border-emerald-300'; break;
+                                                case 'Partially Paid': echo 'bg-blue-50 text-blue-700 border-blue-300'; break;
+                                                default: echo 'bg-amber-50 text-amber-700 border-amber-300';
+                                            }
+                                        ?>">
+                                        <?= $p['payment_status'] === 'Lunas' ? 'LUNAS 100%' : $p['payment_status'] ?>
+                                    </span>
+                                </td>
+
+                                <!-- Progress Pelunasan -->
+                                <td class="py-3.5 px-4">
+                                    <div class="flex justify-between text-xs font-semibold mb-1">
+                                        <span class="text-slate-400 text-[10px] uppercase font-normal">Terbayar</span>
+                                        <span class="text-emerald-700 font-bold font-mono text-xs"><?= $percent ?>% (Rp <?= number_format($pPaid, 0, ',', '.') ?>)</span>
                                     </div>
+                                    <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/80 p-0.5">
+                                        <div class="bg-gradient-to-r from-emerald-500 to-teal-500 h-1 rounded-full transition-all duration-500" style="width: <?= $percent ?>%"></div>
+                                    </div>
+                                </td>
+
+                                <!-- Ringkasan Nominal -->
+                                <td class="py-3.5 px-4 font-mono">
+                                    <div class="text-xs">
+                                        <span class="text-[10px] text-slate-400 font-sans block uppercase">Budget:</span>
+                                        <span class="font-bold text-slate-900">Rp <?= number_format($pBudget, 0, ',', '.') ?></span>
+                                    </div>
+                                    <div class="text-xs mt-0.5">
+                                        <span class="text-[10px] text-slate-400 font-sans block uppercase">Sisa Piutang:</span>
+                                        <span class="font-semibold text-amber-600">Rp <?= number_format($pUnpaid, 0, ',', '.') ?></span>
+                                    </div>
+                                </td>
+
+                                <!-- Tombol Aksi Kelola -->
+                                <td class="py-3.5 px-4 text-center">
+                                    <a href="detail.php?project_id=<?= $p['project_id'] ?>" class="btn-press px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl transition inline-flex items-center gap-1.5 shadow-xs">
+                                        <i class="fa-solid fa-sliders text-xs"></i> Kelola Billing
+                                    </a>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -482,242 +364,83 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             </table>
         </div>
 
-        <!-- Mobile View (Cards) -->
-        <div class="md:hidden space-y-3">
-            <?php if (!empty($invoices)): ?>
-                <?php foreach ($invoices as $inv): 
-                    $canPrintPelunasan = ($inv['total_project_paid'] >= $inv['budget']) 
-                                      && ($inv['termin_ke'] == $inv['max_termin_project']) 
-                                      && ($inv['status'] === 'Paid');
-                ?>
-                    <div class="p-4 border border-slate-200/90 rounded-xl bg-slate-50/50 space-y-3">
-                        <div class="flex justify-between items-start gap-2">
-                            <div>
-                                <span class="font-mono text-xs font-bold text-emerald-700 block mb-0.5"><?= htmlspecialchars($inv['nomor_invoice']) ?></span>
-                                <h4 class="font-bold text-slate-900 text-xs sm:text-sm"><?= htmlspecialchars($inv['nama_projek']) ?></h4>
-                                <p class="text-xs text-slate-500 font-normal">Klien: <?= htmlspecialchars($inv['klien']) ?></p>
-                            </div>
-                        </div>
-
-                        <div class="pt-2 border-t border-slate-200/80 flex justify-between items-center text-xs">
-                            <div>
-                                <span class="text-slate-400 block font-normal">Tagihan (Termin <?= $inv['termin_ke'] ?>):</span>
-                                <span class="font-bold text-slate-900 font-mono">Rp <?= number_format($inv['jumlah_tagihan'], 0, ',', '.') ?></span>
-                            </div>
-                            <div class="flex gap-1.5">
-                                <a href="print_pdf.php?id=<?= $inv['id'] ?>" target="_blank" class="btn-press px-2.5 py-1 rounded-lg bg-slate-900 text-white text-xs font-semibold shadow-2xs">
-                                    <i class="fa-solid fa-print text-[10px]"></i> PDF
-                                </a>
-                                <?php if ($canPrintPelunasan): ?>
-                                    <a href="print_pdf.php?project_id=<?= $inv['project_id'] ?>&type=pelunasan" target="_blank" class="btn-press px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-semibold shadow-2xs">
-                                        Lunas
-                                    </a>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
+        <!-- Paginasi 10 Data Per Halaman -->
+        <div class="p-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-slate-500 bg-slate-50/50">
+            <span class="font-medium" id="paginationInfo">Menampilkan 0 data</span>
+            <div class="flex items-center gap-1.5" id="paginationControls"></div>
         </div>
-
-        <!-- FITUR PAGINASI NUMERIK -->
-        <?php if ($totalPages > 1): ?>
-            <div class="mt-6 flex flex-col sm:flex-row justify-between items-center gap-3 border-t border-slate-100 pt-4 text-xs text-slate-500">
-                <span class="font-medium">
-                    Menampilkan Halaman <strong class="text-slate-800"><?= $page ?></strong> dari <strong class="text-slate-800"><?= $totalPages ?></strong> (Total <?= $totalRows ?> Invoice)
-                </span>
-
-                <div class="flex items-center gap-1.5">
-                    <?php if ($page > 1): ?>
-                        <a href="?page=<?= $page - 1 ?>&search=<?= urlencode($search_query) ?>&status_filter=<?= urlencode($filter_status) ?>&termin_filter=<?= urlencode($filter_termin) ?>" class="btn-press px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">
-                            <i class="fa-solid fa-chevron-left mr-1 text-[10px]"></i> Prev
-                        </a>
-                    <?php else: ?>
-                        <span class="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-300 bg-slate-50 cursor-not-allowed">
-                            <i class="fa-solid fa-chevron-left mr-1 text-[10px]"></i> Prev
-                        </span>
-                    <?php endif; ?>
-
-                    <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                        <a href="?page=<?= $i ?>&search=<?= urlencode($search_query) ?>&status_filter=<?= urlencode($filter_status) ?>&termin_filter=<?= urlencode($filter_termin) ?>" class="btn-press px-3 py-1.5 rounded-xl border text-xs font-semibold transition <?= $page == $i ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50' ?>">
-                            <?= $i ?>
-                        </a>
-                    <?php endfor; ?>
-
-                    <?php if ($page < $totalPages): ?>
-                        <a href="?page=<?= $page + 1 ?>&search=<?= urlencode($search_query) ?>&status_filter=<?= urlencode($filter_status) ?>&termin_filter=<?= urlencode($filter_termin) ?>" class="btn-press px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">
-                            Next <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
-                        </a>
-                    <?php else: ?>
-                        <span class="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-300 bg-slate-50 cursor-not-allowed">
-                            Next <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
-                        </span>
-                    <?php endif; ?>
-                </div>
-            </div>
-        <?php endif; ?>
     </div>
 </main>
 
-<!-- Modal Pop-up Terbit Invoice Baru -->
-<div id="invoiceModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center hidden p-4 overflow-y-auto">
-    <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-lg shadow-2xl relative my-8 text-xs sm:text-sm">
-        <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-100 p-6 pb-0">
-            <h3 class="font-bold text-slate-900 text-base flex items-center gap-2">
-                <i class="fa-solid fa-file-invoice text-emerald-600"></i> Terbitkan Invoice Baru
-            </h3>
-            <button onclick="closeInvoiceModal()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition focus:outline-none">
-                <i class="fa-solid fa-xmark text-xs"></i>
-            </button>
-        </div>
-
-        <form action="" method="POST" class="p-6 pt-2 space-y-3.5">
-            <input type="hidden" name="add_invoice" value="1">
-
-            <div>
-                <label class="block text-xs font-medium text-slate-700 mb-1.5">Nomor Invoice Auto</label>
-                <input type="text" name="nomor_invoice" readonly value="<?= $autoNomorInvoice ?>" class="input-glow w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono font-bold bg-slate-50 text-emerald-800 focus:outline-none">
-            </div>
-
-            <div>
-                <label class="block text-xs font-medium text-slate-700 mb-1.5">Pilih Proyek Acuan <span class="text-red-500">*</span></label>
-                <select name="project_id" id="project_select" onchange="autoFillInvoice()" required class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
-                    <?php if (empty($projectsAvailable)): ?>
-                        <option value="">-- Semua Proyek Sudah Lunas 100% --</option>
-                    <?php else: ?>
-                        <option value="">-- Pilih Proyek Target --</option>
-                        <?php foreach ($projectsAvailable as $p): ?>
-                            <option value="<?= $p['id'] ?>" data-budget="<?= $p['budget'] ?>" data-existing-termins="<?= $p['existing_termins'] ?: '' ?>">
-                                <?= htmlspecialchars($p['nama_projek']) ?> (Klien: <?= htmlspecialchars($p['klien']) ?>)
-                            </option>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </select>
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Termin Ke <span class="text-red-500">*</span></label>
-                    <select name="termin_ke" id="termin_select" onchange="calcTermin()" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
-                        <option value="1" id="opt_termin_1">Termin 1 (DP 50%)</option>
-                        <option value="2" id="opt_termin_2">Termin 2 (Pelunasan 50%)</option>
-                        <option value="3" id="opt_termin_3">Full Payment (100%)</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Keterangan Termin <span class="text-red-500">*</span></label>
-                    <input type="text" name="keterangan_termin" id="keterangan_termin" required value="DP 50% Penandatanganan SPK" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-normal focus:outline-none">
-                </div>
-            </div>
-
-            <div>
-                <label class="block text-xs font-medium text-slate-700 mb-1.5">Jumlah Tagihan (Rp) <span class="text-red-500">*</span></label>
-                <input type="text" name="jumlah_tagihan" id="jumlah_tagihan" required onkeyup="formatRupiah(this)" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-mono font-semibold focus:outline-none">
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Tanggal Tagihan <span class="text-red-500">*</span></label>
-                    <input type="date" name="tanggal_tagihan" required value="<?= date('Y-m-d') ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-semibold focus:outline-none">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Tanggal Jatuh Tempo <span class="text-red-500">*</span></label>
-                    <input type="date" name="jatuh_tempo" required value="<?= date('Y-m-d', strtotime('+14 days')) ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-semibold focus:outline-none">
-                </div>
-            </div>
-
-            <div>
-                <label class="block text-xs font-medium text-slate-700 mb-1.5">Status Awal</label>
-                <select name="status" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
-                    <option value="Unpaid" selected>Unpaid (Belum Dibayar)</option>
-                    <option value="Partially Paid">Partially Paid</option>
-                    <option value="Paid">Paid (Lunas)</option>
-                </select>
-            </div>
-
-            <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
-                <button type="button" onclick="closeInvoiceModal()" class="btn-press px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs">
-                    Batal
-                </button>
-                <button type="submit" class="btn-press px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs shadow-xs flex items-center gap-1.5">
-                    <i class="fa-solid fa-floppy-disk text-xs"></i> Terbitkan Tagihan
-                </button>
-            </div>
-        </form>
-    </div>
-</div>
-
 <script>
-function openInvoiceModal() { document.getElementById('invoiceModal').classList.remove('hidden'); }
-function closeInvoiceModal() { document.getElementById('invoiceModal').classList.add('hidden'); }
+const rowsPerPage = 10;
+let currentPage = 1;
+let filteredRows = [];
 
-let currentBudget = 0;
+document.addEventListener('DOMContentLoaded', function() {
+    filterInvoiceTable();
+});
 
-function autoFillInvoice() {
-    const select = document.getElementById('project_select');
-    const selectedOption = select.options[select.selectedIndex];
-    const terminSelect = document.getElementById('termin_select');
-    
-    const opt1 = document.getElementById('opt_termin_1');
-    const opt2 = document.getElementById('opt_termin_2');
-    const opt3 = document.getElementById('opt_termin_3');
+function filterInvoiceTable() {
+    const searchVal = document.getElementById('billingSearchInput').value.toLowerCase();
+    const allRows   = Array.from(document.querySelectorAll('.invoice-row'));
 
-    opt1.disabled = false; opt1.innerText = "Termin 1 (DP 50%)";
-    opt2.disabled = false; opt2.innerText = "Termin 2 (Pelunasan 50%)";
-    opt3.disabled = false; opt3.innerText = "Full Payment (100%)";
+    filteredRows = allRows.filter(row => {
+        const searchData = row.getAttribute('data-search') || '';
+        return searchData.includes(searchVal);
+    });
 
-    if (selectedOption.value !== '') {
-        currentBudget = parseFloat(selectedOption.getAttribute('data-budget')) || 0;
-        const existingTerminsStr = selectedOption.getAttribute('data-existing-termins') || '';
-        const existingTermins = existingTerminsStr.split(',').map(item => item.trim());
-
-        if (existingTermins.includes('1')) {
-            opt1.disabled = true;
-            opt1.innerText = "Termin 1 (Sudah Diterbitkan 🔒)";
-        }
-        if (existingTermins.includes('2')) {
-            opt2.disabled = true;
-            opt2.innerText = "Termin 2 (Sudah Diterbitkan 🔒)";
-        }
-        if (existingTermins.includes('3') || existingTermins.length > 0) {
-            opt3.disabled = true;
-            opt3.innerText = "Full Payment (Sudah Ada Termin 🔒)";
-        }
-
-        for (let i = 0; i < terminSelect.options.length; i++) {
-            if (!terminSelect.options[i].disabled) {
-                terminSelect.selectedIndex = i;
-                break;
-            }
-        }
-
-        calcTermin();
-    }
+    currentPage = 1;
+    renderPagination();
 }
 
-function calcTermin() {
-    const termin = document.getElementById('termin_select').value;
-    const ketInput = document.getElementById('keterangan_termin');
-    const tagihanInput = document.getElementById('jumlah_tagihan');
-    
-    let tagihan = 0;
-    if (termin === '1') {
-        ketInput.value = 'DP 50% Penandatanganan SPK';
-        tagihan = currentBudget * 0.5;
-    } else if (termin === '2') {
-        ketInput.value = 'Pelunasan 50% BAST Selesai';
-        tagihan = currentBudget * 0.5;
-    } else {
-        ketInput.value = 'Pelunasan 100% Pembayaran Penuh';
-        tagihan = currentBudget;
-    }
-    
-    tagihanInput.value = new Intl.NumberFormat('id-ID').format(tagihan);
-}
+function renderPagination() {
+    const allRows = document.querySelectorAll('.invoice-row');
+    allRows.forEach(row => row.style.display = 'none');
 
-function formatRupiah(el) {
-    let value = el.value.replace(/[^0-9]/g, '');
-    el.value = value ? new Intl.NumberFormat('id-ID').format(value) : '';
+    const totalItems = filteredRows.length;
+    const totalPages = Math.ceil(totalItems / rowsPerPage) || 1;
+
+    const startIdx = (currentPage - 1) * rowsPerPage;
+    const endIdx   = startIdx + rowsPerPage;
+
+    filteredRows.slice(startIdx, endIdx).forEach(row => {
+        row.style.display = 'table-row';
+    });
+
+    const displayStart = totalItems === 0 ? 0 : startIdx + 1;
+    const displayEnd   = Math.min(endIdx, totalItems);
+    document.getElementById('paginationInfo').innerText = `Menampilkan ${displayStart}-${displayEnd} dari ${totalItems} proyek`;
+
+    const controls = document.getElementById('paginationControls');
+    controls.innerHTML = '';
+
+    if (totalPages <= 1) return;
+
+    const prevBtn = document.createElement('button');
+    prevBtn.type = 'button';
+    prevBtn.innerHTML = '<i class="fa-solid fa-chevron-left text-xs"></i>';
+    prevBtn.className = `btn-press px-2.5 py-1 rounded-lg font-semibold text-xs ${currentPage === 1 ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
+    prevBtn.disabled = currentPage === 1;
+    prevBtn.onclick = () => { if(currentPage > 1) { currentPage--; renderPagination(); } };
+    controls.appendChild(prevBtn);
+
+    for (let i = 1; i <= totalPages; i++) {
+        const pageBtn = document.createElement('button');
+        pageBtn.type = 'button';
+        pageBtn.innerText = i;
+        pageBtn.className = `btn-press px-3 py-1 rounded-lg font-semibold text-xs ${i === currentPage ? 'bg-emerald-600 text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
+        pageBtn.onclick = () => { currentPage = i; renderPagination(); };
+        controls.appendChild(pageBtn);
+    }
+
+    const nextBtn = document.createElement('button');
+    nextBtn.type = 'button';
+    nextBtn.innerHTML = '<i class="fa-solid fa-chevron-right text-xs"></i>';
+    nextBtn.className = `btn-press px-2.5 py-1 rounded-lg font-semibold text-xs ${currentPage === totalPages ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
+    nextBtn.disabled = currentPage === totalPages;
+    nextBtn.onclick = () => { if(currentPage < totalPages) { currentPage++; renderPagination(); } };
+    controls.appendChild(nextBtn);
 }
 </script>
 

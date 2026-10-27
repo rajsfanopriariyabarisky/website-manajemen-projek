@@ -72,17 +72,23 @@ if ($action === 'fetch') {
             ->execute([$req_id]);
     }
 
-    // Hanya pesan BARU setelah last_id -> ringan, tidak ada duplikat
-    $stmt = $pdo->prepare("SELECT * FROM deal_chats WHERE requirement_id = ? AND id > ? ORDER BY id ASC LIMIT 200");
-    $stmt->execute([$req_id, $last_id]);
+    $current_now = date('Y-m-d H:i:s');
+
+    // Hanya pesan BARU setelah last_id yang waktunya SUDAH TIBA (created_at <= NOW WIB)
+    $stmt = $pdo->prepare("SELECT * FROM deal_chats WHERE requirement_id = ? AND id > ? AND created_at <= ? ORDER BY id ASC LIMIT 200");
+    $stmt->execute([$req_id, $last_id, $current_now]);
     $messages = array_map('chatRowToArray', $stmt->fetchAll());
 
     // Unread count SETELAH mark-read (untuk badge, realtime)
     $unread = 0;
     if ($reader === 'admin' && isAdminLoggedIn()) {
-        $unread = (int) $pdo->query("SELECT COUNT(*) FROM deal_chats WHERE requirement_id = {$req_id} AND sender_type = 'client' AND admin_read = 0")->fetchColumn();
+        $stmtUnread = $pdo->prepare("SELECT COUNT(*) FROM deal_chats WHERE requirement_id = ? AND sender_type = 'client' AND admin_read = 0 AND created_at <= ?");
+        $stmtUnread->execute([$req_id, $current_now]);
+        $unread = (int) $stmtUnread->fetchColumn();
     } elseif ($reader === 'client' && isClientLoggedIn()) {
-        $unread = (int) $pdo->query("SELECT COUNT(*) FROM deal_chats WHERE requirement_id = {$req_id} AND sender_type = 'admin' AND client_read = 0")->fetchColumn();
+        $stmtUnread = $pdo->prepare("SELECT COUNT(*) FROM deal_chats WHERE requirement_id = ? AND sender_type = 'admin' AND client_read = 0 AND created_at <= ?");
+        $stmtUnread->execute([$req_id, $current_now]);
+        $unread = (int) $stmtUnread->fetchColumn();
     }
 
     respond(['success' => true, 'messages' => $messages, 'unread' => $unread]);
@@ -106,8 +112,6 @@ if ($action === 'send') {
     $req_sender_type = $_POST['sender_type'] ?? '';
 
     // FIX LOGIKA SENDER:
-    // Jika dikirim dari Client Portal (sender_type=client / referer portal.php) & session client aktif,
-    // utamakan simpan sebagai Client (misal: Kim Gabryong).
     if (($req_sender_type === 'client' || (empty($req_sender_type) && isset($_SERVER['HTTP_REFERER']) && strpos($_SERVER['HTTP_REFERER'], 'portal.php') !== false)) && isClientLoggedIn()) {
         $sender_type = 'client';
         $sender_name = $_SESSION['client_nama'] ?? '';
@@ -116,21 +120,22 @@ if ($action === 'send') {
             $stmtName->execute([intval($_SESSION['client_user_id'])]);
             $sender_name = $stmtName->fetchColumn() ?: 'Klien';
         }
-        $admin_read  = 0; // admin belum -> muncul notif di panel admin
+        $admin_read  = 0; 
         $client_read = 1;
     } elseif (($req_sender_type === 'admin' || empty($req_sender_type)) && isAdminLoggedIn()) {
         $sender_type = 'admin';
         $stmtName = $pdo->prepare("SELECT nama FROM users WHERE id = ?");
         $stmtName->execute([intval($_SESSION['user_id'])]);
         $sender_name = $stmtName->fetchColumn() ?: 'Administrator';
-        $admin_read  = 1; // admin pasti sudah baca pesan sendiri
-        $client_read = 0; // klien belum -> muncul notif di portal klien
+        $admin_read  = 1; 
+        $client_read = 0; 
     } else {
         respond(['success' => false, 'error' => 'unauthorized']);
     }
 
-    $stmt = $pdo->prepare("INSERT INTO deal_chats (requirement_id, sender_type, sender_name, message, admin_read, client_read, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
-    $stmt->execute([$req_id, $sender_type, $sender_name, $message, $admin_read, $client_read]);
+    $now_time = date('Y-m-d H:i:s');
+    $stmt = $pdo->prepare("INSERT INTO deal_chats (requirement_id, sender_type, sender_name, message, admin_read, client_read, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$req_id, $sender_type, $sender_name, $message, $admin_read, $client_read, $now_time]);
 
     $newId = (int) $pdo->lastInsertId();
     $stmtNew = $pdo->prepare("SELECT * FROM deal_chats WHERE id = ?");

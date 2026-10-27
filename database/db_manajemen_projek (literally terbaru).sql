@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 26, 2026 at 11:43 AM
+-- Generation Time: Oct 27, 2026 at 01:53 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -45,7 +45,8 @@ CREATE TABLE `clients` (
 --
 
 INSERT INTO `clients` (`id`, `nama`, `email`, `password`, `is_verified`, `otp_code`, `otp_expiry`, `reset_token`, `reset_token_expiry`, `created_at`) VALUES
-(1, 'Valen Tanjung', 'ivalviary@gmail.com', '$2y$10$jBSI0ehLPa2HqEOwKTxy9OdqlmFDnpJLq6opXEHd82eZD1nitClbS', 1, NULL, NULL, NULL, NULL, '2026-10-26 10:22:04');
+(1, 'Valen Tanjung', 'ivalviary@gmail.com', '$2y$10$jBSI0ehLPa2HqEOwKTxy9OdqlmFDnpJLq6opXEHd82eZD1nitClbS', 1, NULL, NULL, NULL, NULL, '2026-10-26 10:22:04'),
+(2, 'Budi Kan', 'budi@gmail.com', '$2y$10$pXvIwjOBh9A3z7r7CXZk4.zS5hySMImyX7x1knI3CisMiUsIi9G32', 0, '138910', '2026-10-27 14:52:31', NULL, NULL, '2026-10-27 07:50:31');
 
 -- --------------------------------------------------------
 
@@ -74,7 +75,11 @@ CREATE TABLE `client_requirements` (
 --
 
 INSERT INTO `client_requirements` (`id`, `client_name`, `client_email`, `client_phone`, `company_name`, `title`, `description`, `file_attachment`, `budget_estimation`, `status`, `user_id`, `client_id`, `created_at`) VALUES
-(4, 'Valen Tanjung', 'ivalviary@gmail.com', '081383838399', 'PT. Djarum', 'Website Company Profile', 'Intinya bikin website bagus, budget aman', 'BRD_1793010124_95f8d8da.pdf', 20000000.00, 'Deal / Accepted', NULL, 1, '2026-10-26 10:22:04');
+(4, 'Valen Tanjung', 'ivalviary@gmail.com', '081383838399', 'PT. Djarum', 'Website Company Profile', 'Intinya bikin website bagus, budget aman', 'BRD_1793010124_95f8d8da.pdf', 20000000.00, 'Deal / Accepted', NULL, 1, '2026-10-26 10:22:04'),
+(6, 'Budi Kan', 'budi@gmail.com', '081383839944', 'PT. Budi Onken', 'Mobile Application - BUDI E-COMMERCE', 'Bikin yang bagus men i swear to god, brr', 'BRD_1793087431_c4116eab.pdf', 123123123.00, 'Under Review', NULL, 2, '2026-10-27 07:50:31'),
+(9, 'Valen Tanjung', 'ivalviary@gmail.com', '081383838399', 'PT. Djarum', 'Assalamualaikum Website', 'Assalamualaikum mau bikin web a.', 'BRD_1793090767_03e0d614.pdf', 1000000000.00, 'Deal / Accepted', NULL, 1, '2026-10-27 08:46:07'),
+(10, 'Valen Tanjung', 'ivalviary@gmail.com', '081383838399', 'PT. Djarum', 'The best website in the world', 'letsgo', 'BRD_1793093043_c863a0a2.pdf', 10000000.00, 'Deal / Accepted', NULL, 1, '2026-10-27 09:24:03'),
+(11, 'Valen Tanjung', 'ivalviary@gmail.com', '081383838399', 'PT. Djarum', 'IoT Smartphone', 'Bikinin IoT terbagus abad ini', 'BRD_1793099020_3cea4bea.pdf', 10000000.00, 'Deal / Accepted', NULL, 1, '2026-10-27 11:03:40');
 
 -- --------------------------------------------------------
 
@@ -99,7 +104,10 @@ CREATE TABLE `contracts` (
 --
 
 INSERT INTO `contracts` (`id`, `project_id`, `nomor_kontrak`, `durasi_bulan`, `tanggal_mulai`, `tanggal_selesai`, `nilai_kontrak`, `file_pdf`, `created_at`) VALUES
-(1, 5, '005/CTC-SPK/10/2026', 3, '2026-10-26', '2027-01-26', 20000000.00, NULL, '2026-10-26 10:26:42');
+(1, 5, '005/CTC-SPK/10/2026', 3, '2026-10-26', '2027-01-26', 20000000.00, NULL, '2026-10-26 10:26:42'),
+(2, 6, '006/CTC-SPK/10/2026', 3, '2026-10-27', '2027-01-27', 1000000000.00, NULL, '2026-10-27 08:47:39'),
+(3, 7, '007/CTC-SPK/10/2026', 3, '2026-10-27', '2027-01-27', 10000000.00, NULL, '2026-10-27 09:24:41'),
+(4, 8, '008/CTC-SPK/10/2026', 3, '2026-10-27', '2027-01-27', 10000000.00, NULL, '2026-10-27 11:04:31');
 
 -- --------------------------------------------------------
 
@@ -116,7 +124,7 @@ CREATE TABLE `deal_chats` (
   `attachment_file` varchar(250) DEFAULT NULL,
   `admin_read` tinyint(1) NOT NULL DEFAULT 0,
   `client_read` tinyint(1) NOT NULL DEFAULT 0,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `created_at` datetime NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -124,13 +132,29 @@ CREATE TABLE `deal_chats` (
 --
 
 INSERT INTO `deal_chats` (`id`, `requirement_id`, `sender_type`, `sender_name`, `message`, `attachment_file`, `admin_read`, `client_read`, `created_at`) VALUES
-(1, 4, 'client', 'Valen Tanjung', 'Halo Tim Konsultan PT. CTC, kami telah mengajukan dokumen requirement proyek: \"Website Company Profile\". Mohon dapat ditinjau untuk penyusunan Surat Penawaran Resmi.', NULL, 1, 1, '2026-10-26 10:22:04'),
-(2, 4, 'admin', 'Administrator', 'Baik, akan kita lakukan check terlebih dahulu, mohon ditunggu', NULL, 1, 1, '2026-10-26 10:25:52'),
-(3, 4, 'admin', 'System CTC', 'Penawaran resmi proyek [ Website Company Profile ] telah dibuat (Proposal Sent). Status proyek diset \'On Hold\' hingga persetujuan Klien.', NULL, 1, 1, '2026-10-26 10:26:42'),
-(4, 4, 'client', 'Valen Tanjung', 'Oke saya setuju dengan penawarannya', NULL, 1, 1, '2026-10-26 10:27:20'),
-(5, 4, 'admin', 'Administrator', 'Baik, akan kita kerjakan projek nya sesuai yang tertata di penawaran', NULL, 1, 1, '2026-10-26 10:27:43'),
-(6, 4, 'admin', 'Administrator', 'Terimakasih', NULL, 1, 1, '2026-10-26 10:27:48'),
-(7, 4, 'admin', 'System CTC', 'Status pengajuan diperbarui menjadi: [ Deal / Accepted ]', NULL, 1, 1, '2026-10-26 10:28:35');
+(1, 4, 'client', 'Valen Tanjung', 'Halo Tim Konsultan PT. CTC, kami telah mengajukan dokumen requirement proyek: \"Website Company Profile\". Mohon dapat ditinjau untuk penyusunan Surat Penawaran Resmi.', NULL, 1, 1, '2026-10-26 17:22:04'),
+(2, 4, 'admin', 'Administrator', 'Baik, akan kita lakukan check terlebih dahulu, mohon ditunggu', NULL, 1, 1, '2026-10-26 17:25:52'),
+(3, 4, 'admin', 'System CTC', 'Penawaran resmi proyek [ Website Company Profile ] telah dibuat (Proposal Sent). Status proyek diset \'On Hold\' hingga persetujuan Klien.', NULL, 1, 1, '2026-10-26 17:26:42'),
+(4, 4, 'client', 'Valen Tanjung', 'Oke saya setuju dengan penawarannya', NULL, 1, 1, '2026-10-26 17:27:20'),
+(5, 4, 'admin', 'Administrator', 'Baik, akan kita kerjakan projek nya sesuai yang tertata di penawaran', NULL, 1, 1, '2026-10-26 17:27:43'),
+(6, 4, 'admin', 'Administrator', 'Terimakasih', NULL, 1, 1, '2026-10-26 17:27:48'),
+(7, 4, 'admin', 'System CTC', 'Status pengajuan diperbarui menjadi: [ Deal / Accepted ]', NULL, 1, 1, '2026-10-26 17:28:35'),
+(10, 6, 'client', 'Budi Kan', 'Halo Tim Konsultan PT. CTC, kami telah mengajukan dokumen requirement proyek: \"Mobile Application - BUDI E-COMMERCE\". Mohon dapat ditinjau untuk penyusunan Surat Penawaran Resmi.', NULL, 0, 1, '2026-10-27 14:50:31'),
+(18, 9, 'client', 'Valen Tanjung', 'Halo Tim Konsultan CTC, kami telah mengajukan dokumen requirement proyek: \"Assalamualaikum Website\". Mohon dapat ditinjau untuk penyusunan Surat Penawaran Resmi.', NULL, 1, 1, '2026-10-27 15:46:07'),
+(19, 9, 'admin', 'Administrator', 'Halo Valen Tanjung, requirement proyek \"Assalamualaikum Website\" telah kami terima dan saat ini sedang dalam proses review oleh Tim CTC. Kami akan segera menghubungi Anda melalui diskusi ini.', NULL, 1, 1, '2026-10-27 15:46:27'),
+(20, 9, 'admin', 'System CTC', 'Penawaran resmi proyek [ Assalamualaikum Website ] telah dibuat (Proposal Sent). Status proyek diset \'On Hold\' hingga persetujuan Klien.', NULL, 1, 1, '2026-10-27 15:47:39'),
+(21, 9, 'client', 'Valen Tanjung', 'Oke saya sudah sesuai proposal nya om', NULL, 1, 1, '2026-10-27 15:47:58'),
+(22, 9, 'admin', 'System CTC', 'Status pengajuan diperbarui menjadi: [ Deal / Accepted ]', NULL, 1, 1, '2026-10-27 15:48:10'),
+(23, 10, 'client', 'Valen Tanjung', 'Halo Tim Konsultan CTC, kami telah mengajukan dokumen requirement proyek: \"The best website in the world\". Mohon dapat ditinjau untuk penyusunan Surat Penawaran Resmi.', NULL, 0, 1, '2026-10-27 16:24:03'),
+(24, 10, 'admin', 'Administrator', 'Halo Valen Tanjung, requirement proyek \"The best website in the world\" telah kami terima dan saat ini sedang dalam proses review oleh Tim CTC. Kami akan segera menghubungi Anda melalui diskusi ini.', NULL, 1, 1, '2026-10-27 16:24:23'),
+(25, 10, 'admin', 'System CTC', 'Penawaran resmi proyek [ The best website in the world ] telah dibuat (Proposal Sent). Status proyek diset \'On Hold\' hingga persetujuan Klien.', NULL, 1, 1, '2026-10-27 16:24:41'),
+(26, 10, 'admin', 'System CTC', 'Status pengajuan diperbarui menjadi: [ Deal / Accepted ]', NULL, 1, 1, '2026-10-27 16:25:00'),
+(27, 11, 'client', 'Valen Tanjung', 'Halo Tim Konsultan CTC, kami telah mengajukan dokumen requirement proyek: \"IoT Smartphone\". Mohon dapat ditinjau untuk penyusunan Surat Penawaran Resmi.', NULL, 1, 1, '2026-10-27 18:03:40'),
+(28, 11, 'admin', 'Administrator', 'Halo Valen Tanjung, requirement proyek \"IoT Smartphone\" telah kami terima dan saat ini sedang dalam proses review oleh Tim CTC. Kami akan segera menghubungi Anda melalui diskusi ini.', NULL, 1, 1, '2026-10-27 18:04:00'),
+(29, 11, 'admin', 'System CTC', 'Penawaran resmi proyek [ IoT Smartphone ] telah dibuat (Proposal Sent). Status proyek diset \'On Hold\' hingga persetujuan Klien.', NULL, 1, 1, '2026-10-27 18:04:31'),
+(30, 11, 'admin', 'Administrator', 'Baik, bagaimana proposal nya apakah deal?', NULL, 1, 1, '2026-10-27 18:05:45'),
+(31, 11, 'client', 'Valen Tanjung', 'deal', NULL, 1, 1, '2026-10-27 18:06:00'),
+(32, 11, 'admin', 'System CTC', 'Status pengajuan diperbarui menjadi: [ Deal / Accepted ]', NULL, 1, 1, '2026-10-27 18:07:27');
 
 -- --------------------------------------------------------
 
@@ -146,6 +170,13 @@ CREATE TABLE `expenses` (
   `jumlah_biaya` decimal(15,2) NOT NULL,
   `tanggal_pengeluaran` date NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `expenses`
+--
+
+INSERT INTO `expenses` (`id`, `project_id`, `kategori`, `keterangan`, `jumlah_biaya`, `tanggal_pengeluaran`) VALUES
+(1, 6, 'Lainnya', 'Buat sosial 10%', 100000000.00, '2026-10-28');
 
 -- --------------------------------------------------------
 
@@ -165,6 +196,20 @@ CREATE TABLE `invoices` (
   `status` enum('Unpaid','Partially Paid','Paid') DEFAULT 'Unpaid',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `invoices`
+--
+
+INSERT INTO `invoices` (`id`, `project_id`, `nomor_invoice`, `termin_ke`, `keterangan_termin`, `jumlah_tagihan`, `tanggal_tagihan`, `jatuh_tempo`, `status`, `created_at`) VALUES
+(1, 6, 'INV/CTC/2026/10/001', 1, 'DP 50% Penandatanganan SPK', 500000000.00, '2026-10-27', '2026-11-10', 'Unpaid', '2026-10-27 09:18:08'),
+(2, 6, 'INV/CTC/2026/10/002', 2, 'Pelunasan 50% BAST Selesai', 500000000.00, '2026-10-31', '2026-11-10', 'Paid', '2026-10-27 09:18:40'),
+(3, 5, 'INV/CTC/2026/10/003', 1, 'DP 50% Penandatanganan SPK', 10000000.00, '2026-10-27', '2026-11-10', 'Unpaid', '2026-10-27 09:21:36'),
+(4, 7, 'INV/CTC/2026/10/004', 2, 'Pelunasan 100%', 10000000.00, '2026-10-27', '2026-11-10', 'Paid', '2026-10-27 09:26:09'),
+(5, 5, 'INV/CTC/2026/10/005', 2, 'Pelunasan 50% BAST Selesai', 10000000.00, '2026-10-27', '2026-11-10', 'Unpaid', '2026-10-27 09:27:38'),
+(8, 8, 'INV/CTC/2026/10/006', 1, 'Termin 1 (DP 30% Penandatanganan SPK)', 3000000.00, '2026-10-27', '2026-11-03', 'Paid', '2026-10-27 11:12:59'),
+(9, 8, 'INV/CTC/2026/10/007', 2, 'Termin 2 (Angsuran 20% Progress Pengerjaan)', 2000000.00, '2026-11-03', '2026-11-10', 'Paid', '2026-10-27 11:12:59'),
+(10, 8, 'INV/CTC/2026/10/008', 3, 'Termin 3 (Pelunasan 50% BAST Selesai)', 5000000.00, '2026-11-10', '2027-01-27', 'Paid', '2026-10-27 11:12:59');
 
 -- --------------------------------------------------------
 
@@ -192,7 +237,10 @@ CREATE TABLE `projects` (
 --
 
 INSERT INTO `projects` (`id`, `nama_projek`, `klien`, `budget`, `tanggal_mulai`, `deadline`, `status`, `kategori_rab`, `rab_custom_data`, `client_token`, `requirement_id`, `created_at`) VALUES
-(5, 'Website Company Profile', 'Valen Tanjung', 20000000.00, '2026-10-26', '2027-01-26', 'In Progress', 'Website', NULL, NULL, 4, '2026-10-26 10:26:42');
+(5, 'Website Company Profile', 'Valen Tanjung', 20000000.00, '2026-10-26', '2027-01-26', 'In Progress', 'Website', NULL, NULL, 4, '2026-10-26 10:26:42'),
+(6, 'Assalamualaikum Website', 'Valen Tanjung', 1000000000.00, '2026-10-27', '2027-01-27', 'In Progress', 'Website', NULL, NULL, 9, '2026-10-27 08:47:39'),
+(7, 'The best website in the world', 'Valen Tanjung', 10000000.00, '2026-10-27', '2027-01-27', 'In Progress', 'Website', NULL, NULL, 10, '2026-10-27 09:24:41'),
+(8, 'IoT Smartphone', 'Valen Tanjung', 10000000.00, '2026-10-27', '2027-01-27', 'In Progress', 'IoT', NULL, NULL, 11, '2026-10-27 11:04:31');
 
 -- --------------------------------------------------------
 
@@ -374,7 +422,8 @@ ALTER TABLE `contracts`
 ALTER TABLE `deal_chats`
   ADD PRIMARY KEY (`id`),
   ADD KEY `requirement_id` (`requirement_id`),
-  ADD KEY `idx_deal_chats_req` (`requirement_id`,`id`);
+  ADD KEY `idx_deal_chats_req` (`requirement_id`,`id`),
+  ADD KEY `idx_req_id` (`requirement_id`,`id`);
 
 --
 -- Indexes for table `expenses`
@@ -448,43 +497,43 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT for table `clients`
 --
 ALTER TABLE `clients`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `client_requirements`
 --
 ALTER TABLE `client_requirements`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
 -- AUTO_INCREMENT for table `contracts`
 --
 ALTER TABLE `contracts`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `deal_chats`
 --
 ALTER TABLE `deal_chats`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=33;
 
 --
 -- AUTO_INCREMENT for table `expenses`
 --
 ALTER TABLE `expenses`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `invoices`
 --
 ALTER TABLE `invoices`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- AUTO_INCREMENT for table `projects`
 --
 ALTER TABLE `projects`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT for table `project_files`
@@ -536,7 +585,8 @@ ALTER TABLE `contracts`
 -- Constraints for table `deal_chats`
 --
 ALTER TABLE `deal_chats`
-  ADD CONSTRAINT `deal_chats_ibfk_1` FOREIGN KEY (`requirement_id`) REFERENCES `client_requirements` (`id`) ON DELETE CASCADE;
+  ADD CONSTRAINT `deal_chats_ibfk_1` FOREIGN KEY (`requirement_id`) REFERENCES `client_requirements` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_deal_chats_req` FOREIGN KEY (`requirement_id`) REFERENCES `client_requirements` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `expenses`

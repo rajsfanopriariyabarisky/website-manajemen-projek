@@ -14,15 +14,36 @@ try {
     $pdo->exec("ALTER TABLE projects ADD COLUMN requirement_id INT NULL AFTER client_token");
 } catch (Exception $e) {}
 
-// Handle Hapus Requirement
+// Handle Hapus Requirement & Hapus File Fisik BRD
 if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
     $delete_id = intval($_GET['id']);
 
-    // Hapus pesan chat terkait
+    // 1. Ambil data nama file BRD sebelum rekord database dihapus
+    $stmtFile = $pdo->prepare("SELECT file_attachment FROM client_requirements WHERE id = ?");
+    $stmtFile->execute([$delete_id]);
+    $req_data = $stmtFile->fetch();
+
+    if ($req_data && !empty($req_data['file_attachment'])) {
+        $file_name = $req_data['file_attachment'];
+        $possible_paths = [
+            __DIR__ . '/../../uploads/brd/' . $file_name,
+            __DIR__ . '/../../uploads/' . $file_name,
+            __DIR__ . '/../../assets/uploads/' . $file_name
+        ];
+
+        // Hapus file fisik dari folder penyimpanan laptop/server
+        foreach ($possible_paths as $path) {
+            if (file_exists($path) && is_file($path)) {
+                @unlink($path);
+            }
+        }
+    }
+
+    // 2. Hapus pesan chat terkait
     $stmtDelChat = $pdo->prepare("DELETE FROM deal_chats WHERE requirement_id = ?");
     $stmtDelChat->execute([$delete_id]);
 
-    // Hapus data requirement
+    // 3. Hapus data requirement
     $stmtDel = $pdo->prepare("DELETE FROM client_requirements WHERE id = ?");
     $stmtDel->execute([$delete_id]);
 

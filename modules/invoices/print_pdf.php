@@ -57,6 +57,8 @@ function terbilang($angka) {
     if ($angka < 1000000000) return terbilang(floor($angka / 1000000)) . " Juta " . terbilang($angka % 1000000);
     return number_format($angka, 0, ',', '.');
 }
+
+$backProjectTarget = $isPelunasan ? $project['id'] : $invoice['project_id'];
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -70,7 +72,7 @@ function terbilang($angka) {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
-        /* ===== CETAK FULL-BLEED TANPA MARGIN PUTIH ===== */
+        /* CETAK FULL-BLEED TANPA MARGIN PUTIH */
         @page {
             size: A4 portrait;
             margin: 0 !important;
@@ -99,7 +101,6 @@ function terbilang($angka) {
             font-family: 'Times New Roman', Times, serif !important;
         }
 
-        /* Container Dokumen: GAP = 0 MENCEGAH SPILL HALAMAN KOSONG */
         #invoiceContainer {
             display: flex;
             flex-direction: column;
@@ -110,7 +111,6 @@ function terbilang($angka) {
             background: #ffffff;
         }
 
-        /* Halaman A4 Presisi Full-Bleed */
         .page-a4 {
             width: 210mm;
             height: 297mm;
@@ -123,7 +123,6 @@ function terbilang($angka) {
             box-sizing: border-box;
         }
 
-        /* Background Kop Surat FULL 210x297mm */
         .kop-background {
             position: absolute;
             top: 0;
@@ -137,7 +136,6 @@ function terbilang($angka) {
             display: block;
         }
 
-        /* Stempel Basah Transparan */
         .stempel-img {
             mix-blend-mode: multiply;
             filter: contrast(115%);
@@ -188,8 +186,8 @@ function terbilang($angka) {
 
     <!-- Action Bar (Browser Only) -->
     <div class="w-[210mm] mb-6 flex flex-col sm:flex-row justify-between items-center gap-3 no-print font-sans">
-        <a href="index.php" class="text-xs font-bold text-slate-300 hover:text-white flex items-center gap-1.5 transition">
-            <i class="fa-solid fa-arrow-left"></i> Kembali ke Billing
+        <a href="detail.php?project_id=<?= $backProjectTarget ?>" class="text-xs font-bold text-slate-300 hover:text-white flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-arrow-left"></i> Kembali ke Detail Billing Proyek
         </a>
         <div class="flex items-center gap-3">
             <button onclick="window.print()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition text-xs shadow">
@@ -201,17 +199,14 @@ function terbilang($angka) {
         </div>
     </div>
 
-    <!-- Wrapper Utama Dokumen PDF (Eksak 1 Halaman A4) -->
+    <!-- Wrapper Utama Dokumen PDF -->
     <div id="invoiceContainer">
-
-        <!-- ================= HALAMAN 1 (KOP SURAT UTAMA kopsurat-ctc.png) ================= -->
         <div class="page-a4">
             <img src="../../assets/images/kopsurat-ctc.png"
                  alt="Kop Surat Utama"
                  class="kop-background"
                  crossorigin="anonymous">
 
-            <!-- Konten Utama Halaman Invoice / Kuitansi -->
             <div class="doc-font relative z-10 pt-[46mm] pb-[18mm] px-[20mm] h-full flex flex-col text-justify text-[11px] text-black">
                 
                 <!-- Judul Dokumen -->
@@ -246,7 +241,6 @@ function terbilang($angka) {
                 </div>
 
                 <?php if ($isPelunasan): ?>
-                    <!-- KHUSUS KUITANSI PELUNASAN GABUNGAN TERMIN 1 & TERMIN 2 -->
                     <div class="bg-emerald-50/80 border border-emerald-600 p-3 rounded-lg mb-4 font-sans">
                         <h3 class="text-[11px] font-bold text-emerald-950 uppercase mb-1 border-b border-emerald-200 pb-1 tracking-wide">
                             SURAT KETERANGAN PELUNASAN RESMI (BAST)
@@ -287,7 +281,6 @@ function terbilang($angka) {
                     </div>
 
                 <?php else: ?>
-                    <!-- TABEL INVOICE STANDAR PER TERMIN -->
                     <div class="font-sans mb-4">
                         <table class="w-full text-left text-[10.5px] border-collapse border border-slate-300 shadow-xs rounded-lg overflow-hidden">
                             <thead>
@@ -322,11 +315,9 @@ function terbilang($angka) {
                     <strong>Terbilang:</strong> "<?= terbilang($isPelunasan ? $totalPaidReal : $invoice['jumlah_tagihan']) ?> Rupiah"
                 </div>
 
-                <!-- Footer Tanda Tangan & Bank Transfer (Mengalir Alami dengan Margin Pas) -->
+                <!-- Footer Tanda Tangan & Bank Transfer -->
                 <div class="font-sans mt-4">
                     <div class="grid grid-cols-2 text-center gap-6 items-start">
-
-                        <!-- Instruksi Pembayaran Transfer Bank -->
                         <div class="text-left text-[10px] pt-1">
                             <p class="font-bold text-slate-900 mb-1.5 uppercase tracking-wide text-[10.5px]">Instruksi Pembayaran Transfer Bank:</p>
                             <p class="text-slate-800">Bank : <strong>BCA (Bank Central Asia)</strong></p>
@@ -334,14 +325,12 @@ function terbilang($angka) {
                             <p class="text-slate-800">Atas Nama : <strong>PT CIPTA TEKNOLOGI CENDEKIA</strong></p>
                         </div>
 
-                        <!-- Sisi PT CTC: Clean TTD & Stempel Basah Transparan -->
                         <div class="flex flex-col justify-between h-36 relative text-center">
                             <div>
                                 <p class="font-bold text-slate-900 text-[11px]">PT. CIPTA TEKNOLOGI CENDEKIA</p>
                                 <p class="text-emerald-900 font-bold text-[10px]">Finance &amp; Billing Department</p>
                             </div>
 
-                            <!-- Area TTD + Stempel basah transparan -->
                             <div class="relative h-14 w-full flex items-center justify-center">
                                 <img src="../../assets/images/Stempel.png"
                                      alt="Stempel PT CTC"
@@ -356,16 +345,13 @@ function terbilang($angka) {
                                 <p class="text-[9.5px] text-slate-600 font-medium mt-0.5">Direktur / Managing Director</p>
                             </div>
                         </div>
-
                     </div>
                 </div>
 
             </div>
         </div>
-
     </div>
 
-    <!-- ===== Script: Hapus background putih Stempel + Download PDF per-halaman full-bleed ===== -->
     <script>
     function waitForImages() {
         const imgs = Array.from(document.querySelectorAll('#invoiceContainer img'));
@@ -393,8 +379,7 @@ function terbilang($angka) {
                     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                     const d = imageData.data;
                     for (let i = 0; i < d.length; i += 4) {
-                        const r = d[i], g = d[i+1], b = d[i+2];
-                        if (r > 200 && g > 200 && b > 200) {
+                        if (d[i] > 200 && d[i+1] > 200 && d[i+2] > 200) {
                             d[i+3] = 0;
                         }
                     }
@@ -442,7 +427,7 @@ function terbilang($angka) {
             for (let i = 0; i < pages.length; i++) {
                 const page = pages[i];
                 const canvas = await html2canvas(page, {
-                    scale: 3, // Kualitas cetak HD tajam
+                    scale: 3,
                     useCORS: true,
                     allowTaint: false,
                     logging: false,

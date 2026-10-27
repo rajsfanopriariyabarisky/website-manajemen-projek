@@ -31,6 +31,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error_msg = 'Password dan Konfirmasi Password tidak cocok! Periksa kembali.';
     } elseif (!filter_var($client_email, FILTER_VALIDATE_EMAIL)) {
         $error_msg = 'Format alamat email tidak valid.';
+    } elseif (!isset($_FILES['attachment']) || $_FILES['attachment']['error'] !== UPLOAD_ERR_OK) {
+        $error_msg = 'Lampiran Kebutuhan Projek wajib diunggah!';
     } else {
         // DETEKSI SERVER DOMAIN EMAIL AKTIF (Cek MX / A DNS Record)
         $domain = substr(strrchr($client_email, "@"), 1);
@@ -38,27 +40,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error_msg = 'Alamat email tidak terdaftar atau domain email "' . htmlspecialchars($domain) . '" tidak aktif/tidak valid!';
         } else {
             $file_attachment = null;
-            if (isset($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK) {
-                $upload_dir = __DIR__ . '/../uploads/brd/';
-                if (!is_dir($upload_dir)) {
-                    mkdir($upload_dir, 0777, true);
-                }
+            $upload_dir = __DIR__ . '/../uploads/brd/';
+            if (!is_dir($upload_dir)) {
+                mkdir($upload_dir, 0777, true);
+            }
 
-                $file_ext = strtolower(pathinfo($_FILES['attachment']['name'], PATHINFO_EXTENSION));
-                $allowed  = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'rar'];
+            $file_ext = strtolower(pathinfo($_FILES['attachment']['name'], PATHINFO_EXTENSION));
+            $allowed  = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'rar'];
 
-                if (in_array($file_ext, $allowed)) {
-                    $new_filename = 'BRD_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $file_ext;
-                    $target_path  = $upload_dir . $new_filename;
+            if (in_array($file_ext, $allowed)) {
+                $new_filename = 'BRD_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $file_ext;
+                $target_path  = $upload_dir . $new_filename;
 
-                    if (move_uploaded_file($_FILES['attachment']['tmp_name'], $target_path)) {
-                        $file_attachment = $new_filename;
-                    } else {
-                        $error_msg = 'Gagal mengunggah dokumen lampiran. Coba lagi.';
-                    }
+                if (move_uploaded_file($_FILES['attachment']['tmp_name'], $target_path)) {
+                    $file_attachment = $new_filename;
                 } else {
-                    $error_msg = 'Format dokumen lampiran tidak didukung. Gunakan PDF, DOCX, XLSX, atau ZIP.';
+                    $error_msg = 'Gagal mengunggah dokumen lampiran. Coba lagi.';
                 }
+            } else {
+                $error_msg = 'Format dokumen lampiran tidak didukung. Gunakan PDF, DOCX, XLSX, atau ZIP.';
             }
 
             if (empty($error_msg)) {
@@ -104,11 +104,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ]);
 
                     $new_req_id = (int) $pdo->lastInsertId();
+                    $time_now   = date('Y-m-d H:i:s');
+                    $time_delay = date('Y-m-d H:i:s', strtotime('+20 seconds'));
 
-                    // Pesan pembuka otomatis di chat negosiasi
-                    $welcome_msg = 'Halo Tim Konsultan PT. CTC, kami telah mengajukan dokumen requirement proyek: "' . $title . '". Mohon dapat ditinjau untuk penyusunan Surat Penawaran Resmi.';
-                    $stmtChat = $pdo->prepare("INSERT INTO deal_chats (requirement_id, sender_type, sender_name, message, admin_read, client_read, created_at) VALUES (?, 'client', ?, ?, 0, 1, NOW())");
-                    $stmtChat->execute([$new_req_id, $client_name, $welcome_msg]);
+                    // 1. Pesan awal dari Client (Langsung tayang)
+                    $welcome_msg = 'Halo Tim Konsultan CTC, kami telah mengajukan dokumen requirement proyek: "' . $title . '". Mohon dapat ditinjau untuk penyusunan Surat Penawaran Resmi.';
+                    $stmtChatClient = $pdo->prepare("INSERT INTO deal_chats (requirement_id, sender_type, sender_name, message, admin_read, client_read, created_at) VALUES (?, 'client', ?, ?, 0, 1, ?)");
+                    $stmtChatClient->execute([$new_req_id, $client_name, $welcome_msg, $time_now]);
+
+                    // 2. Pesan Auto-Reply dari Administrator (Tayang otomatis setelah 20 detik)
+                    $auto_reply_msg = 'Halo ' . $client_name . ', requirement proyek "' . $title . '" telah kami terima dan saat ini sedang dalam proses review oleh Tim CTC. Kami akan segera menghubungi Anda melalui diskusi ini.';
+                    $stmtChatAdmin = $pdo->prepare("INSERT INTO deal_chats (requirement_id, sender_type, sender_name, message, admin_read, client_read, created_at) VALUES (?, 'admin', 'Administrator', ?, 1, 0, ?)");
+                    $stmtChatAdmin->execute([$new_req_id, $auto_reply_msg, $time_delay]);
 
                     // FILTERING SPAM LOGIC: Jika akun sudah terverifikasi sebelumnya
                     if ($is_verified_status === 1) {
@@ -200,7 +207,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <!-- Header Form Clean -->
             <div class="text-center mb-8 pb-6 border-b border-slate-100">
-                <!-- Logo PNG Transparan Tanpa Box -->
                 <img src="../assets/images/logo.png" alt="Logo PT. CTC" class="h-16 sm:h-20 w-auto mx-auto mb-3 object-contain">
 
                 <span class="text-[11px] font-bold uppercase tracking-widest text-emerald-800 bg-emerald-50 border border-emerald-200 px-3.5 py-1 rounded-full inline-block mb-2">
@@ -372,9 +378,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                             <div>
                                 <label class="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5">
-                                    Lampiran Dokumen BRD <span class="text-slate-400 font-normal">(PDF, DOCX, XLSX, ZIP)</span>
+                                    Lampiran Kebutuhan Projek <span class="text-red-500">*</span> <span class="text-slate-400 font-normal">(PDF, DOCX, XLSX, ZIP)</span>
                                 </label>
-                                <input type="file" name="attachment" accept=".pdf,.doc,.docx,.xls,.xlsx,.zip,.rar"
+                                <input type="file" name="attachment" required accept=".pdf,.doc,.docx,.xls,.xlsx,.zip,.rar"
                                        class="block w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer border border-slate-300 rounded-xl bg-white p-1">
                             </div>
                         </div>
