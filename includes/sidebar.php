@@ -1,5 +1,5 @@
 <?php
-$baseUrl = "http://localhost/website%20manajemen%20projek";
+$baseUrl = "http://localhost/ctc-hub";
 $currentScript = $_SERVER['SCRIPT_NAME'];
 
 // Hitung Requirement Klien bertipe 'Pending' untuk Badge Counter

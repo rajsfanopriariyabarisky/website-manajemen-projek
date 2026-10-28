@@ -1,4 +1,6 @@
 <?php
+session_start();
+date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../../config/database.php';
 
 $id = $_GET['id'] ?? null;
@@ -11,7 +13,8 @@ if (!$id) {
 $stmt = $pdo->prepare("
     SELECT c.*, 
            COALESCE(p.nama_projek, 'Kontrak Mandiri / Pengajuan') as nama_projek, 
-           COALESCE(p.klien, '-') as klien 
+           COALESCE(p.klien, '-') as klien,
+           p.requirement_id
     FROM contracts c
     LEFT JOIN projects p ON c.project_id = p.id
     WHERE c.id = ?
@@ -22,6 +25,36 @@ $contract = $stmt->fetch();
 if (!$contract) {
     header("Location: index.php");
     exit;
+}
+
+// ACTION: KIRIM KONTRAK KE CLIENT PORTAL & CHAT LOBBY
+if (isset($_GET['action']) && $_GET['action'] === 'send_contract') {
+    $reqId = $contract['requirement_id'] ?? null;
+    
+    if (!$reqId && !empty($contract['project_id'])) {
+        $stmtFindReq = $pdo->prepare("SELECT requirement_id FROM projects WHERE id = ?");
+        $stmtFindReq->execute([$contract['project_id']]);
+        $reqId = $stmtFindReq->fetchColumn();
+    }
+    
+    if (!$reqId) {
+        $stmtFindReqByTitle = $pdo->prepare("SELECT id FROM client_requirements WHERE LOWER(title) LIKE LOWER(?) OR LOWER(client_name) LIKE LOWER(?) ORDER BY id DESC LIMIT 1");
+        $stmtFindReqByTitle->execute(['%' . $contract['nama_projek'] . '%', '%' . $contract['klien'] . '%']);
+        $reqId = $stmtFindReqByTitle->fetchColumn();
+    }
+
+    if ($reqId) {
+        $msgContent = "[SYSTEM] Surat Perjanjian Kerja Sama (SPK) Resmi dengan Nomor Kontrak: [ " . $contract['nomor_kontrak'] . " ] telah diterbitkan oleh Tim PT. Cipta Teknologi Cendekia.\n\nDokumen Perjanjian Kerja resmi ini dapat Anda tinjau & unduh secara langsung kapan saja melalui tombol Kontrak SPK (PDF) di portal.";
+        
+        $stmtInsertChat = $pdo->prepare("INSERT INTO deal_chats (requirement_id, sender_type, sender_name, message, client_read, created_at) VALUES (?, 'system', 'System CTC', ?, 0, NOW())");
+        $stmtInsertChat->execute([$reqId, $msgContent]);
+
+        header("Location: print_pdf.php?id=" . $contract['id'] . "&msg=contract_sent");
+        exit;
+    } else {
+        header("Location: print_pdf.php?id=" . $contract['id'] . "&msg=req_not_found");
+        exit;
+    }
 }
 
 function terbilang($angka) {
@@ -64,7 +97,6 @@ $tahunAngka = date('Y', $tglMulaiStamp);
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
-        /* ===== CETAK FULL-BLEED TANPA MARGIN PUTIH ===== */
         @page {
             size: A4 portrait;
             margin: 0 !important;
@@ -93,7 +125,6 @@ $tahunAngka = date('Y', $tglMulaiStamp);
             font-family: 'Times New Roman', Times, serif !important;
         }
 
-        /* Container Dokumen: GAP = 0 MENCEGAH SPILL HALAMAN KOSONG */
         #contractContainer {
             display: flex;
             flex-direction: column;
@@ -104,7 +135,6 @@ $tahunAngka = date('Y', $tglMulaiStamp);
             background: #ffffff;
         }
 
-        /* Halaman A4 Presisi Full-Bleed */
         .page-a4 {
             width: 210mm;
             height: 297mm;
@@ -117,7 +147,6 @@ $tahunAngka = date('Y', $tglMulaiStamp);
             box-sizing: border-box;
         }
 
-        /* Background Kop Surat FULL 210x297mm */
         .kop-background {
             position: absolute;
             top: 0;
@@ -131,7 +160,6 @@ $tahunAngka = date('Y', $tglMulaiStamp);
             display: block;
         }
 
-        /* Stempel Basah Transparan */
         .stempel-img {
             mix-blend-mode: multiply;
             filter: contrast(115%);
@@ -185,7 +213,17 @@ $tahunAngka = date('Y', $tglMulaiStamp);
         <a href="index.php" class="text-xs font-bold text-slate-300 hover:text-white flex items-center gap-1.5 transition">
             <i class="fa-solid fa-arrow-left"></i> Kembali ke Arsip Kontrak
         </a>
+
+        <?php if (isset($_GET['msg']) && $_GET['msg'] === 'contract_sent'): ?>
+            <div class="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <i class="fa-solid fa-circle-check"></i> Dokumen Kontrak (SPK) berhasil dikirim ke Client Portal!
+            </div>
+        <?php endif; ?>
+
         <div class="flex items-center gap-3">
+            <a href="print_pdf.php?id=<?= $contract['id'] ?>&action=send_contract" onclick="return confirm('Kirimkan dokumen Surat Perjanjian Kerja (SPK) resmi ini ke Client Portal?')" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition text-xs shadow">
+                <i class="fa-solid fa-paper-plane"></i> Kirim Kontrak ke Klien Portal
+            </a>
             <button onclick="window.print()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition text-xs shadow">
                 <i class="fa-solid fa-print"></i> Cetak Browser
             </button>
@@ -198,29 +236,25 @@ $tahunAngka = date('Y', $tglMulaiStamp);
     <!-- Wrapper Utama Dokumen PDF (Eksak 2 Halaman) -->
     <div id="contractContainer">
 
-        <!-- ================= HALAMAN 1 (KOP SURAT UTAMA kopsurat-ctc.png) ================= -->
+        <!-- HALAMAN 1 -->
         <div class="page-a4">
             <img src="../../assets/images/kopsurat-ctc.png"
                  alt="Kop Surat Utama"
                  class="kop-background"
                  crossorigin="anonymous">
 
-            <!-- Konten Utama Halaman 1 -->
             <div class="doc-font relative z-10 pt-[50mm] pb-[18mm] px-[20mm] h-full flex flex-col justify-between text-justify text-[11px] text-black">
                 <div>
-                    <!-- Judul Dokumen -->
                     <div class="text-center mb-5">
                         <h2 class="text-[13px] font-bold underline tracking-wide uppercase">SURAT PERJANJIAN KERJA SAMA (SPK)</h2>
                         <h3 class="text-[11px] font-bold tracking-wider uppercase mt-0.5">PENGEMBANGAN SISTEM &amp; TEKNOLOGI INFORMASI</h3>
                         <p class="text-[10px] font-mono font-bold text-slate-800 mt-0.5">Nomor: <?= htmlspecialchars($contract['nomor_kontrak']) ?></p>
                     </div>
 
-                    <!-- Pembukaan -->
                     <p class="mb-3 leading-relaxed text-justify">
                         Pada hari ini, <strong><?= $namaHari ?></strong>, tanggal <strong><?= terbilang($tglAngka) ?></strong> bulan <strong><?= $namaBulan ?></strong> tahun <strong><?= terbilang($tahunAngka) ?></strong> (<?= date('d-m-Y', $tglMulaiStamp) ?>), bertempat di Jakarta, kami yang bertanda tangan di bawah ini:
                     </p>
 
-                    <!-- Para Pihak -->
                     <div class="space-y-2 mb-4 pl-3 border-l-4 border-emerald-800 bg-slate-50/90 p-3 rounded-r-lg font-sans text-[10.5px]">
                         <div>
                             <p class="font-bold text-slate-900">I. PT. CIPTA TEKNOLOGI CENDEKIA</p>
@@ -236,10 +270,7 @@ $tahunAngka = date('Y', $tglMulaiStamp);
                         PIHAK PERTAMA dan PIHAK KEDUA (secara bersama-sama disebut "<strong>PARA PIHAK</strong>") sepakat mengikatkan diri dalam Perjanjian Kerja Sama Pekerjaan Proyek <strong>"<?= htmlspecialchars($contract['nama_projek']) ?>"</strong> dengan ketentuan sebagai berikut:
                     </p>
 
-                    <!-- Pasal 1 - 3 -->
                     <div class="space-y-3">
-                        
-                        <!-- PASAL 1 -->
                         <div>
                             <h4 class="font-bold text-center uppercase tracking-wide mb-1 text-[11px]">PASAL 1<br>RUANG LINGKUP PEKERJAAN (SCOPE OF WORK)</h4>
                             <ol class="list-decimal pl-5 space-y-1 text-justify leading-relaxed">
@@ -248,7 +279,6 @@ $tahunAngka = date('Y', $tglMulaiStamp);
                             </ol>
                         </div>
 
-                        <!-- PASAL 2 -->
                         <div>
                             <h4 class="font-bold text-center uppercase tracking-wide mb-1 text-[11px]">PASAL 2<br>JANGKA WAKTU PELAKSANAAN</h4>
                             <ol class="list-decimal pl-5 space-y-1 text-justify leading-relaxed">
@@ -257,7 +287,6 @@ $tahunAngka = date('Y', $tglMulaiStamp);
                             </ol>
                         </div>
 
-                        <!-- PASAL 3 -->
                         <div>
                             <h4 class="font-bold text-center uppercase tracking-wide mb-1 text-[11px]">PASAL 3<br>NILAI KONTRAK &amp; SKEMA PEMBAYARAN</h4>
                             <ol class="list-decimal pl-5 space-y-1 text-justify leading-relaxed">
@@ -275,26 +304,21 @@ $tahunAngka = date('Y', $tglMulaiStamp);
                                 </li>
                             </ol>
                         </div>
-
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- ================= HALAMAN 2 (KOP SURAT HALAMAN 2+ kopsurat-ctc-2.png) ================= -->
+        <!-- HALAMAN 2 -->
         <div class="page-a4">
             <img src="../../assets/images/kopsurat-ctc-2.png"
                  alt="Kop Surat Halaman 2"
                  class="kop-background"
                  crossorigin="anonymous">
 
-            <!-- Konten Utama Halaman 2 -->
             <div class="doc-font relative z-10 pt-[28mm] pb-[18mm] px-[20mm] h-full flex flex-col justify-between text-justify text-[11px] text-black">
                 <div>
-                    <!-- Pasal 4 - 8 -->
                     <div class="space-y-3 mb-4">
-                        
-                        <!-- PASAL 4 -->
                         <div>
                             <h4 class="font-bold text-center uppercase tracking-wide mb-1 text-[11px]">PASAL 4<br>PERUBAHAN LINGKUP PEKERJAAN (CHANGE REQUEST)</h4>
                             <p class="leading-relaxed text-justify">
@@ -302,7 +326,6 @@ $tahunAngka = date('Y', $tglMulaiStamp);
                             </p>
                         </div>
 
-                        <!-- PASAL 5 -->
                         <div>
                             <h4 class="font-bold text-center uppercase tracking-wide mb-1 text-[11px]">PASAL 5<br>HAK KEKAYAAN INTELEKTUAL &amp; KERAHASIAAN (NDA)</h4>
                             <ol class="list-decimal pl-5 space-y-1 text-justify leading-relaxed">
@@ -311,7 +334,6 @@ $tahunAngka = date('Y', $tglMulaiStamp);
                             </ol>
                         </div>
 
-                        <!-- PASAL 6 -->
                         <div>
                             <h4 class="font-bold text-center uppercase tracking-wide mb-1 text-[11px]">PASAL 6<br>GARANSI, MAINTENANCE &amp; SLA</h4>
                             <p class="leading-relaxed text-justify">
@@ -319,7 +341,6 @@ $tahunAngka = date('Y', $tglMulaiStamp);
                             </p>
                         </div>
 
-                        <!-- PASAL 7 -->
                         <div>
                             <h4 class="font-bold text-center uppercase tracking-wide mb-1 text-[11px]">PASAL 7<br>KEADAAN MEMAKSA (FORCE MAJEURE)</h4>
                             <p class="leading-relaxed text-justify">
@@ -327,26 +348,20 @@ $tahunAngka = date('Y', $tglMulaiStamp);
                             </p>
                         </div>
 
-                        <!-- PASAL 8 -->
                         <div>
                             <h4 class="font-bold text-center uppercase tracking-wide mb-1 text-[11px]">PASAL 8<br>PENYELESAIAN PERSELISIHAN</h4>
                             <p class="leading-relaxed text-justify">
                                 Apabila terjadi perselisihan terkait pelaksanaan Perjanjian ini, PARA PIHAK sepakat menyelesaikannya secara musyawarah untuk mufakat. Apabila musyawarah tidak mencapai mufakat, penyelesaian akan dilakukan melalui Pengadilan Negeri Jakarta Selatan.
                             </p>
                         </div>
-
                     </div>
 
-                    <!-- Penutup -->
                     <p class="mb-5 leading-relaxed text-justify">
                         Demikian Surat Perjanjian Kerja Sama ini dibuat dalam rangkap 2 (dua) bermeterai cukup dan mempunyai kekuatan hukum yang sama bagi masing-masing pihak setelah ditandatangani oleh wakil sah dari PARA PIHAK.
                     </p>
 
-                    <!-- Lembar Persetujuan & Tanda Tangan -->
                     <div class="font-sans">
                         <div class="grid grid-cols-2 text-center gap-6">
-
-                            <!-- Sisi Klien -->
                             <div class="flex flex-col justify-between h-44 border border-dashed border-slate-300 p-3.5 rounded-xl bg-white/80">
                                 <div>
                                     <p class="font-bold text-slate-900 text-[11px]">PIHAK KEDUA</p>
@@ -361,14 +376,12 @@ $tahunAngka = date('Y', $tglMulaiStamp);
                                 </div>
                             </div>
 
-                            <!-- Sisi PT CTC: Stempel menimpa di atas nama Direktur -->
                             <div class="flex flex-col justify-between h-44 border border-emerald-200 bg-emerald-50/40 p-3.5 rounded-xl relative">
                                 <div>
                                     <p class="font-bold text-slate-900 text-[11px]">PIHAK PERTAMA</p>
                                     <p class="text-emerald-900 font-bold text-[10.5px]">PT. CIPTA TEKNOLOGI CENDEKIA</p>
                                 </div>
 
-                                <!-- Area TTD + Stempel basah transparan -->
                                 <div class="relative h-16 w-full flex items-center justify-center">
                                     <img src="../../assets/images/Stempel.png"
                                          alt="Stempel PT CTC"
@@ -383,7 +396,6 @@ $tahunAngka = date('Y', $tglMulaiStamp);
                                     <p class="text-[9.5px] text-slate-600 font-medium mt-0.5">Direktur / Managing Director</p>
                                 </div>
                             </div>
-
                         </div>
                     </div>
                 </div>
@@ -392,7 +404,6 @@ $tahunAngka = date('Y', $tglMulaiStamp);
 
     </div>
 
-    <!-- ===== Script: Hapus background putih Stempel + Download PDF per-halaman full-bleed ===== -->
     <script>
     function waitForImages() {
         const imgs = Array.from(document.querySelectorAll('#contractContainer img'));
@@ -469,7 +480,7 @@ $tahunAngka = date('Y', $tglMulaiStamp);
             for (let i = 0; i < pages.length; i++) {
                 const page = pages[i];
                 const canvas = await html2canvas(page, {
-                    scale: 3, // Kualitas cetak HD tajam
+                    scale: 3,
                     useCORS: true,
                     allowTaint: false,
                     logging: false,

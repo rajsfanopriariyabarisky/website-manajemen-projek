@@ -99,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['change_password_acti
     <link rel="icon" type="image/jpg" href="assets/images/logo.png">
     <link rel="shortcut icon" type="image/jpg" href="assets/images/logo.png">
 
-    <!-- Google Fonts: Plus Jakarta Sans (Identik dengan client/login.php) -->
+    <!-- Google Fonts: Plus Jakarta Sans -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -152,107 +152,117 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['change_password_acti
     <div class="animate-fade-in w-full max-w-md my-auto relative z-10">
 
         <!-- Card Login Utama Clean -->
-        <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xl shadow-slate-200/60 p-6 sm:p-8">
+        <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xl shadow-slate-200/60 p-6 sm:p-8 relative overflow-hidden">
             
-            <!-- Header Login Clean -->
-            <div class="text-center mb-6 pb-5 border-b border-slate-100">
+            <!-- Watermark logo samar di dalam box (persis seperti client/login.php) -->
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0" aria-hidden="true">
                 <img src="assets/images/logo.png" 
-                     alt="Logo PT. CTC" 
-                     class="h-16 sm:h-20 w-auto mx-auto mb-3 object-contain rounded-xl"
+                     alt="" 
+                     class="w-[230px] sm:w-[300px] h-auto object-contain opacity-[0.04] mix-blend-multiply"
                      onerror="this.onerror=null; this.src='assets/img/logo.png';">
-
-                <span class="text-[11px] font-bold uppercase tracking-widest text-emerald-800 bg-emerald-50 border border-emerald-200 px-3.5 py-1 rounded-full inline-block mb-2">
-                    PT. CIPTA TEKNOLOGI CENDEKIA
-                </span>
-                <h1 class="text-xl font-bold text-slate-900 tracking-tight">Internal Workspace Auth</h1>
-                <p class="text-xs text-slate-500 mt-1">Management & Operational Workspace</p>
             </div>
 
-            <!-- Alert Error Message -->
-            <?php if ($error): ?>
-                <div class="mb-5 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs sm:text-sm flex items-start gap-3 shadow-xs animate-shake">
-                    <i class="fa-solid fa-circle-exclamation text-red-500 text-base shrink-0 mt-0.5"></i>
-                    <span class="font-medium leading-relaxed"><?= $error ?></span>
+            <div class="relative z-10">
+                <!-- Header Login Clean -->
+                <div class="text-center mb-6 pb-5 border-b border-slate-100">
+                    <img src="assets/images/logo.png" 
+                         alt="Logo PT. CTC" 
+                         class="h-16 sm:h-20 w-auto mx-auto mb-3 object-contain rounded-xl"
+                         onerror="this.onerror=null; this.src='assets/img/logo.png';">
+
+                    <span class="text-[11px] font-bold uppercase tracking-widest text-emerald-800 bg-emerald-50 border border-emerald-200 px-3.5 py-1 rounded-full inline-block mb-2">
+                        PT. CIPTA TEKNOLOGI CENDEKIA
+                    </span>
+                    <h1 class="text-xl font-bold text-slate-900 tracking-tight">Internal Workspace Auth</h1>
+                    <p class="text-xs text-slate-500 mt-1">Management & Operational Workspace</p>
                 </div>
-            <?php endif; ?>
 
-            <!-- Form Login -->
-            <form id="loginForm" action="" method="POST" class="space-y-4" onsubmit="handleFormSubmit(event)">
-                
-                <!-- Segmented Control: Pilihan Portal -->
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Akses Portal / Masuk Sebagai</label>
-                    <div class="grid grid-cols-2 gap-1 p-1 bg-slate-100 border border-slate-200 rounded-xl">
-                        <label class="cursor-pointer">
-                            <input type="radio" name="portal_access" value="admin" class="peer hidden">
-                            <div class="py-2 px-3 rounded-lg text-center text-xs font-semibold text-slate-600 transition-all flex items-center justify-center gap-2 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-xs hover:text-slate-900">
-                                <i class="fa-solid fa-user-shield text-xs"></i> Admin / PM
-                            </div>
-                        </label>
-
-                        <label class="cursor-pointer">
-                            <input type="radio" name="portal_access" value="karyawan" checked class="peer hidden">
-                            <div class="py-2 px-3 rounded-lg text-center text-xs font-semibold text-slate-600 transition-all flex items-center justify-center gap-2 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-xs hover:text-slate-900">
-                                <i class="fa-solid fa-laptop-code text-xs"></i> Karyawan
-                            </div>
-                        </label>
+                <!-- Alert Error Message -->
+                <?php if ($error): ?>
+                    <div class="mb-5 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs sm:text-sm flex items-start gap-3 shadow-xs animate-shake">
+                        <i class="fa-solid fa-circle-exclamation text-red-500 text-base shrink-0 mt-0.5"></i>
+                        <span class="font-medium leading-relaxed"><?= $error ?></span>
                     </div>
-                </div>
+                <?php endif; ?>
 
-                <!-- Field Email -->
-                <div>
-                    <label class="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5">
-                        Email <span class="text-red-500">*</span>
-                    </label>
-                    <div class="relative">
-                        <input type="email" name="email" required placeholder="nama@gmail.com" 
-                               class="input-glow w-full px-3.5 py-2.5 pl-10 rounded-xl border border-slate-300 bg-white text-slate-900 text-sm font-normal focus:outline-none transition-all placeholder:text-slate-400">
-                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                            <i class="fa-regular fa-envelope text-sm"></i>
+                <!-- Form Login -->
+                <form id="loginForm" action="" method="POST" class="space-y-4" onsubmit="handleFormSubmit(event)">
+                    
+                    <!-- Segmented Control: Pilihan Portal -->
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1.5">Akses Portal / Masuk Sebagai</label>
+                        <div class="grid grid-cols-2 gap-1 p-1 bg-slate-100 border border-slate-200 rounded-xl">
+                            <label class="cursor-pointer">
+                                <input type="radio" name="portal_access" value="admin" class="peer hidden">
+                                <div class="py-2 px-3 rounded-lg text-center text-xs font-semibold text-slate-600 transition-all flex items-center justify-center gap-2 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-xs hover:text-slate-900">
+                                    <i class="fa-solid fa-user-shield text-xs"></i> Admin / PM
+                                </div>
+                            </label>
+
+                            <label class="cursor-pointer">
+                                <input type="radio" name="portal_access" value="karyawan" checked class="peer hidden">
+                                <div class="py-2 px-3 rounded-lg text-center text-xs font-semibold text-slate-600 transition-all flex items-center justify-center gap-2 peer-checked:bg-white peer-checked:text-emerald-700 peer-checked:shadow-xs hover:text-slate-900">
+                                    <i class="fa-solid fa-laptop-code text-xs"></i> Karyawan
+                                </div>
+                            </label>
                         </div>
                     </div>
-                </div>
 
-                <!-- Field Password -->
-                <div>
-                    <div class="flex items-center justify-between mb-1.5">
-                        <label class="block text-xs sm:text-sm font-medium text-slate-700">
-                            Password <span class="text-red-500">*</span>
+                    <!-- Field Email -->
+                    <div>
+                        <label class="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5">
+                            Email <span class="text-red-500">*</span>
                         </label>
-                        <button type="button" onclick="openForgotModal()" class="text-xs font-semibold text-emerald-600 hover:underline focus:outline-none">
-                            Lupa Password?
-                        </button>
-                    </div>
-                    <div class="relative">
-                        <input type="password" id="passwordInput" name="password" required placeholder="••••••••" 
-                               class="input-glow w-full px-3.5 py-2.5 pl-10 pr-10 rounded-xl border border-slate-300 bg-white text-slate-900 text-sm font-normal focus:outline-none transition-all placeholder:text-slate-400">
-                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                            <i class="fa-solid fa-lock text-sm"></i>
+                        <div class="relative">
+                            <input type="email" name="email" required placeholder="nama@gmail.com" 
+                                   class="input-glow w-full px-3.5 py-2.5 pl-10 rounded-xl border border-slate-300 bg-white text-slate-900 text-sm font-normal focus:outline-none transition-all placeholder:text-slate-400">
+                            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                <i class="fa-regular fa-envelope text-sm"></i>
+                            </div>
                         </div>
-                        <button type="button" onclick="togglePasswordVisibility('passwordInput', 'passwordToggleIcon')" 
-                                class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-emerald-700 focus:outline-none transition-colors">
-                            <i id="passwordToggleIcon" class="fa-regular fa-eye text-sm"></i>
+                    </div>
+
+                    <!-- Field Password -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="block text-xs sm:text-sm font-medium text-slate-700">
+                                Password <span class="text-red-500">*</span>
+                            </label>
+                            <button type="button" onclick="openForgotModal()" class="text-xs font-semibold text-emerald-600 hover:underline focus:outline-none">
+                                Lupa Password?
+                            </button>
+                        </div>
+                        <div class="relative">
+                            <input type="password" id="passwordInput" name="password" required placeholder="••••••••" 
+                                   class="input-glow w-full px-3.5 py-2.5 pl-10 pr-10 rounded-xl border border-slate-300 bg-white text-slate-900 text-sm font-normal focus:outline-none transition-all placeholder:text-slate-400">
+                            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                <i class="fa-solid fa-lock text-sm"></i>
+                            </div>
+                            <button type="button" onclick="togglePasswordVisibility('passwordInput', 'passwordToggleIcon')" 
+                                    class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-emerald-700 focus:outline-none transition-colors">
+                                <i id="passwordToggleIcon" class="fa-regular fa-eye text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Tombol Submit -->
+                    <div class="pt-2">
+                        <button type="submit" id="submitBtn" class="btn-press w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow-md hover:shadow-lg text-sm flex items-center justify-center gap-2 transition-all">
+                            <i id="btnIcon" class="fa-solid fa-right-to-bracket text-sm"></i>
+                            <span id="btnText">Masuk ke Portal</span>
                         </button>
                     </div>
-                </div>
+                </form>
 
-                <!-- Tombol Submit -->
-                <div class="pt-2">
-                    <button type="submit" id="submitBtn" class="btn-press w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow-md hover:shadow-lg text-sm flex items-center justify-center gap-2 transition-all">
-                        <i id="btnIcon" class="fa-solid fa-right-to-bracket text-sm"></i>
-                        <span id="btnText">Masuk ke Portal</span>
+                <!-- Footer Info & Akses Ganti Password Mandiri -->
+                <div class="mt-6 pt-4 border-t border-slate-100 text-center space-y-2">
+                    <p class="text-xs text-slate-500 font-normal">
+                        Akun baru disetup dengan password bawaan?
+                    </p>
+                    <button type="button" onclick="openChangePwdModal()" class="btn-press px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl transition inline-flex items-center gap-1.5 shadow-2xs">
+                        <i class="fa-solid fa-key text-emerald-600 text-xs"></i> Pembaruan Password Mandiri
                     </button>
                 </div>
-            </form>
-
-            <!-- Footer Info & Akses Ganti Password Mandiri -->
-            <div class="mt-6 pt-4 border-t border-slate-100 text-center space-y-2">
-                <p class="text-xs text-slate-500 font-normal">
-                    Akun baru disetup dengan password bawaan?
-                </p>
-                <button type="button" onclick="openChangePwdModal()" class="btn-press px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl transition inline-flex items-center gap-1.5 shadow-2xs">
-                    <i class="fa-solid fa-key text-emerald-600 text-xs"></i> Pembaruan Password Mandiri
-                </button>
             </div>
 
         </div>

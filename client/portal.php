@@ -63,6 +63,7 @@ $selected_id = isset($_GET['req_id'])
 
 $active_req = null;
 $linked_project = null;
+$linked_contract = null;
 
 if ($selected_id > 0) {
     $stmtActive = $pdo->prepare(
@@ -84,6 +85,12 @@ if ($selected_id > 0) {
         $stmtProj = $pdo->prepare("SELECT * FROM projects WHERE requirement_id = ? OR LOWER(nama_projek) LIKE LOWER(?) LIMIT 1");
         $stmtProj->execute([$active_req['id'], '%' . $active_req['title'] . '%']);
         $linked_project = $stmtProj->fetch();
+
+        if ($linked_project) {
+            $stmtContract = $pdo->prepare("SELECT * FROM contracts WHERE project_id = ? LIMIT 1");
+            $stmtContract->execute([$linked_project['id']]);
+            $linked_contract = $stmtContract->fetch();
+        }
     }
 }
 ?>
@@ -110,6 +117,13 @@ if ($selected_id > 0) {
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
         .btn-press { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
         .btn-press:active { transform: translateY(1px); }
+
+        /* Animasi pop-in bubble chat (konsisten dengan chatbox tasks) */
+        @keyframes chatPop {
+            from { opacity: 0; transform: translateY(12px) scale(0.8); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .chat-pop { animation: chatPop 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
         .input-glow:focus { border-color: #059669; box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.12); }
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -132,17 +146,14 @@ if ($selected_id > 0) {
     </div>
 
     <div class="flex items-center gap-3">
-        <!-- Profile Link dengan Indicator Hover & Tooltip -->
         <a href="profile.php" class="group relative btn-press flex items-center gap-2 px-3.5 py-1.5 bg-slate-50 hover:bg-emerald-50/80 hover:border-emerald-300 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-700 hover:text-emerald-800 transition-all shadow-2xs" title="Lihat Profil">
             <i class="fa-solid fa-circle-user text-emerald-600 text-sm group-hover:scale-110 transition-transform"></i>
             <span class="truncate max-w-[110px] sm:max-w-none"><?= htmlspecialchars($client_nama) ?></span>
             <i class="fa-solid fa-chevron-right text-[10px] text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all"></i>
 
-            <!-- Floating Sub-Label Tooltip Saat Hover -->
             <div class="absolute top-full left-1/2 -translate-x-1/2 mt-2 hidden group-hover:flex items-center gap-1.5 bg-slate-900 text-white text-[10px] font-medium py-1 px-2.5 rounded-lg shadow-xl whitespace-nowrap z-50 pointer-events-none transition-all">
                 <i class="fa-solid fa-id-card text-emerald-400"></i>
                 <span>Profile Saya</span>
-                <!-- Panah Segitiga Tooltip -->
                 <div class="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 rotate-45"></div>
             </div>
         </a>
@@ -252,12 +263,20 @@ if ($selected_id > 0) {
                         </p>
                     </div>
 
-                    <div class="flex items-center gap-2">
-                        <?php if ($linked_project || $active_req['status'] === 'Proposal Sent' || $active_req['status'] === 'Deal / Accepted'): ?>
-                            <?php $pId = $linked_project['id'] ?? $active_req['id']; ?>
-                            <a href="../modules/proposals/print_proposal.php?project_id=<?= $pId ?>" target="_blank" class="btn-press px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 shrink-0 transition">
+                    <div class="flex items-center gap-2 flex-wrap justify-end">
+                        <!-- LOGIKA KETAT: Tombol Proposal SPH hanya jika Proposal Sent atau Deal / Accepted -->
+                        <?php if ($linked_project && ($active_req['status'] === 'Proposal Sent' || $active_req['status'] === 'Deal / Accepted')): ?>
+                            <a href="../modules/proposals/print_proposal.php?project_id=<?= $linked_project['id'] ?>" target="_blank" class="btn-press px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 shrink-0 transition">
                                 <i class="fa-solid fa-file-pdf text-xs"></i>
-                                <span>Dokumen Proposal (SPH)</span>
+                                <span>Proposal SPH (PDF)</span>
+                            </a>
+                        <?php endif; ?>
+
+                        <!-- LOGIKA KETAT: Tombol Kontrak SPK HANYA TAMPIL jika sudah Deal / Accepted -->
+                        <?php if ($linked_contract && $active_req['status'] === 'Deal / Accepted'): ?>
+                            <a href="../modules/contracts/print_pdf.php?id=<?= $linked_contract['id'] ?>" target="_blank" class="btn-press px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 shrink-0 transition">
+                                <i class="fa-solid fa-file-contract text-xs"></i>
+                                <span>Kontrak SPK (PDF)</span>
                             </a>
                         <?php endif; ?>
 
@@ -297,7 +316,9 @@ if ($selected_id > 0) {
 <?php if ($active_req): ?>
 <script>
     const activeReqId = <?= (int) $active_req['id'] ?>;
-    const activeProjId = <?= (int) ($linked_project['id'] ?? $active_req['id']) ?>;
+    const activeProjId = <?= (int) ($linked_project['id'] ?? 0) ?>;
+    const activeContractId = <?= (int) ($linked_contract['id'] ?? 0) ?>;
+    const activeStatus = '<?= htmlspecialchars($active_req['status']) ?>';
 
     let lastChatId = 0;
     let chatHistoryLoaded = false;
@@ -318,7 +339,7 @@ if ($selected_id > 0) {
         return escapeHtml(str).replace(/\n/g, '<br>');
     }
 
-    function renderSingleChat(c) {
+    function renderSingleChat(c, animate) {
         const isClient = c.sender_type === 'client';
         const isSystem = (c.sender_type === 'system' || (c.sender_name && c.sender_name.toLowerCase().includes('system')));
         
@@ -337,6 +358,29 @@ if ($selected_id > 0) {
         if (isClient) {
             bubbleClass = 'bg-emerald-600 text-white rounded-tr-none';
         } else if (isSystem) {
+            const isContractMsg = c.message.toLowerCase().includes('perjanjian') || c.message.toLowerCase().includes('kontrak') || c.message.toLowerCase().includes('spk');
+            const isProposalMsg = c.message.toLowerCase().includes('penawaran') || c.message.toLowerCase().includes('sph') || c.message.toLowerCase().includes('proposal');
+            
+            let btnActionHtml = '';
+            // Hanya tampilkan tombol di pesan sistem jika status memang sesuai
+            if (isContractMsg && activeContractId > 0 && activeStatus === 'Deal / Accepted') {
+                btnActionHtml = `
+                    <div class="pt-2">
+                        <a href="../modules/contracts/print_pdf.php?id=${activeContractId}" target="_blank" class="btn-press inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3.5 py-1.5 rounded-lg text-xs shadow-2xs transition">
+                            <i class="fa-solid fa-file-contract"></i> Lihat / Unduh Surat Perjanjian SPK (PDF)
+                        </a>
+                    </div>
+                `;
+            } else if (isProposalMsg && activeProjId > 0 && (activeStatus === 'Proposal Sent' || activeStatus === 'Deal / Accepted')) {
+                btnActionHtml = `
+                    <div class="pt-2">
+                        <a href="../modules/proposals/print_proposal.php?project_id=${activeProjId}" target="_blank" class="btn-press inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3.5 py-1.5 rounded-lg text-xs shadow-2xs transition">
+                            <i class="fa-solid fa-file-pdf"></i> Lihat / Unduh Surat Penawaran SPH (PDF)
+                        </a>
+                    </div>
+                `;
+            }
+
             bubbleClass = 'bg-emerald-50/90 text-emerald-800 border border-emerald-300 rounded-tl-none font-medium shadow-2xs';
             messageFormatted = `
                 <div class="space-y-2">
@@ -345,17 +389,15 @@ if ($selected_id > 0) {
                         <span>Notifikasi Resmi CTC</span>
                     </div>
                     <p class="leading-relaxed text-slate-700 font-normal">${nl2br(c.message)}</p>
-                    <div class="pt-1">
-                        <a href="../modules/proposals/print_proposal.php?project_id=${activeProjId}" target="_blank" class="btn-press inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3.5 py-1.5 rounded-lg text-xs shadow-2xs transition">
-                            <i class="fa-solid fa-file-pdf"></i> Lihat / Unduh Surat Penawaran (PDF)
-                        </a>
-                    </div>
+                    ${btnActionHtml}
                 </div>
             `;
         }
 
+        const popClass = animate ? ' chat-pop' : '';
+
         return `
-            <div class="flex flex-col ${containerClass} w-full chat-bubble" data-id="${c.id}">
+            <div class="flex flex-col ${containerClass} w-full chat-bubble${popClass}" data-id="${c.id}">
                 <div class="text-[10px] text-slate-400 font-normal mb-1 px-1 flex items-center gap-1.5">
                     <span class="${nameClass}">${escapeHtml(c.sender_name)}</span>
                     <span>•</span>
@@ -369,7 +411,7 @@ if ($selected_id > 0) {
         `;
     }
 
-    function appendChat(c) {
+    function appendChat(c, animate) {
         if (!c || c.id <= lastChatId) return;
 
         const box = document.getElementById('chat-box');
@@ -379,7 +421,7 @@ if ($selected_id > 0) {
 
         const nearBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 80;
 
-        box.insertAdjacentHTML('beforeend', renderSingleChat(c));
+        box.insertAdjacentHTML('beforeend', renderSingleChat(c, animate));
         lastChatId = c.id;
 
         if (nearBottom || !chatHistoryLoaded) {
@@ -406,7 +448,7 @@ if ($selected_id > 0) {
                 if (!data.success) return;
 
                 if (data.messages.length > 0) {
-                    data.messages.forEach(appendChat);
+                    data.messages.forEach(c => appendChat(c, chatHistoryLoaded));
                     chatHistoryLoaded = true;
                 } else if (!chatHistoryLoaded) {
                     chatHistoryLoaded = true;
@@ -455,7 +497,7 @@ if ($selected_id > 0) {
             .then(res => res.json())
             .then(data => {
                 if (data.success && data.message) {
-                    appendChat(data.message);
+                    appendChat(data.message, true);
 
                     const box = document.getElementById('chat-box');
                     box.scrollTop = box.scrollHeight;

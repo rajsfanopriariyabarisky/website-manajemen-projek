@@ -84,8 +84,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_project'])) {
     }
 }
 
-// Fetch Detail Proyek
-$stmt = $pdo->prepare("SELECT * FROM projects WHERE id = ?");
+// Fetch Detail Proyek & Kontrak Terkait
+$stmt = $pdo->prepare("
+    SELECT p.*, c.id AS linked_contract_id 
+    FROM projects p 
+    LEFT JOIN contracts c ON c.project_id = p.id 
+    WHERE p.id = ?
+");
 $stmt->execute([$id]);
 $project = $stmt->fetch();
 
@@ -112,7 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_task'])) {
         $names = [];
         foreach ($assigned_users as $u_id) {
             $stmtAssign->execute([$new_task_id, $u_id]);
-            
+
             $stmtU = $pdo->prepare("SELECT nama FROM users WHERE id = ?");
             $stmtU->execute([$u_id]);
             $uName = $stmtU->fetchColumn();
@@ -144,6 +149,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qc_action'])) {
 
         logProjectActivity($pdo, $id, $current_user_id, $current_user_nama, "Menyetujui (Approved) pengerjaan modul '$taskTitle'", 'success');
 
+        // Notif Auto ke Chatbox (bubble hijau khusus, tampil sama di dua sisi)
+        $pdo->prepare("INSERT INTO task_chats (task_id, sender_id, sender_name, sender_role, message) VALUES (?, ?, ?, 'admin', '✅ Modul ini telah disetujui (Approved) oleh Project Manager.')")->execute([$task_id, $current_user_id, $current_user_nama]);
+
         header("Location: detail.php?id=" . $id . "&msg=approved");
         exit;
     } elseif ($action === 'revision') {
@@ -151,6 +159,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qc_action'])) {
         $stmtRev->execute([$revision_notes, $task_id]);
 
         logProjectActivity($pdo, $id, $current_user_id, $current_user_nama, "Mengirimkan catatan instruksi revisi pada modul '$taskTitle'", 'warning');
+
+        // Notif Auto ke Chatbox (bubble AMBER khusus di dua sisi -> beda dari chat biasa)
+        $pesanRevisi = "⚠️ *Instruksi Revisi dari PM:*\n" . $revision_notes;
+        $pdo->prepare("INSERT INTO task_chats (task_id, sender_id, sender_name, sender_role, message) VALUES (?, ?, ?, 'admin', ?)")->execute([$task_id, $current_user_id, $current_user_nama, $pesanRevisi]);
 
         header("Location: detail.php?id=" . $id . "&msg=revision_sent");
         exit;
@@ -186,6 +198,29 @@ $rawAssignees = $stmtAllAssignees->fetchAll();
 
 foreach ($rawAssignees as $ra) {
     $taskAssigneesMap[$ra['task_id']][] = $ra;
+}
+
+// Mapping File Deliverables (FITUR BARU UNTUK BACA UPLOAD FILE KARYAWAN)
+$taskFilesMap = [];
+$stmtFiles = $pdo->prepare("SELECT * FROM project_files WHERE project_id = ? AND task_id IS NOT NULL");
+$stmtFiles->execute([$id]);
+$rawFiles = $stmtFiles->fetchAll();
+foreach ($rawFiles as $rf) {
+    $taskFilesMap[$rf['task_id']][] = $rf;
+}
+
+// Mapping Notifikasi Unread Chats per Task
+$unreadChatsMap = [];
+$stmtUnread = $pdo->query("SELECT task_id, COUNT(*) as unread_count FROM task_chats WHERE is_read = 0 AND sender_role = 'karyawan' GROUP BY task_id");
+$rawUnread = $stmtUnread->fetchAll();
+foreach ($rawUnread as $ru) {
+    $unreadChatsMap[$ru['task_id']] = $ru['unread_count'];
+}
+
+// Nama modul untuk judul chatbox (anti error quote & XSS)
+$taskNameMap = [];
+foreach ($allTasks as $tk) {
+    $taskNameMap[(int) $tk['id']] = $tk['nama_tugas'];
 }
 
 // Tanggal Acuan
@@ -241,10 +276,34 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     .overdue-row { background-color: rgba(254, 242, 242, 0.75) !important; }
     .overdue-row:hover { background-color: rgba(254, 226, 226, 0.95) !important; }
+
+    /* =====================================================================
+     * CHAT BUBBLE — WARNA KONSISTEN ADMIN & KARYAWAN
+     * ===================================================================== */
+    .chat-bubble { max-width: 85%; padding: 9px 13px; border-radius: 14px; font-size: 13px; line-height: 1.5; word-wrap: break-word; }
+    .chat-bubble-self   { background-color: #059669; color: #ffffff; border-bottom-right-radius: 3px; }
+    .chat-bubble-other  { background-color: #ffffff; color: #1e293b; border: 1px solid #e2e8f0; border-bottom-left-radius: 3px; }
+    /* Pesan revisi (prefix ⚠️) -> AMBER, beda dari chat biasa, sama di dua sisi */
+    .chat-bubble-revision { background-color: #fef3c7 !important; color: #92400e !important; border: 1px solid #f59e0b !important; border-bottom-left-radius: 3px; }
+    /* Pesan approval sistem (prefix ✅) -> hijau muda */
+    .chat-bubble-success  { background-color: #d1fae5 !important; color: #065f46 !important; border: 1px solid #34d399 !important; border-bottom-left-radius: 3px; }
+
+    /* Animasi pop-in ala WhatsApp */
+    @keyframes chatPop {
+        from { opacity: 0; transform: translateY(12px) scale(0.8); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .chat-pop { animation: chatPop 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+    /* Toast notifikasi */
+    @keyframes toastIn  { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+    @keyframes toastOut { to   { opacity: 0; transform: translateX(24px); } }
+    .toast-pop  { animation: toastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
+    .toast-leave { animation: toastOut 0.3s ease both; }
 </style>
 
 <main class="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto w-full min-w-0 bg-[#f8fafc] text-slate-800 selection:bg-emerald-600 selection:text-white">
-    
+
     <!-- Top Navigation Bar -->
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
         <a href="index.php" class="btn-press text-xs font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-2 bg-white hover:bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200/90 transition shadow-2xs">
@@ -277,7 +336,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     <!-- Banner Header Proyek & Executive Summary -->
     <div class="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs mb-6 relative overflow-hidden">
         <div class="flex flex-col lg:flex-row justify-between lg:items-center gap-6">
-            
+
             <div class="space-y-3 flex-1 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
                     <span class="px-2.5 py-1 rounded-lg text-[10px] uppercase font-semibold border tracking-wider
@@ -302,7 +361,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 </div>
 
                 <h1 class="text-xl md:text-2xl font-bold text-slate-900 tracking-tight leading-tight truncate"><?= htmlspecialchars($project['nama_projek']) ?></h1>
-                
+
                 <div class="text-xs sm:text-sm text-slate-500 flex items-center gap-3 flex-wrap font-normal">
                     <span>Mitra Klien: <strong class="text-slate-800 font-semibold"><?= htmlspecialchars($project['klien']) ?></strong></span>
                     <span class="text-slate-300">•</span>
@@ -323,13 +382,22 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 </div>
             </div>
 
-            <div class="flex items-center gap-2 shrink-0">
+            <div class="flex items-center gap-2 shrink-0 flex-wrap">
                 <button onclick="openEditProjectModal()" class="btn-press px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300/80 rounded-xl text-xs font-semibold transition shadow-2xs flex items-center justify-center gap-2">
                     <i class="fa-regular fa-pen-to-square"></i> Konfigurasi
                 </button>
                 <a href="../proposals/print_proposal.php?project_id=<?= $id ?>" target="_blank" class="btn-press px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center justify-center gap-2">
                     <i class="fa-solid fa-file-signature"></i> Proposal SPH
                 </a>
+                <?php if (!empty($project['linked_contract_id'])): ?>
+                    <a href="../contracts/print_pdf.php?id=<?= $project['linked_contract_id'] ?>" target="_blank" class="btn-press px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-file-contract"></i> Kontrak SPK
+                    </a>
+                <?php else: ?>
+                    <a href="../contracts/generate.php?project_id=<?= $id ?>" class="btn-press px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-plus text-[10px]"></i> SPK Baru
+                    </a>
+                <?php endif; ?>
                 <a href="print_report.php?id=<?= $id ?>" target="_blank" class="btn-press px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center justify-center gap-2">
                     <i class="fa-solid fa-print"></i> Laporan PDF
                 </a>
@@ -349,25 +417,25 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
     <!-- Grid Layout Utama -->
     <div class="flex flex-col xl:flex-row gap-6 w-full min-w-0">
-        
+
         <!-- SEKSI KIRI: FORM ALOKASIKAN MODUL BARU -->
         <div class="w-full xl:w-80 shrink-0">
             <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs sticky top-6">
                 <h3 class="font-bold text-slate-800 text-xs sm:text-sm uppercase tracking-wider mb-4 flex items-center gap-2 pb-3 border-b border-slate-100">
                     <i class="fa-solid fa-users-gear text-emerald-600"></i> Alokasikan Modul Baru
                 </h3>
-                
+
                 <form action="" method="POST" class="space-y-3.5 text-xs sm:text-sm">
                     <input type="hidden" name="add_task" value="1">
-                    
+
                     <div>
                         <label class="block text-xs font-medium text-slate-700 mb-1.5">Nama Modul / Fitur <span class="text-red-500">*</span></label>
                         <input type="text" name="nama_tugas" required placeholder="Contoh: Development Core Engine" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-normal focus:outline-none placeholder:text-slate-400">
                     </div>
-                    
+
                     <div>
                         <label class="block text-xs font-medium text-slate-700 mb-1.5">Pilih Tim Pelaksana <span class="text-red-500">*</span></label>
-                        
+
                         <div class="space-y-1.5 mb-2">
                             <div class="relative">
                                 <input type="text" id="userSearchInput" onkeyup="filterUserList()" placeholder="Cari nama karyawan..." class="input-glow w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 pl-8 text-xs font-normal focus:outline-none placeholder:text-slate-400">
@@ -427,8 +495,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
         <!-- SEKSI KANAN: TABEL MANAJEMEN MODUL & QC UTAMA -->
         <div class="flex-1 min-w-0">
             <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs">
-                
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 mb-4 border-b border-slate-100">
+
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 mb-1 border-b border-slate-100">
                     <div class="min-w-0">
                         <h3 class="font-bold text-slate-900 text-base flex items-center gap-2">
                             <i class="fa-solid fa-list-check text-emerald-600"></i> Manajemen Modul & QC
@@ -453,22 +521,25 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 </div>
 
                 <div class="w-full overflow-x-auto">
-                    <table class="w-full text-left border-collapse text-xs sm:text-sm min-w-[720px]" id="tasksTable">
+                    <table class="w-full text-left border-collapse text-xs sm:text-sm min-w-[760px]" id="tasksTable">
                         <thead>
-                            <tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                                <th class="py-3.5 px-4">MODUL & LAPORAN</th>
-                                <th class="py-3.5 px-4 text-center">PRIORITAS</th>
-                                <th class="py-3.5 px-4">TIM PELAKSANA</th>
-                                <th class="py-3.5 px-4 text-center">STATUS</th>
-                                <th class="py-3.5 px-4 text-center">DELIVERABLES</th>
-                                <th class="py-3.5 px-4 text-center">VERIFIKASI PM</th>
+                            <tr class="bg-slate-50 border-b border-slate-200 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                                <th class="py-3 px-3.5">Modul & Diskusi</th>
+                                <th class="py-3 px-3.5 text-center w-24">Prioritas</th>
+                                <th class="py-3 px-3.5 w-44">Tim Pelaksana</th>
+                                <th class="py-3 px-3.5 text-center w-28">Status</th>
+                                <th class="py-3 px-3.5 text-center w-40">Deliverables</th>
+                                <th class="py-3 px-3.5 text-center w-36">Verifikasi PM</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100" id="tasksTableBody">
                             <?php if (empty($allTasks)): ?>
                                 <tr>
-                                    <td colspan="6" class="p-8 text-center text-slate-400 font-normal">
-                                        Belum ada modul pengerjaan dialokasikan untuk proyek ini.
+                                    <td colspan="6" class="p-10 text-center">
+                                        <div class="w-11 h-11 mx-auto mb-2.5 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center text-base">
+                                            <i class="fa-solid fa-inbox"></i>
+                                        </div>
+                                        <p class="text-slate-400 text-xs font-medium">Belum ada modul pengerjaan yang dialokasikan untuk proyek ini.</p>
                                     </td>
                                 </tr>
                             <?php else: ?>
@@ -477,108 +548,126 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                         $stLower = strtolower(trim($t['status']));
                                         $prioLower = strtolower(trim($t['prioritas'] ?? 'medium'));
                                         $assignees = $taskAssigneesMap[$t['id']] ?? [];
-                                        $updaterName = !empty($t['updater_nama']) ? $t['updater_nama'] : 'Karyawan';
-                                        $hasNote = !empty($t['progress_notes']);
-                                        $hasRev  = !empty($t['revision_notes']);
+                                        $unread = $unreadChatsMap[$t['id']] ?? 0;
 
                                         $taskDeadlineTS = strtotime($t['deadline']);
                                         $isOverdue = ($taskDeadlineTS < $todayTimestamp) && ($stLower !== 'done');
-                                        
+
                                         $diffDays = 0;
                                         if ($isOverdue) {
                                             $diffDays = max(1, floor(($todayTimestamp - $taskDeadlineTS) / (60 * 60 * 24)));
                                         }
+
+                                        $prioBadge = match($prioLower) {
+                                            'urgent' => 'bg-red-50 text-red-700 border-red-200',
+                                            'high'   => 'bg-amber-50 text-amber-700 border-amber-200',
+                                            'medium' => 'bg-blue-50 text-blue-700 border-blue-200',
+                                            default  => 'bg-slate-100 text-slate-600 border-slate-200',
+                                        };
+                                        $statusBadge = match($stLower) {
+                                            'done'               => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                                            'ready for review'   => 'bg-purple-50 text-purple-700 border-purple-200',
+                                            'in progress'        => 'bg-blue-50 text-blue-700 border-blue-200',
+                                            default              => 'bg-slate-100 text-slate-600 border-slate-200',
+                                        };
                                     ?>
                                     <tr class="task-row hover:bg-slate-50/70 transition align-middle <?= $isOverdue ? 'overdue-row' : '' ?>" data-status="<?= htmlspecialchars($t['status']) ?>">
-                                        
-                                        <td class="py-3.5 px-4">
-                                            <div class="font-semibold text-slate-900 text-xs sm:text-sm task-title flex items-center gap-1.5">
+
+                                        <!-- KOLOM 1: MODUL & DISKUSI -->
+                                        <td class="py-3 px-3.5">
+                                            <div class="font-semibold text-slate-900 text-[13px] task-title flex items-center gap-1.5 leading-snug">
                                                 <?php if ($isOverdue): ?>
-                                                    <i class="fa-solid fa-bell text-red-500 text-xs animate-bounce shrink-0" title="PRIORITAS! Modul ini telah melewati deadline."></i>
+                                                    <i class="fa-solid fa-bell text-red-500 text-xs shrink-0" title="PRIORITAS! Modul ini telah melewati deadline."></i>
                                                 <?php endif; ?>
                                                 <span><?= htmlspecialchars($t['nama_tugas']) ?></span>
                                             </div>
 
-                                            <div class="flex items-center gap-2 mt-1 flex-wrap">
-                                                <span class="text-xs font-normal flex items-center gap-1 shrink-0 <?= $isOverdue ? 'text-red-600 font-semibold' : 'text-slate-400' ?>">
-                                                    <i class="fa-regular fa-calendar-xmark text-xs"></i>
-                                                    Deadline: <?= date('d M Y', strtotime($t['deadline'])) ?>
+                                            <div class="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                                <span class="text-[11px] font-normal inline-flex items-center gap-1 shrink-0 <?= $isOverdue ? 'text-red-600 font-semibold' : 'text-slate-400' ?>">
+                                                    <i class="fa-regular fa-calendar-xmark"></i>
+                                                    <?= date('d M Y', strtotime($t['deadline'])) ?>
                                                 </span>
 
                                                 <?php if ($isOverdue): ?>
-                                                    <span class="px-2 py-0.5 rounded-md text-[10px] bg-red-600 text-white font-semibold uppercase tracking-wider shadow-2xs flex items-center gap-1 shrink-0">
+                                                    <span class="px-1.5 py-0.5 rounded-md text-[9px] bg-red-600 text-white font-semibold uppercase tracking-wider shadow-2xs flex items-center gap-1 shrink-0">
                                                         Terlambat <?= $diffDays ?> Hari
                                                     </span>
                                                 <?php endif; ?>
-                                                
-                                                <?php if ($hasNote || $hasRev): ?>
-                                                    <button onclick="openNoteModal('<?= htmlspecialchars(addslashes($t['nama_tugas'])) ?>', '<?= htmlspecialchars(addslashes($updaterName)) ?>', '<?= htmlspecialchars(addslashes($t['progress_notes'] ?? '')) ?>', '<?= htmlspecialchars(addslashes($t['revision_notes'] ?? '')) ?>', '<?= htmlspecialchars($t['drive_link'] ?? '') ?>')" 
-                                                        class="btn-press px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-semibold text-[10px] flex items-center gap-1 shadow-2xs shrink-0" title="Klik untuk lihat laporan lengkap">
-                                                        <i class="fa-solid fa-comments text-blue-600"></i> Laporan
-                                                    </button>
-                                                <?php endif; ?>
+
+                                                <button onclick="openChatModal(<?= (int) $t['id'] ?>)" 
+                                                    class="relative btn-press px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-semibold text-[10px] inline-flex items-center gap-1.5 shadow-2xs shrink-0" title="Buka Chatbox Modul">
+                                                    <i class="fa-solid fa-comments text-blue-600"></i> Chatbox
+                                                    <span id="unreadBadge-<?= (int) $t['id'] ?>" class="unread-badge absolute -top-2 -right-2 bg-red-500 text-white rounded-full text-[9px] font-bold h-4 min-w-4 px-0.5 flex items-center justify-center shadow-sm border-2 border-white <?= $unread > 0 ? '' : 'hidden' ?>"><?= $unread ?></span>
+                                                </button>
                                             </div>
                                         </td>
 
-                                        <td class="py-3.5 px-4 text-center shrink-0">
-                                            <span class="px-2.5 py-1 rounded-lg text-xs font-semibold uppercase inline-block border tracking-wider whitespace-nowrap
-                                                <?php
-                                                    switch($prioLower) {
-                                                        case 'urgent': echo 'bg-red-50 text-red-700 border-red-200'; break;
-                                                        case 'high': echo 'bg-amber-50 text-amber-700 border-amber-200'; break;
-                                                        case 'medium': echo 'bg-blue-50 text-blue-700 border-blue-200'; break;
-                                                        default: echo 'bg-slate-100 text-slate-600 border-slate-200';
-                                                    }
-                                                ?>">
+                                        <!-- KOLOM 2: PRIORITAS -->
+                                        <td class="py-3 px-3.5 text-center">
+                                            <span class="px-2 py-1 rounded-lg text-[10px] font-semibold uppercase inline-block border tracking-wider whitespace-nowrap <?= $prioBadge ?>">
                                                 <?= htmlspecialchars($t['prioritas'] ?? 'Medium') ?>
                                             </span>
                                         </td>
 
-                                        <td class="py-3.5 px-4">
-                                            <div class="flex flex-col gap-1 task-assignees">
+                                        <!-- KOLOM 3: TIM PELAKSANA -->
+                                        <td class="py-3 px-3.5">
+                                            <div class="flex flex-wrap gap-1 task-assignees">
                                                 <?php foreach ($assignees as $asg): ?>
-                                                    <span class="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200/80 font-medium text-xs inline-flex items-center gap-1 w-max shadow-2xs shrink-0">
-                                                        <i class="fa-solid fa-user text-[10px] text-emerald-600"></i> <?= htmlspecialchars($asg['nama']) ?>
+                                                    <span class="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200/80 font-medium text-[11px] inline-flex items-center gap-1 shadow-2xs">
+                                                        <i class="fa-solid fa-user text-[9px] text-emerald-600"></i> <?= htmlspecialchars($asg['nama']) ?>
                                                     </span>
                                                 <?php endforeach; ?>
                                             </div>
                                         </td>
 
-                                        <td class="py-3.5 px-4 text-center shrink-0">
-                                            <span class="px-2.5 py-1 rounded-lg text-xs font-semibold uppercase inline-block border tracking-wider whitespace-nowrap
-                                                <?php
-                                                    switch($stLower) {
-                                                        case 'done': echo 'bg-emerald-50 text-emerald-700 border-emerald-200'; break;
-                                                        case 'ready for review': echo 'bg-purple-50 text-purple-700 border-purple-200'; break;
-                                                        case 'in progress': echo 'bg-blue-50 text-blue-700 border-blue-200'; break;
-                                                        default: echo 'bg-slate-100 text-slate-600 border-slate-200';
-                                                    }
-                                                ?>">
+                                        <!-- KOLOM 4: STATUS -->
+                                        <td class="py-3 px-3.5 text-center">
+                                            <span class="px-2 py-1 rounded-lg text-[10px] font-semibold uppercase inline-block border tracking-wider whitespace-nowrap <?= $statusBadge ?>">
                                                 <?= htmlspecialchars($t['status']) ?>
                                             </span>
                                         </td>
 
-                                        <td class="py-3.5 px-4 text-center shrink-0">
-                                            <?php if (!empty($t['drive_link'])): ?>
-                                                <a href="<?= htmlspecialchars($t['drive_link']) ?>" target="_blank" class="btn-press px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold border border-emerald-200 transition inline-flex items-center gap-1 shadow-2xs whitespace-nowrap">
-                                                    <i class="fa-brands fa-google-drive text-emerald-600"></i> Drive
-                                                </a>
-                                            <?php else: ?>
-                                                <span class="text-slate-400 text-xs font-normal italic whitespace-nowrap">Belum ada</span>
-                                            <?php endif; ?>
+                                        <!-- KOLOM 5: DELIVERABLES -->
+                                        <td class="py-3 px-3.5">
+                                            <div class="flex flex-col gap-1 items-stretch w-36 mx-auto">
+                                                <?php if (!empty($t['drive_link'])): ?>
+                                                    <a href="<?= htmlspecialchars($t['drive_link']) ?>" target="_blank" class="btn-press px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-[11px] font-semibold border border-emerald-200 transition inline-flex items-center justify-center gap-1.5 shadow-2xs whitespace-nowrap">
+                                                        <i class="fa-brands fa-google-drive text-emerald-600"></i> Google Drive
+                                                    </a>
+                                                <?php endif; ?>
+
+                                                <?php if (!empty($taskFilesMap[$t['id']])): ?>
+                                                    <?php foreach ($taskFilesMap[$t['id']] as $file): ?>
+                                                        <a href="../../uploads/<?= htmlspecialchars($file['file_path']) ?>" download class="btn-press px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-[11px] font-semibold border border-blue-200 transition inline-flex items-center justify-center gap-1.5 shadow-2xs whitespace-nowrap" title="<?= htmlspecialchars($file['nama_file']) ?>">
+                                                            <i class="fa-solid fa-file-arrow-down text-blue-600"></i> Unduh File
+                                                        </a>
+                                                    <?php endforeach; ?>
+                                                <?php endif; ?>
+
+                                                <?php if (empty($t['drive_link']) && empty($taskFilesMap[$t['id']])): ?>
+                                                    <span class="text-slate-300 text-[11px] font-normal italic text-center whitespace-nowrap">Belum ada</span>
+                                                <?php endif; ?>
+                                            </div>
                                         </td>
 
-                                        <td class="py-3.5 px-4 text-center shrink-0">
+                                        <!-- KOLOM 6: VERIFIKASI PM -->
+                                        <td class="py-3 px-3.5">
                                             <?php if ($stLower === 'done'): ?>
-                                                <span class="text-emerald-600 font-semibold text-xs inline-flex items-center gap-1 whitespace-nowrap"><i class="fa-solid fa-circle-check"></i> Approved</span>
+                                                <div class="flex items-center justify-center gap-1.5 text-emerald-600 font-semibold text-[11px] whitespace-nowrap">
+                                                    <i class="fa-solid fa-circle-check"></i> Approved
+                                                </div>
                                             <?php else: ?>
-                                                <div class="flex items-center justify-center gap-1.5 whitespace-nowrap">
+                                                <div class="flex items-center justify-center gap-1.5">
                                                     <form action="" method="POST" onsubmit="return confirm('Setujui pengerjaan modul ini?')">
-                                                        <input type="hidden" name="task_id" value="<?= $t['id'] ?>">
+                                                        <input type="hidden" name="task_id" value="<?= (int) $t['id'] ?>">
                                                         <input type="hidden" name="qc_action" value="approve">
-                                                        <button type="submit" class="btn-press px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs transition">Approve</button>
+                                                        <button type="submit" class="btn-press px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-semibold shadow-xs transition inline-flex items-center gap-1 whitespace-nowrap">
+                                                            <i class="fa-solid fa-check text-[9px]"></i> Approve
+                                                        </button>
                                                     </form>
-                                                    <button onclick="openRevisionModal('<?= $t['id'] ?>', '<?= htmlspecialchars(addslashes($t['nama_tugas'])) ?>')" class="btn-press px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold shadow-xs transition">Revisi</button>
+                                                    <button type="button" onclick="openRevisionModal('<?= (int) $t['id'] ?>', '<?= htmlspecialchars(addslashes($t['nama_tugas'])) ?>')" class="btn-press px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[11px] font-semibold shadow-xs transition inline-flex items-center gap-1 whitespace-nowrap">
+                                                        <i class="fa-solid fa-pen text-[9px]"></i> Revisi
+                                                    </button>
                                                 </div>
                                             <?php endif; ?>
                                         </td>
@@ -600,56 +689,72 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     </div>
 </main>
 
-<!-- MODAL POPUP CHAT BUBBLE LAPORAN & CATATAN KARYAWAN -->
-<div id="noteModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative text-xs sm:text-sm">
-        <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
-            <h3 class="font-bold text-slate-900 text-base flex items-center gap-2">
-                <i class="fa-solid fa-comments text-blue-600"></i> Detail Laporan & Catatan
-            </h3>
-            <button onclick="closeNoteModal()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition focus:outline-none">
-                <i class="fa-solid fa-xmark text-xs"></i>
+<!-- ========================================== -->
+<!-- MODAL CHATBOX REAL-TIME -->
+<!-- ========================================== -->
+<div id="chatModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-white rounded-2xl w-full max-w-lg h-[80vh] max-h-[640px] flex flex-col shadow-2xl overflow-hidden relative">
+
+        <!-- Chat Header -->
+        <div class="bg-emerald-600 px-4 sm:px-5 py-3.5 flex justify-between items-center shrink-0 shadow-sm z-10">
+            <div class="min-w-0">
+                <h3 class="font-bold text-white text-sm flex items-center gap-2 truncate">
+                    <i class="fa-regular fa-message shrink-0"></i>
+                    <span class="truncate">Chat: <span id="chatTaskName" class="text-emerald-100"></span></span>
+                </h3>
+                <p class="text-emerald-200 text-[10px] mt-0.5"><i class="fa-solid fa-circle text-[8px] text-emerald-400"></i> Real-time aktif • tersinkron dengan tim</p>
+            </div>
+            <button type="button" onclick="openDeleteConfirm()" id="chatDeleteBtn" title="Hapus seluruh riwayat chat modul ini (bersihkan database)" class="btn-press shrink-0 mr-1.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-red-500 text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition focus:outline-none">
+                <i class="fa-solid fa-trash-can text-[10px]"></i><span class="hidden sm:inline">Hapus Chat</span>
+            </button>
+            <button onclick="closeChatModal()" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition focus:outline-none shrink-0">
+                <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
 
-        <div class="space-y-4">
-            <div>
-                <span class="text-[10px] font-semibold uppercase text-slate-400 block mb-0.5">Nama Modul</span>
-                <p class="font-bold text-slate-900 text-sm" id="noteModalTaskName">-</p>
+        <!-- Chat Body / Messages Area -->
+        <div class="relative flex-1 min-h-0 bg-[#eef2f5]">
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
+                <img src="../../assets/images/logo2.png" alt="CTC Watermark" class="w-[280px] h-auto object-contain opacity-[0.05] mix-blend-multiply select-none" onerror="this.onerror=null; this.src='../../assets/img/logo2.png';">
             </div>
-
-            <div id="noteModalUserBox" class="bg-blue-50 border border-blue-200/80 rounded-2xl p-4">
-                <div class="flex items-center gap-2 font-bold text-blue-900 mb-1 text-xs">
-                    <div class="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px]">
-                        <i class="fa-solid fa-user"></i>
-                    </div>
-                    <span id="noteModalUser">-</span>
-                </div>
-                <p class="text-blue-800 text-xs italic leading-relaxed pl-8 font-normal" id="noteModalUserText">"-"</p>
-            </div>
-
-            <div id="noteModalRevBox" class="bg-red-50 border border-red-200/80 rounded-2xl p-4 hidden">
-                <div class="flex items-center gap-2 font-bold text-red-900 mb-1 text-xs">
-                    <div class="w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px]">
-                        <i class="fa-solid fa-triangle-exclamation"></i>
-                    </div>
-                    <span>Catatan Instruksi Revisi PM:</span>
-                </div>
-                <p class="text-red-800 text-xs leading-relaxed pl-8 font-medium" id="noteModalRevText">-</p>
-            </div>
-
-            <div id="noteModalDriveBox" class="hidden pt-1">
-                <a id="noteModalDriveLink" href="#" target="_blank" class="btn-press w-full py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition">
-                    <i class="fa-brands fa-google-drive text-emerald-600 text-sm"></i> Buka File / Google Drive Terlampir
-                </a>
-            </div>
+            <div id="chatBody" class="absolute inset-0 z-10 overflow-y-auto p-4 sm:p-5 flex flex-col gap-3"></div>
+            <button id="jumpLatestBtn" onclick="scrollChatBottom(true)" class="hidden absolute bottom-3 right-3 z-10 pl-3 pr-2 py-1.5 rounded-full bg-white shadow-lg border border-slate-200 text-[11px] font-semibold text-slate-700 items-center gap-1.5 btn-press">
+                <i class="fa-solid fa-arrow-down text-emerald-600 text-[10px]"></i> Pesan baru
+            </button>
         </div>
 
-        <div class="flex justify-end pt-4 mt-4 border-t border-slate-100">
-            <button onclick="closeNoteModal()" class="btn-press px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs">Tutup</button>
+        <!-- Chat Input Footer -->
+        <div class="p-3 bg-white border-t border-slate-200 shrink-0">
+            <form id="chatForm" onsubmit="submitTaskChat(event)" class="flex gap-2 items-center">
+                <input type="hidden" id="chatTaskId">
+                <input type="text" id="chatInputMessage" placeholder="Ketik pesan untuk tim..." required autocomplete="off" class="flex-1 bg-slate-100 border border-slate-200 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition min-w-0">
+                <button type="submit" id="chatSendBtn" class="w-10 h-10 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center shrink-0 transition btn-press shadow-md disabled:opacity-50">
+                    <i class="fa-solid fa-paper-plane text-xs"></i>
+                </button>
+            </form>
         </div>
     </div>
 </div>
+
+<!-- MODAL KONFIRMASI HAPUS CHAT (CUSTOM — ADMIN ONLY) -->
+<div id="deleteChatConfirmModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl w-full max-w-xs p-5 sm:p-6 shadow-2xl relative animate-fade-in text-center border border-slate-200">
+        <div class="w-12 h-12 mx-auto mb-3 rounded-2xl bg-red-50 border border-red-100 text-red-500 flex items-center justify-center text-lg">
+            <i class="fa-solid fa-trash-can"></i>
+        </div>
+        <h3 class="font-bold text-slate-900 text-sm mb-1">Hapus Riwayat Chat?</h3>
+        <p class="text-xs text-slate-500 font-normal mb-4 leading-relaxed">Seluruh pesan pada modul ini akan dihapus <strong class="text-slate-700 font-semibold">permanen</strong> dari database. Tindakan ini tidak dapat dibatalkan.</p>
+        <div class="flex gap-2">
+            <button type="button" onclick="closeDeleteConfirm()" class="btn-press flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition">Batal</button>
+            <button type="button" onclick="performDeleteChat()" id="deleteChatConfirmBtn" class="btn-press flex-1 py-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl text-xs shadow-xs flex items-center justify-center gap-1.5 transition">
+                <i class="fa-solid fa-trash-can text-[10px]"></i> Ya, Hapus
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div id="toastWrap" class="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 w-72 max-w-[calc(100vw-2rem)] pointer-events-none"></div>
 
 <!-- MODAL EDIT DETAIL PROYEK & KATEGORI RAB -->
 <div id="editProjectModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
@@ -793,6 +898,344 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 </div>
 
 <script>
+/* =====================================================================
+ * KONFIGURASI CHAT — SATU API UNTUK ADMIN & KARYAWAN
+ * ===================================================================== */
+const CHAT_API   = '../../api_task_chat.php';
+const READER     = 'admin';
+const SELF_ROLE  = 'admin';
+const BASE_TITLE = document.title;
+const taskNames  = <?= json_encode($taskNameMap) ?>;
+
+let currentChatTaskId = null;
+let lastChatId        = 0;
+let chatHistoryLoaded = false;
+let sendingChat       = false;
+let chatPollTimer     = null;
+let newMsgCount       = 0;
+
+const chatBody  = document.getElementById('chatBody');
+const jumpBtn   = document.getElementById('jumpLatestBtn');
+
+/* ---------- Utils ---------- */
+function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, s => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[s]));
+}
+function nl2br(str) { return escapeHtml(str).replace(/\n/g, '<br>'); }
+
+/* ---------- Toast ---------- */
+function showToast(title, subtitle) {
+    const wrap = document.getElementById('toastWrap');
+    const el = document.createElement('div');
+    el.className = 'toast-pop pointer-events-auto bg-slate-900 text-white rounded-xl px-3.5 py-3 shadow-2xl border border-slate-700/60 text-xs flex items-start gap-2.5 cursor-pointer btn-press';
+    el.innerHTML =
+        '<i class="fa-solid fa-comment-dots text-emerald-400 mt-0.5 shrink-0"></i>' +
+        '<div class="min-w-0 flex-1">' +
+            '<p class="font-semibold leading-tight">' + escapeHtml(title) + '</p>' +
+            (subtitle ? '<p class="text-slate-400 text-[11px] mt-0.5 truncate">' + escapeHtml(subtitle) + '</p>' : '') +
+        '</div>';
+    wrap.appendChild(el);
+    setTimeout(() => {
+        el.classList.add('toast-leave');
+        setTimeout(() => el.remove(), 300);
+    }, 4500);
+}
+
+/* ---------- Bubble ---------- */
+function renderChatBubble(c, animate) {
+    const isSelf = c.sender_role === SELF_ROLE;
+    const m = (c.message || '').trim();
+
+    // Warna khusus: revisi = AMBER, approval sistem = hijau muda (konsisten dua sisi)
+    let bubble = isSelf ? 'chat-bubble-self' : 'chat-bubble-other';
+    if (/^(⚠️|❗|🔴)/.test(m))      bubble = 'chat-bubble-revision';
+    else if (/^✅/.test(m))          bubble = 'chat-bubble-success';
+
+    const align     = isSelf ? 'items-end self-end' : 'items-start self-start';
+    const nameAlign = isSelf ? 'text-right' : 'text-left';
+    const pop       = animate ? ' chat-pop' : '';
+
+    return '<div class="flex flex-col max-w-[85%] ' + align + pop + '">'
+        + '<span class="text-[10px] text-slate-400 font-medium mb-1 px-1 ' + nameAlign + '">'
+        + escapeHtml(c.sender_name) + ' • ' + escapeHtml(c.created_at) + '</span>'
+        + '<div class="chat-bubble ' + bubble + ' shadow-2xs">' + nl2br(c.message) + '</div>'
+        + '</div>';
+}
+
+/* ---------- Scroll & Jump-to-latest ---------- */
+function isNearBottom() {
+    return chatBody.scrollHeight - chatBody.clientHeight - chatBody.scrollTop < 80;
+}
+function hideJumpBtn() {
+    newMsgCount = 0;
+    jumpBtn.classList.add('hidden');
+    jumpBtn.classList.remove('flex');
+}
+function scrollChatBottom(smooth) {
+    hideJumpBtn();
+    chatBody.scrollTo({ top: chatBody.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+}
+function showJumpBtn() {
+    newMsgCount++;
+    const old = jumpBtn.querySelector('span');
+    if (old) old.remove();
+    jumpBtn.insertAdjacentHTML('beforeend', '<span class="ml-1 bg-emerald-600 text-white rounded-full px-1.5 text-[10px] font-bold">' + newMsgCount + '</span>');
+    jumpBtn.classList.remove('hidden');
+    jumpBtn.classList.add('flex');
+}
+chatBody.addEventListener('scroll', () => { if (isNearBottom()) hideJumpBtn(); });
+
+/* ---------- Append satu pesan ---------- */
+function appendTaskChat(c, animate) {
+    if (!c || c.id <= lastChatId) return false;
+
+    const empty = chatBody.querySelector('.empty-chat-notice');
+    if (empty) empty.remove();
+
+    const near = isNearBottom();
+    chatBody.insertAdjacentHTML('beforeend', renderChatBubble(c, animate));
+    lastChatId = c.id;
+
+    if (near || !chatHistoryLoaded) {
+        scrollChatBottom(true);
+    } else {
+        showJumpBtn();
+    }
+    return true;
+}
+
+function showEmptyChat() {
+    chatBody.innerHTML =
+        '<div class="empty-chat-notice text-center py-10 text-slate-400 text-xs self-center">'
+        + '<i class="fa-solid fa-comments text-3xl mb-2 block text-slate-300"></i>'
+        + 'Belum ada obrolan di modul ini. Mulai diskusi dengan tim!</div>';
+}
+
+/* ---------- Fetch incremental (ringan, anti-lag) ---------- */
+function fetchTaskChats() {
+    if (!currentChatTaskId) return;
+
+    fetch(CHAT_API + '?action=fetch&task_id=' + currentChatTaskId + '&last_id=' + lastChatId + '&reader=' + READER, { cache: 'no-store' })
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success) return;
+
+            // Deteksi real-time: chat dihapus di sisi lain -> bersihkan layar tanpa refresh
+            const totalNow = parseInt(data.total, 10) || 0;
+            if (totalNow === 0 && lastChatId > 0) {
+                lastChatId = 0;
+                chatHistoryLoaded = false;
+                chatBody.innerHTML = '';
+                showEmptyChat();
+                hideJumpBtn();
+            }
+
+            if (data.messages && data.messages.length > 0) {
+                // Riwayat pertama tanpa animasi, pesan baru ber-animasi pop
+                data.messages.forEach(c => appendTaskChat(c, chatHistoryLoaded));
+                chatHistoryLoaded = true;
+            } else if (!chatHistoryLoaded) {
+                chatHistoryLoaded = true;
+                showEmptyChat();
+            }
+
+            updateUnreadBadge(currentChatTaskId, parseInt(data.unread, 10) || 0);
+        })
+        .catch(() => {});
+}
+
+/* ---------- Modal ---------- */
+function openChatModal(taskId) {
+    currentChatTaskId   = taskId;
+    lastChatId          = 0;
+    chatHistoryLoaded   = false;
+    newMsgCount         = 0;
+
+    document.getElementById('chatTaskId').value = taskId;
+    document.getElementById('chatTaskName').innerText = taskNames[taskId] || ('Modul #' + taskId);
+    chatBody.innerHTML = '<div class="empty-chat-notice text-center py-10 text-slate-400 text-xs self-center"><i class="fa-solid fa-circle-notch fa-spin text-2xl mb-2 block text-slate-300"></i>Memuat diskusi...</div>';
+    hideJumpBtn();
+    document.getElementById('chatModal').classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+
+    fetchTaskChats();
+    if (chatPollTimer) clearInterval(chatPollTimer);
+    chatPollTimer = setInterval(fetchTaskChats, 2500);
+}
+
+function closeChatModal() {
+    document.getElementById('chatModal').classList.add('hidden');
+    document.body.classList.remove('overflow-hidden');
+    if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
+    currentChatTaskId = null;
+    // Tidak reload halaman — badge langsung dipoles oleh poll unread
+    pollUnreadSummary();
+}
+
+/* ---------- Hapus seluruh chat modul (ADMIN ONLY, konfirmasi custom) ---------- */
+let deleteConfirmOpen = false;
+
+function openDeleteConfirm() {
+    if (!currentChatTaskId || deleteConfirmOpen) return;
+    deleteConfirmOpen = true;
+    document.getElementById('deleteChatConfirmModal').classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+}
+
+function closeDeleteConfirm() {
+    deleteConfirmOpen = false;
+    document.getElementById('deleteChatConfirmModal').classList.add('hidden');
+    // Tetap kunci body selama chatbox utama masih terbuka
+    if (!document.getElementById('chatModal').classList.contains('hidden')) {
+        document.body.classList.add('overflow-hidden');
+    } else {
+        document.body.classList.remove('overflow-hidden');
+    }
+}
+
+function performDeleteChat() {
+    if (!currentChatTaskId) { closeDeleteConfirm(); return; }
+
+    const btn = document.getElementById('deleteChatConfirmBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-[10px]"></i> Menghapus...';
+    }
+
+    const formData = new FormData();
+    formData.append('action', 'delete');
+    formData.append('task_id', currentChatTaskId);
+
+    fetch(CHAT_API, { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                lastChatId = 0;
+                chatHistoryLoaded = false;
+                chatBody.innerHTML = '';
+                showEmptyChat();
+                updateUnreadBadge(currentChatTaskId, 0);
+                showToast('🗑️ Chat dibersihkan', 'Seluruh riwayat diskusi modul ini telah dihapus dari database.');
+            } else {
+                showToast('⚠️ Gagal menghapus', data.error || 'Terjadi kesalahan tidak dikenal.');
+            }
+        })
+        .catch(() => { showToast('⚠️ Koneksi bermasalah', 'Gagal terhubung ke server saat menghapus chat.'); })
+        .finally(() => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-trash-can text-[10px]"></i> Ya, Hapus';
+            }
+            closeDeleteConfirm();
+        });
+}
+
+/* ---------- Kirim pesan ---------- */
+function submitTaskChat(e) {
+    e.preventDefault();
+    if (sendingChat || !currentChatTaskId) return;
+
+    const input = document.getElementById('chatInputMessage');
+    const btn   = document.getElementById('chatSendBtn');
+    const msg   = input.value.trim();
+    if (!msg) return;
+
+    sendingChat = true;
+    btn.disabled = true;
+    input.value = '';
+
+    const formData = new FormData();
+    formData.append('action', 'send');
+    formData.append('task_id', currentChatTaskId);
+    formData.append('message', msg);
+
+    fetch(CHAT_API, { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.message) {
+                appendTaskChat(data.message, true);
+                scrollChatBottom(true);
+            }
+        })
+        .catch(() => {})
+        .finally(() => {
+            sendingChat = false;
+            btn.disabled = false;
+            input.focus();
+        });
+}
+
+/* =====================================================================
+ * BADGE UNREAD + TOAST PESAN BARU (GLOBAL, dua sisi sama)
+ * ===================================================================== */
+function updateUnreadBadge(taskId, count) {
+    const badge = document.getElementById('unreadBadge-' + taskId);
+    if (!badge) return;
+    if (count > 0) {
+        badge.innerText = count;
+        badge.classList.remove('hidden');
+    } else {
+        badge.classList.add('hidden');
+    }
+}
+
+let unreadInitialized = false;
+let lastSeenChatIds   = {};
+
+function pollUnreadSummary() {
+    if (document.hidden) return;
+
+    fetch(CHAT_API + '?action=unread_summary', { cache: 'no-store' })
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success) return;
+
+            const map = data.tasks || {};
+            let total = 0;
+
+            Object.keys(map).forEach(tid => {
+                const info = map[tid];
+                tid = parseInt(tid, 10);
+                total += info.count;
+                updateUnreadBadge(tid, info.count);
+
+                // Toast hanya untuk pesan yang benar-benar baru
+                if (unreadInitialized
+                    && info.last_id > (lastSeenChatIds[tid] || 0)
+                    && tid !== currentChatTaskId) {
+                    showToast('Pesan baru dari ' + info.sender, (taskNames[tid] || ('Modul #' + tid)) + ' • ' + info.preview);
+                }
+                lastSeenChatIds[tid] = Math.max(lastSeenChatIds[tid] || 0, info.last_id);
+            });
+
+            // Bersihkan badge task yang sudah tidak unread
+            document.querySelectorAll('.unread-badge').forEach(b => {
+                const id = parseInt(b.id.replace('unreadBadge-', ''), 10);
+                if (!map[id]) updateUnreadBadge(id, 0);
+            });
+
+            unreadInitialized = true;
+            document.title = total > 0 ? '(' + total + ') ' + BASE_TITLE : BASE_TITLE;
+        })
+        .catch(() => {});
+}
+
+setInterval(pollUnreadSummary, 8000);
+
+// Pesan sukses dari URL (QC / konfigurasi) -> tampilkan juga sebagai toast
+document.addEventListener('DOMContentLoaded', function() {
+    const msg = new URLSearchParams(location.search).get('msg');
+    if (msg === 'approved')       showToast('✅ Modul Approved', 'Status modul diperbarui menjadi Done.');
+    if (msg === 'revision_sent')  showToast('⚠️ Instruksi revisi terkirim', 'Tim menerima catatan revisi di chatbox modul.');
+
+    pollUnreadSummary();
+});
+
+/* =====================================================================
+ * JS LAINNYA (tidak diubah fungsinya)
+ * ===================================================================== */
 function toggleEditCustomRabSection() {
     const val = document.getElementById('editKategoriRabSelect').value;
     const sec = document.getElementById('editCustomRabSection');
@@ -887,31 +1330,6 @@ function openRevisionModal(taskId, title) {
     document.getElementById('revisionModal').classList.remove('hidden');
 }
 function closeRevisionModal() { document.getElementById('revisionModal').classList.add('hidden'); }
-
-function openNoteModal(taskName, userName, userNote, revNote, driveLink) {
-    document.getElementById('noteModalTaskName').innerText = taskName;
-    document.getElementById('noteModalUser').innerText = userName + ' (Pengirim Laporan)';
-    document.getElementById('noteModalUserText').innerText = '"' + (userNote || 'Tidak ada catatan tertulis.') + '"';
-
-    const revBox = document.getElementById('noteModalRevBox');
-    if (revNote && revNote.trim() !== '') {
-        document.getElementById('noteModalRevText').innerText = revNote;
-        revBox.classList.remove('hidden');
-    } else {
-        revBox.classList.add('hidden');
-    }
-
-    const driveBox = document.getElementById('noteModalDriveBox');
-    if (driveLink && driveLink.trim() !== '') {
-        document.getElementById('noteModalDriveLink').href = driveLink;
-        driveBox.classList.remove('hidden');
-    } else {
-        driveBox.classList.add('hidden');
-    }
-
-    document.getElementById('noteModal').classList.remove('hidden');
-}
-function closeNoteModal() { document.getElementById('noteModal').classList.add('hidden'); }
 
 document.addEventListener('DOMContentLoaded', function() {
     const ctx = document.getElementById('projectProgressChart').getContext('2d');

@@ -18,8 +18,13 @@ if (!$req) {
     exit;
 }
 
-// Cek apakah ada proyek aktif yang terhubung dengan requirement ini
-$stmtLinkedProj = $pdo->prepare("SELECT * FROM projects WHERE requirement_id = ? LIMIT 1");
+// Cek apakah ada proyek aktif & kontrak terhubung dengan requirement ini
+$stmtLinkedProj = $pdo->prepare("
+    SELECT p.*, c_contract.id AS linked_contract_id 
+    FROM projects p 
+    LEFT JOIN contracts c_contract ON c_contract.project_id = p.id 
+    WHERE p.requirement_id = ? LIMIT 1
+");
 $stmtLinkedProj->execute([$id]);
 $linkedProject = $stmtLinkedProj->fetch();
 
@@ -112,15 +117,31 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             </div>
         </div>
 
-        <div class="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+        <div class="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0 flex-wrap">
             <?php if ($linkedProject): ?>
-                <a href="../projects/detail.php?id=<?= $linkedProject['id'] ?>" class="px-4 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition" title="Lihat Proyek Aktif Terhubung">
-                    <i class="fa-solid fa-folder-open text-sm"></i> Lihat Proyek: <?= htmlspecialchars($linkedProject['nama_projek']) ?>
+                <!-- Quick SPH Button -->
+                <a href="../proposals/print_proposal.php?project_id=<?= $linkedProject['id'] ?>" target="_blank" class="btn-press px-3 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-xl text-xs font-bold flex items-center gap-1.5 transition" title="Tinjau Surat Penawaran (SPH)">
+                    <i class="fa-solid fa-file-signature text-xs"></i> SPH
+                </a>
+
+                <!-- Quick SPK Button -->
+                <?php if (!empty($linkedProject['linked_contract_id'])): ?>
+                    <a href="../contracts/print_pdf.php?id=<?= $linkedProject['linked_contract_id'] ?>" target="_blank" class="btn-press px-3 py-2 bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 rounded-xl text-xs font-bold flex items-center gap-1.5 transition" title="Tinjau Kontrak SPK">
+                        <i class="fa-solid fa-file-contract text-xs"></i> SPK
+                    </a>
+                <?php else: ?>
+                    <a href="../contracts/generate.php?project_id=<?= $linkedProject['id'] ?>" class="btn-press px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow-xs" title="Buat Kontrak SPK Baru">
+                        <i class="fa-solid fa-plus text-[10px]"></i> SPK
+                    </a>
+                <?php endif; ?>
+
+                <a href="../projects/detail.php?id=<?= $linkedProject['id'] ?>" class="btn-press px-3.5 py-2 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 rounded-xl text-xs font-semibold flex items-center gap-2 transition" title="Lihat Workspace Proyek">
+                    <i class="fa-solid fa-folder-open text-xs"></i> Proyek Workspace
                 </a>
             <?php else: ?>
                 <a href="../projects/index.php?convert_req=1&req_id=<?= $req['id'] ?>&client_name=<?= urlencode($req['client_name']) ?>&title=<?= urlencode($req['title']) ?>&budget=<?= urlencode($req['budget_estimation']) ?>"
                    class="btn-press px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-semibold transition shadow-md shadow-emerald-600/20 flex items-center gap-2">
-                    <i class="fa-solid fa-folder-plus text-xs"></i> Convert to Active Project
+                    <i class="fa-solid fa-wand-magic-sparkles text-xs"></i> Convert to Active Project
                 </a>
             <?php endif; ?>
         </div>

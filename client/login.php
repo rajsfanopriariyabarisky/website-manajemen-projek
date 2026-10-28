@@ -165,84 +165,99 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['forgot_password_acti
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen flex items-center justify-center p-4 selection:bg-emerald-600 selection:text-white relative">
 
+    <!-- Decorative ambient background (murni visual, tanpa fungsi) -->
+    <div class="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
+        <div class="absolute -top-32 -left-32 w-[420px] h-[420px] rounded-full bg-emerald-200/40 blur-3xl"></div>
+        <div class="absolute -bottom-40 -right-24 w-[480px] h-[480px] rounded-full bg-teal-100/50 blur-3xl"></div>
+    </div>
+
     <div class="animate-fade-in w-full max-w-md my-auto relative z-10">
 
         <!-- Card Login Utama Clean -->
-        <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xl shadow-slate-200/60 p-6 sm:p-8">
+        <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xl shadow-slate-200/60 p-6 sm:p-8 relative overflow-hidden">
             
-            <!-- Header Login Clean -->
-            <div class="text-center mb-6 pb-5 border-b border-slate-100">
-                <!-- Logo PNG Transparan Tanpa Box -->
-                <img src="../assets/images/logo.png" alt="Logo PT. CTC" class="h-16 sm:h-20 w-auto mx-auto mb-3 object-contain">
-
-                <span class="text-[11px] font-bold uppercase tracking-widest text-emerald-800 bg-emerald-50 border border-emerald-200 px-3.5 py-1 rounded-full inline-block mb-2">
-                    PT. CIPTA TEKNOLOGI CENDEKIA
-                </span>
-                <h1 class="text-xl font-bold text-slate-900 tracking-tight">Client Portal Access</h1>
-                <p class="text-xs text-slate-500 mt-1">Masuk untuk memantau status proyek & negosiasi</p>
+            <!-- Watermark logo samar di dalam box (persis kaya box chat portal.php) -->
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0" aria-hidden="true">
+                <img src="../assets/images/logo.png" alt="" class="w-[230px] sm:w-[300px] h-auto object-contain opacity-[0.04] mix-blend-multiply">
             </div>
 
-            <!-- Pesan Sukses -->
-            <?php if (!empty($success_msg)): ?>
-                <div class="mb-5 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs sm:text-sm flex items-start gap-3 shadow-xs">
-                    <i class="fa-solid fa-circle-check text-emerald-600 text-lg shrink-0 mt-0.5"></i>
-                    <span class="font-medium leading-relaxed"><?= $success_msg ?></span>
-                </div>
-            <?php endif; ?>
+            <div class="relative z-10">
 
-            <!-- Pesan Error -->
-            <?php if (!empty($error_msg)): ?>
-                <div class="mb-5 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs sm:text-sm flex items-start gap-3 shadow-xs">
-                    <i class="fa-solid fa-circle-exclamation text-red-500 text-lg shrink-0 mt-0.5"></i>
-                    <span class="font-medium leading-relaxed"><?= htmlspecialchars($error_msg) ?></span>
-                </div>
-            <?php endif; ?>
+                <!-- Header Login Clean -->
+                <div class="text-center mb-6 pb-5 border-b border-slate-100">
+                    <!-- Logo PNG Transparan Tanpa Box -->
+                    <img src="../assets/images/logo.png" alt="Logo PT. CTC" class="h-16 sm:h-20 w-auto mx-auto mb-3 object-contain">
 
-            <form method="POST" class="space-y-4">
-                <div>
-                    <label class="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5">
-                        Email Resmi Klien / Perusahaan <span class="text-red-500">*</span>
-                    </label>
-                    <div class="relative">
-                        <input type="email" name="email" required placeholder="nama@perusahaan.com" 
-                               class="input-glow w-full px-3.5 py-2.5 pl-10 rounded-xl border border-slate-300 bg-white text-slate-900 text-sm font-normal focus:outline-none transition-all placeholder:text-slate-400">
-                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                            <i class="fa-solid fa-envelope text-sm"></i>
-                        </div>
+                    <span class="text-[11px] font-bold uppercase tracking-widest text-emerald-800 bg-emerald-50 border border-emerald-200 px-3.5 py-1 rounded-full inline-block mb-2">
+                        PT. CIPTA TEKNOLOGI CENDEKIA
+                    </span>
+                    <h1 class="text-xl font-bold text-slate-900 tracking-tight">Client Portal Access</h1>
+                    <p class="text-xs text-slate-500 mt-1">Masuk untuk memantau status proyek & negosiasi</p>
+                </div>
+
+                <!-- Pesan Sukses -->
+                <?php if (!empty($success_msg)): ?>
+                    <div class="mb-5 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs sm:text-sm flex items-start gap-3 shadow-xs">
+                        <i class="fa-solid fa-circle-check text-emerald-600 text-lg shrink-0 mt-0.5"></i>
+                        <span class="font-medium leading-relaxed"><?= $success_msg ?></span>
                     </div>
-                </div>
+                <?php endif; ?>
 
-                <div>
-                    <div class="flex items-center justify-between mb-1.5">
-                        <label class="block text-xs sm:text-sm font-medium text-slate-700">
-                            Password Portal <span class="text-red-500">*</span>
+                <!-- Pesan Error -->
+                <?php if (!empty($error_msg)): ?>
+                    <div class="mb-5 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs sm:text-sm flex items-start gap-3 shadow-xs">
+                        <i class="fa-solid fa-circle-exclamation text-red-500 text-lg shrink-0 mt-0.5"></i>
+                        <span class="font-medium leading-relaxed"><?= htmlspecialchars($error_msg) ?></span>
+                    </div>
+                <?php endif; ?>
+
+                <form method="POST" class="space-y-4">
+                    <div>
+                        <label class="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5">
+                            Email Resmi Klien / Perusahaan <span class="text-red-500">*</span>
                         </label>
-                        <button type="button" onclick="openForgotModal()" class="text-xs font-semibold text-emerald-600 hover:underline focus:outline-none">
-                            Lupa Password?
-                        </button>
-                    </div>
-                    <div class="relative">
-                        <input type="password" id="loginPassword" name="password" required placeholder="Masukkan password Anda..." 
-                               class="input-glow w-full px-3.5 py-2.5 pl-10 pr-10 rounded-xl border border-slate-300 bg-white text-slate-900 text-sm font-normal focus:outline-none transition-all placeholder:text-slate-400">
-                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                            <i class="fa-solid fa-lock text-sm"></i>
+                        <div class="relative">
+                            <input type="email" name="email" required placeholder="nama@perusahaan.com" 
+                                   class="input-glow w-full px-3.5 py-2.5 pl-10 rounded-xl border border-slate-300 bg-white text-slate-900 text-sm font-normal focus:outline-none transition-all placeholder:text-slate-400">
+                            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                <i class="fa-solid fa-envelope text-sm"></i>
+                            </div>
                         </div>
-                        <button type="button" onclick="toggleLoginPassword()" 
-                                class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-emerald-700 focus:outline-none transition-colors">
-                            <i id="eyeIconLogin" class="fa-solid fa-eye text-sm"></i>
+                    </div>
+
+                    <div>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="block text-xs sm:text-sm font-medium text-slate-700">
+                                Password Portal <span class="text-red-500">*</span>
+                            </label>
+                            <button type="button" onclick="openForgotModal()" class="text-xs font-semibold text-emerald-600 hover:underline focus:outline-none">
+                                Lupa Password?
+                            </button>
+                        </div>
+                        <div class="relative">
+                            <input type="password" id="loginPassword" name="password" required placeholder="Masukkan password Anda..." 
+                                   class="input-glow w-full px-3.5 py-2.5 pl-10 pr-10 rounded-xl border border-slate-300 bg-white text-slate-900 text-sm font-normal focus:outline-none transition-all placeholder:text-slate-400">
+                            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                <i class="fa-solid fa-lock text-sm"></i>
+                            </div>
+                            <button type="button" onclick="toggleLoginPassword()" 
+                                    class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-emerald-700 focus:outline-none transition-colors">
+                                <i id="eyeIconLogin" class="fa-solid fa-eye text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="pt-2">
+                        <button type="submit" class="btn-press w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow-md hover:shadow-lg text-sm flex items-center justify-center gap-2 transition-all">
+                            <i class="fa-solid fa-right-to-bracket text-sm"></i> Masuk ke Portal Klien
                         </button>
                     </div>
+                </form>
+
+                <div class="mt-6 pt-4 border-t border-slate-100 text-center text-xs sm:text-sm text-slate-500">
+                    Belum mengajukan proyek? <a href="request.php" class="text-emerald-600 font-semibold hover:underline">Kirim Requirement Baru</a>
                 </div>
 
-                <div class="pt-2">
-                    <button type="submit" class="btn-press w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow-md hover:shadow-lg text-sm flex items-center justify-center gap-2 transition-all">
-                        <i class="fa-solid fa-right-to-bracket text-sm"></i> Masuk ke Portal Klien
-                    </button>
-                </div>
-            </form>
-
-            <div class="mt-6 pt-4 border-t border-slate-100 text-center text-xs sm:text-sm text-slate-500">
-                Belum mengajukan proyek? <a href="request.php" class="text-emerald-600 font-semibold hover:underline">Kirim Requirement Baru</a>
             </div>
         </div>
 
@@ -269,7 +284,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['forgot_password_acti
                 <input type="hidden" name="forgot_password_action" value="1">
 
                 <p class="text-slate-600 font-normal leading-relaxed">
-                    Masukkan email resmi terdaftar Anda. Kami akan mengirimkan link verifikasi khusus untuk mereset password Anda[cite: 28].
+                    Masukkan email resmi terdaftar Anda. Kami akan mengirimkan link verifikasi khusus untuk mereset password Anda.
                 </p>
 
                 <div>

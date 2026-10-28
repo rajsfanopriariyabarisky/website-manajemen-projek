@@ -1,5 +1,6 @@
 <?php
 session_start();
+date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../../config/database.php';
 
 // Proteksi Halaman: Wajib Login
@@ -78,15 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_project'])) {
         $stmtContract = $pdo->prepare("INSERT INTO contracts (project_id, nomor_kontrak, durasi_bulan, tanggal_mulai, tanggal_selesai, nilai_kontrak) VALUES (?, ?, ?, ?, ?, ?)");
         $stmtContract->execute([$newProjectId, $nomorKontrak, $durasi_bulan, $tanggal_mulai, $deadline, $budget]);
 
-        // 3. Auto-update status Requirement ke 'Proposal Sent' (BUKAN Deal / Accepted)
-        if ($origin_req_id > 0) {
-            $stmtUpdReq = $pdo->prepare("UPDATE client_requirements SET status = 'Proposal Sent' WHERE id = ?");
-            $stmtUpdReq->execute([$origin_req_id]);
-
-            // Pesan otomatis di Lobi Chat Klien
-            $stmtChatSys = $pdo->prepare("INSERT INTO deal_chats (requirement_id, sender_type, sender_name, message, admin_read, client_read, created_at) VALUES (?, 'admin', 'System CTC', ?, 1, 0, NOW())");
-            $stmtChatSys->execute([$origin_req_id, "Penawaran resmi proyek [ {$nama_projek} ] telah dibuat (Proposal Sent). Status proyek diset 'On Hold' hingga persetujuan Klien."]);
-        }
+        // KONTROL TERJAGA: Requirement status TETAP Under Review sampai admin secara eksplisit meninjau & mengirimkan Proposal via print_proposal.php
 
         header("Location: index.php?msg=created");
         exit;
@@ -204,7 +197,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     <!-- Alert Notifications -->
     <?php if (isset($_GET['msg']) && $_GET['msg'] === 'created'): ?>
         <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
-            <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i> Proyek baru berhasil ditambahkan! Status Kebutuhan Klien diperbarui menjadi Proposal Sent.
+            <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i> Proyek baru berhasil ditambahkan! Anda dapat meninjau proposal sebelum mengirimmnya ke Klien Portal.
         </div>
     <?php elseif (isset($_GET['msg']) && $_GET['msg'] === 'already_converted'): ?>
         <div class="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">

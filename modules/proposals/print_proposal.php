@@ -191,7 +191,6 @@ function terbilang($angka) {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <style>
-        /* CETAK FULL-BLEED TANPA MARGIN PUTIH */
         @page {
             size: A4 portrait;
             margin: 0 !important;
