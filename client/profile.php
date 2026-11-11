@@ -3,6 +3,14 @@ session_start();
 date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../config/database.php';
 
+// Guard Schema: Auto Migration Kolom phone & company_name pada Tabel clients
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN phone VARCHAR(50) NULL AFTER email");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN company_name VARCHAR(255) NULL AFTER phone");
+} catch (Exception $e) {}
+
 // Proteksi Sesi Login Client
 if (
     !isset($_SESSION['client_logged_in']) ||
@@ -13,27 +21,98 @@ if (
     exit;
 }
 
-$client_id    = intval($_SESSION['client_user_id']);
-$client_nama  = $_SESSION['client_nama'] ?? 'Klien';
-$client_email = $_SESSION['client_email'] ?? '';
+$client_id = intval($_SESSION['client_user_id']);
 
-// Fetch Data Detail Klien dari Database
+// AJAX Endpoint: Real-Time Sync Profil Klien tanpa Reload Page
+if (isset($_GET['ajax_sync']) && $_GET['ajax_sync'] == '1') {
+    header('Content-Type: application/json');
+    
+    $stmtC = $pdo->prepare("SELECT * FROM clients WHERE id = ? LIMIT 1");
+    $stmtC->execute([$client_id]);
+    $cData = $stmtC->fetch();
+
+    if (!$cData || (int)$cData['is_verified'] !== 1) {
+        unset(
+            $_SESSION['client_logged_in'],
+            $_SESSION['client_user_id'],
+            $_SESSION['client_nama'],
+            $_SESSION['client_email'],
+            $_SESSION['client_token']
+        );
+        echo json_encode(['success' => false, 'logged_out' => true]);
+        exit;
+    }
+
+    // Auto Sync Session
+    $_SESSION['client_nama']  = $cData['nama'];
+    $_SESSION['client_email'] = $cData['email'];
+
+    $phone_val   = !empty($cData['phone']) ? $cData['phone'] : '';
+    $company_val = !empty($cData['company_name']) ? $cData['company_name'] : '';
+
+    if (empty($phone_val) || empty($company_val)) {
+        $stmtReq = $pdo->prepare("SELECT client_phone, company_name FROM client_requirements WHERE client_id = ? OR LOWER(client_email) = LOWER(?) ORDER BY id DESC LIMIT 1");
+        $stmtReq->execute([$client_id, $cData['email']]);
+        $req_data = $stmtReq->fetch();
+
+        if (empty($phone_val) && !empty($req_data['client_phone'])) $phone_val = $req_data['client_phone'];
+        if (empty($company_val) && !empty($req_data['company_name'])) $company_val = $req_data['company_name'];
+    }
+
+    echo json_encode([
+        'success'      => true,
+        'nama'         => $cData['nama'],
+        'email'        => $cData['email'],
+        'phone'        => !empty($phone_val) ? $phone_val : '-',
+        'company_name' => !empty($company_val) ? $company_val : '-',
+        'created_at'   => date('d F Y - H:i', strtotime($cData['created_at'])) . ' WIB'
+    ]);
+    exit;
+}
+
+// Fetch Data Detail Klien dari Database Master clients
 $stmtClient = $pdo->prepare("SELECT * FROM clients WHERE id = ? LIMIT 1");
 $stmtClient->execute([$client_id]);
 $client_db = $stmtClient->fetch();
 
-if (!$client_db) {
+if (!$client_db || (int)$client_db['is_verified'] !== 1) {
+    unset(
+        $_SESSION['client_logged_in'],
+        $_SESSION['client_user_id'],
+        $_SESSION['client_nama'],
+        $_SESSION['client_email'],
+        $_SESSION['client_token']
+    );
     header('Location: login.php');
     exit;
 }
 
-// Fetch Data Nomor HP & Nama Perusahaan dari client_requirements
-$stmtReq = $pdo->prepare("SELECT client_phone, company_name FROM client_requirements WHERE client_id = ? OR LOWER(client_email) = LOWER(?) ORDER BY id DESC LIMIT 1");
-$stmtReq->execute([$client_id, $client_email]);
-$req_data = $stmtReq->fetch();
+// Update Sesi
+$client_nama  = $client_db['nama'];
+$client_email = $client_db['email'];
+$_SESSION['client_nama']  = $client_nama;
+$_SESSION['client_email'] = $client_email;
 
-$client_phone = !empty($req_data['client_phone']) ? $req_data['client_phone'] : '-';
-$company_name = !empty($req_data['company_name']) ? $req_data['company_name'] : '-';
+// Prioritas Utama: Ambil dari Master Tabel clients
+$client_phone = !empty($client_db['phone']) ? $client_db['phone'] : '';
+$company_name = !empty($client_db['company_name']) ? $client_db['company_name'] : '';
+
+// Fallback jika data master lama belum terisi: Ambil dari riwayat client_requirements
+if (empty($client_phone) || empty($company_name)) {
+    $stmtReq = $pdo->prepare("SELECT client_phone, company_name FROM client_requirements WHERE client_id = ? OR LOWER(client_email) = LOWER(?) ORDER BY id DESC LIMIT 1");
+    $stmtReq->execute([$client_id, $client_email]);
+    $req_data = $stmtReq->fetch();
+
+    if (empty($client_phone) && !empty($req_data['client_phone'])) {
+        $client_phone = $req_data['client_phone'];
+    }
+    if (empty($company_name) && !empty($req_data['company_name'])) {
+        $company_name = $req_data['company_name'];
+    }
+}
+
+$client_phone = !empty($client_phone) ? $client_phone : '-';
+$company_name = !empty($company_name) ? $company_name : '-';
 ?>
 
 <!DOCTYPE html>
@@ -96,10 +175,10 @@ $company_name = !empty($req_data['company_name']) ? $req_data['company_name'] : 
                     <i class="fa-solid fa-user-tie"></i>
                 </div>
                 <div>
-                    <h2 class="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                    <h2 id="profNamaHeader" class="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
                         <?= htmlspecialchars($client_db['nama']) ?>
                     </h2>
-                    <p class="text-xs text-slate-500 font-normal mt-0.5">
+                    <p id="profEmailHeader" class="text-xs text-slate-500 font-normal mt-0.5">
                         <?= htmlspecialchars($client_db['email']) ?>
                     </p>
                 </div>
@@ -115,13 +194,13 @@ $company_name = !empty($req_data['company_name']) ? $req_data['company_name'] : 
             <span>Informasi detail akun dikunci oleh sistem untuk menjaga privasi & validitas entitas klien.</span>
         </div>
 
-        <!-- Readonly Information Fields -->
+        <!-- Readonly Information Fields (Auto Real-Time Sync) -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 text-xs sm:text-sm">
 
             <!-- Nama Lengkap -->
             <div>
                 <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Nama Lengkap</label>
-                <div class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-semibold cursor-not-allowed select-none">
+                <div id="profNamaInput" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-semibold cursor-not-allowed select-none">
                     <?= htmlspecialchars($client_db['nama']) ?>
                 </div>
             </div>
@@ -129,7 +208,7 @@ $company_name = !empty($req_data['company_name']) ? $req_data['company_name'] : 
             <!-- Email Client -->
             <div>
                 <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Alamat Email</label>
-                <div class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-semibold cursor-not-allowed select-none break-all">
+                <div id="profEmailInput" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-semibold cursor-not-allowed select-none break-all">
                     <?= htmlspecialchars($client_db['email']) ?>
                 </div>
             </div>
@@ -137,7 +216,7 @@ $company_name = !empty($req_data['company_name']) ? $req_data['company_name'] : 
             <!-- Nomor Telepon -->
             <div>
                 <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Nomor Telepon / WhatsApp</label>
-                <div class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-semibold cursor-not-allowed select-none">
+                <div id="profPhoneInput" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-semibold cursor-not-allowed select-none">
                     <?= htmlspecialchars($client_phone) ?>
                 </div>
             </div>
@@ -145,7 +224,7 @@ $company_name = !empty($req_data['company_name']) ? $req_data['company_name'] : 
             <!-- Nama Perusahaan -->
             <div>
                 <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Nama Perusahaan / Instansi</label>
-                <div class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-semibold cursor-not-allowed select-none">
+                <div id="profCompanyInput" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-semibold cursor-not-allowed select-none">
                     <?= htmlspecialchars($company_name) ?>
                 </div>
             </div>
@@ -153,7 +232,7 @@ $company_name = !empty($req_data['company_name']) ? $req_data['company_name'] : 
             <!-- Tanggal Registrasi -->
             <div class="sm:col-span-2">
                 <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Terdaftar Sejak</label>
-                <div class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-semibold cursor-not-allowed select-none">
+                <div id="profCreatedAtInput" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-semibold cursor-not-allowed select-none">
                     <i class="fa-regular fa-calendar-check text-emerald-600 mr-2"></i>
                     <?= date('d F Y - H:i', strtotime($client_db['created_at'])) ?> WIB
                 </div>
@@ -172,6 +251,43 @@ $company_name = !empty($req_data['company_name']) ? $req_data['company_name'] : 
     </div>
 
 </main>
+
+<script>
+    function fetchProfileSync() {
+        fetch('profile.php?ajax_sync=1', { cache: 'no-store' })
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.logged_out) {
+                    window.location.href = 'login.php';
+                    return;
+                }
+
+                if (data && data.success) {
+                    const eHeaderNama = document.getElementById('profNamaHeader');
+                    const eHeaderEmail = document.getElementById('profEmailHeader');
+                    const eNama = document.getElementById('profNamaInput');
+                    const eEmail = document.getElementById('profEmailInput');
+                    const ePhone = document.getElementById('profPhoneInput');
+                    const eCompany = document.getElementById('profCompanyInput');
+                    const eCreated = document.getElementById('profCreatedAtInput');
+
+                    if (eHeaderNama) eHeaderNama.innerText = data.nama;
+                    if (eHeaderEmail) eHeaderEmail.innerText = data.email;
+                    if (eNama) eNama.innerText = data.nama;
+                    if (eEmail) eEmail.innerText = data.email;
+                    if (ePhone) ePhone.innerText = data.phone;
+                    if (eCompany) eCompany.innerText = data.company_name;
+                    if (eCreated) eCreated.innerHTML = `<i class="fa-regular fa-calendar-check text-emerald-600 mr-2"></i> ${data.created_at}`;
+                }
+            })
+            .catch(err => console.error('fetchProfileSync:', err));
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        fetchProfileSync();
+        setInterval(fetchProfileSync, 2000);
+    });
+</script>
 
 </body>
 </html>

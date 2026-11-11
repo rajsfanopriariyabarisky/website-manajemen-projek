@@ -3,6 +3,14 @@ session_start();
 date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../config/database.php';
 
+// Guard Schema: Auto Migration Kolom phone & company_name pada Tabel clients
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN phone VARCHAR(50) NULL AFTER email");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN company_name VARCHAR(255) NULL AFTER phone");
+} catch (Exception $e) {}
+
 if (file_exists(__DIR__ . '/mail.php')) {
     require_once __DIR__ . '/mail.php';
 }
@@ -75,13 +83,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($existing_client) {
                         $client_id          = $existing_client['id'];
                         $is_verified_status = (int)$existing_client['is_verified'];
-                        // Update nama & password jika akun sudah pernah ada
-                        $stmtUpd = $pdo->prepare("UPDATE clients SET nama = ?, password = ? WHERE id = ?");
-                        $stmtUpd->execute([$client_name, $hashed_password, $client_id]);
+                        // Update nama, password, phone, & company_name pada master tabel clients
+                        $stmtUpd = $pdo->prepare("UPDATE clients SET nama = ?, password = ?, phone = ?, company_name = ? WHERE id = ?");
+                        $stmtUpd->execute([$client_name, $hashed_password, $phone, $company_name, $client_id]);
                     } else {
-                        // Buat akun baru dengan is_verified = 0 (perlu verifikasi OTP awal)
-                        $stmtNewClient = $pdo->prepare("INSERT INTO clients (nama, email, password, is_verified) VALUES (?, ?, ?, 0)");
-                        $stmtNewClient->execute([$client_name, $client_email, $hashed_password]);
+                        // Buat akun baru dengan master phone & company_name
+                        $stmtNewClient = $pdo->prepare("INSERT INTO clients (nama, email, password, phone, company_name, is_verified) VALUES (?, ?, ?, ?, ?, 0)");
+                        $stmtNewClient->execute([$client_name, $client_email, $hashed_password, $phone, $company_name]);
                         $client_id          = $pdo->lastInsertId();
                         $is_verified_status = 0;
                     }
@@ -163,7 +171,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="icon" type="image/png" href="../assets/images/logo.png">
     <link rel="shortcut icon" type="image/png" href="../assets/images/logo.png">
 
-    <!-- Google Fonts: Plus Jakarta Sans -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -172,19 +179,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
-        body { 
-            font-family: 'Plus Jakarta Sans', sans-serif; 
-        }
-        .btn-press { 
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
-        }
-        .btn-press:active { 
-            transform: translateY(1px); 
-        }
-        .input-glow:focus { 
-            border-color: #059669; 
-            box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.12); 
-        }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .btn-press { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+        .btn-press:active { transform: translateY(1px); }
+        .input-glow:focus { border-color: #059669; box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.12); }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen py-8 px-4 selection:bg-emerald-600 selection:text-white flex items-center justify-center relative">
@@ -202,10 +200,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
         </div>
 
-        <!-- Card Form Utama Clean -->
+        <!-- Card Form Utama -->
         <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xl shadow-slate-200/60 p-6 sm:p-10">
 
-            <!-- Header Form Clean -->
             <div class="text-center mb-8 pb-6 border-b border-slate-100">
                 <img src="../assets/images/logo.png" alt="Logo PT. CTC" class="h-16 sm:h-20 w-auto mx-auto mb-3 object-contain">
 
@@ -218,7 +215,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </p>
             </div>
 
-            <!-- Pesan Sukses -->
             <?php if (!empty($success_msg)): ?>
                 <div class="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs sm:text-sm flex items-start gap-3 shadow-xs">
                     <i class="fa-solid fa-circle-check text-emerald-600 text-lg shrink-0 mt-0.5"></i>
@@ -229,7 +225,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             <?php endif; ?>
 
-            <!-- Pesan Error -->
             <?php if (!empty($error_msg)): ?>
                 <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs sm:text-sm flex items-start gap-3 shadow-xs">
                     <i class="fa-solid fa-circle-exclamation text-red-500 text-lg shrink-0 mt-0.5"></i>
@@ -365,7 +360,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                             <div>
                                 <label class="block text-xs sm:text-sm font-medium text-slate-700 mb-1.5">
-                                    Estimasi Anggaran / Budget (Rp)
+                                    Estimasi Anggaran / Budget (Rp) <span class="text-[11px] text-slate-400 font-normal">(Belum termasuk pajak)</span>
                                 </label>
                                 <div class="relative">
                                     <input type="text" id="budgetInput" name="budget" placeholder="100.000.000"
@@ -374,6 +369,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <i class="fa-solid fa-money-bill-wave text-sm"></i>
                                     </div>
                                 </div>
+                                <p class="text-[11px] text-slate-400 mt-1">*Harga belum termasuk pajak</p>
                             </div>
 
                             <div>
@@ -387,7 +383,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
 
-                <!-- Tombol Submit -->
                 <div class="pt-2">
                     <button type="submit" class="btn-press w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow-md hover:shadow-lg text-sm flex items-center justify-center gap-2 transition-all">
                         <i class="fa-solid fa-paper-plane text-sm"></i> Kirim Requirement

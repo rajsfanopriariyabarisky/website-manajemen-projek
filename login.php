@@ -253,16 +253,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['change_password_acti
                         </button>
                     </div>
                 </form>
-
-                <!-- Footer Info & Akses Ganti Password Mandiri -->
-                <div class="mt-6 pt-4 border-t border-slate-100 text-center space-y-2">
-                    <p class="text-xs text-slate-500 font-normal">
-                        Akun baru disetup dengan password bawaan?
-                    </p>
-                    <button type="button" onclick="openChangePwdModal()" class="btn-press px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl transition inline-flex items-center gap-1.5 shadow-2xs">
-                        <i class="fa-solid fa-key text-emerald-600 text-xs"></i> Pembaruan Password Mandiri
-                    </button>
-                </div>
             </div>
 
         </div>

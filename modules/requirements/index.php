@@ -9,9 +9,15 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// Pastikan kolom requirement_id ada di tabel projects untuk sinkronisasi
+// Guard Schema: Pastikan kolom requirement_id pada tabel projects & kolom master clients siap
 try {
     $pdo->exec("ALTER TABLE projects ADD COLUMN requirement_id INT NULL AFTER client_token");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN phone VARCHAR(50) NULL AFTER email");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN company_name VARCHAR(255) NULL AFTER phone");
 } catch (Exception $e) {}
 
 // Handle Hapus Requirement & File Fisik BRD
@@ -53,17 +59,22 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])
 require_once __DIR__ . '/../../includes/header.php';
 require_once __DIR__ . '/../../includes/sidebar.php';
 
-// FETCH DATA REQUIREMENT & TERHUBUNG DENGAN PROYEK & KONTRAK TERKAIT
+// FETCH DATA REQUIREMENT & TERHUBUNG DENGAN PROYEK + KONTRAK (Dengan GROUP BY Mencegah Duplikasi)
 $stmt = $pdo->query("
     SELECT cr.*, 
            p.id AS linked_project_id, 
            p.status AS linked_project_status,
+           p.budget AS proj_budget,
+           p.persen_pajak AS proj_persen_pajak,
+           p.nominal_pajak AS proj_nominal_pajak,
+           p.total_nilai AS proj_total_nilai,
            c_contract.id AS linked_contract_id
     FROM client_requirements cr 
     INNER JOIN clients c ON (cr.client_id = c.id OR LOWER(cr.client_email) = LOWER(c.email)) 
     LEFT JOIN projects p ON p.requirement_id = cr.id
     LEFT JOIN contracts c_contract ON c_contract.project_id = p.id
     WHERE c.is_verified = 1 
+    GROUP BY cr.id
     ORDER BY cr.created_at DESC
 ");
 $requirements = $stmt->fetchAll();
@@ -148,22 +159,22 @@ foreach ($requirements as $r) {
     <?php endif; ?>
 
     <!-- Metrics Stat Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
-        <div class="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:border-slate-300 transition">
             <span class="text-[10px] font-bold uppercase text-slate-400 tracking-wider">TOTAL PERMINTAAN</span>
-            <p class="text-xl font-bold text-slate-900 mt-1"><?= $totalReq ?></p>
+            <p class="text-xl sm:text-2xl font-bold text-slate-900 mt-1 font-mono"><?= number_format($totalReq) ?></p>
         </div>
-        <div class="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs">
+        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:border-blue-200 transition">
             <span class="text-[10px] font-bold uppercase text-blue-600 tracking-wider">UNDER REVIEW</span>
-            <p class="text-xl font-bold text-blue-600 mt-1"><?= $reviewReq ?></p>
+            <p class="text-xl sm:text-2xl font-bold text-blue-600 mt-1 font-mono"><?= number_format($reviewReq) ?></p>
         </div>
-        <div class="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs">
+        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:border-amber-200 transition">
             <span class="text-[10px] font-bold uppercase text-amber-600 tracking-wider">PROPOSAL SENT</span>
-            <p class="text-xl font-bold text-amber-600 mt-1"><?= $proposalReq ?></p>
+            <p class="text-xl sm:text-2xl font-bold text-amber-600 mt-1 font-mono"><?= number_format($proposalReq) ?></p>
         </div>
-        <div class="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs">
+        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:border-emerald-200 transition">
             <span class="text-[10px] font-bold uppercase text-emerald-600 tracking-wider">DEAL / ACCEPTED</span>
-            <p class="text-xl font-bold text-emerald-600 mt-1"><?= $dealReq ?></p>
+            <p class="text-xl sm:text-2xl font-bold text-emerald-600 mt-1 font-mono"><?= number_format($dealReq) ?></p>
         </div>
     </div>
 
@@ -192,61 +203,107 @@ foreach ($requirements as $r) {
     <!-- Data Table Container -->
     <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden">
         <div class="w-full overflow-x-auto">
-            <table class="w-full text-left border-collapse text-xs sm:text-sm table-fixed min-w-[1050px]">
+            <table class="w-full text-left border-collapse text-xs sm:text-sm min-w-[1000px]">
                 <thead>
                     <tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        <th class="py-3.5 px-4 w-[20%]">KLIEN & INSTANSI</th>
-                        <th class="py-3.5 px-4 w-[22%]">JUDUL PROYEK</th>
-                        <th class="py-3.5 px-4 w-[13%]">EST. BUDGET</th>
-                        <th class="py-3.5 px-4 w-[8%] text-center">BRD</th>
-                        <th class="py-3.5 px-4 w-[12%] text-center">STATUS</th>
-                        <th class="py-3.5 px-4 w-[25%] text-center">AKSES CEPAT (AKSI)</th>
+                        <th class="py-3.5 px-4">KLIEN & INSTANSI</th>
+                        <th class="py-3.5 px-4">JUDUL PROYEK</th>
+                        <th class="py-3.5 px-4 text-right">EST. BUDGET</th>
+                        <th class="py-3.5 px-4 text-right">PAJAK (PPN)</th>
+                        <th class="py-3.5 px-4 text-center">LAMPIRAN</th>
+                        <th class="py-3.5 px-4 text-center">STATUS</th>
+                        <th class="py-3.5 px-4 text-center whitespace-nowrap">AKSES CEPAT (AKSI)</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100" id="reqTableBody">
                     <?php if (empty($requirements)): ?>
                         <tr>
-                            <td colspan="6" class="p-8 text-center text-slate-400 font-normal">
+                            <td colspan="7" class="p-8 text-center text-slate-400 font-normal">
                                 Belum ada pengajuan requirement klien yang terverifikasi.
                             </td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($requirements as $r): ?>
                             <?php
-                                $brd_url    = resolveBrdUrl($r['file_attachment'] ?? '');
-                                $unread     = (int) ($unreadMap[$r['id']] ?? 0);
-                                $hasProject = !empty($r['linked_project_id']);
+                                $brd_url     = resolveBrdUrl($r['file_attachment'] ?? '');
+                                $unread      = (int) ($unreadMap[$r['id']] ?? 0);
+                                $hasProject  = !empty($r['linked_project_id']);
                                 $hasContract = !empty($r['linked_contract_id']);
+                                $status      = $r['status'] ?? 'Under Review';
+
+                                $rowClass     = "hover:bg-slate-50/80 border-l-4 border-l-transparent";
+                                $badgeClass   = "bg-slate-50 text-slate-600 border-slate-200";
+                                $badgeText    = htmlspecialchars($status);
+                                $hasPulseDot  = false;
+
+                                if ($status === 'Under Review') {
+                                    $rowClass     = "bg-rose-50/90 hover:bg-rose-100/80 border-l-4 border-l-rose-500";
+                                    $badgeClass   = "bg-rose-100 text-rose-700 border-rose-300 font-extrabold shadow-2xs";
+                                    $badgeText    = "UNDER REVIEW";
+                                    $hasPulseDot  = true;
+                                } elseif ($status === 'Proposal Sent') {
+                                    $rowClass     = "bg-amber-50/20 hover:bg-amber-50/60 border-l-4 border-l-amber-400";
+                                    $badgeClass   = "bg-amber-50 text-amber-800 border-amber-200 font-bold";
+                                    $badgeText    = "PROPOSAL SENT";
+                                } elseif ($status === 'Deal / Accepted') {
+                                    $rowClass     = "bg-emerald-50/50 hover:bg-emerald-100/60 border-l-4 border-l-emerald-500";
+                                    $badgeClass   = "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold";
+                                    $badgeText    = "DEAL / ACCEPTED";
+                                } elseif ($status === 'Rejected') {
+                                    $rowClass     = "bg-slate-100/80 hover:bg-slate-200/60 border-l-4 border-l-slate-400 opacity-75";
+                                    $badgeClass   = "bg-slate-200 text-slate-700 border-slate-300 font-bold";
+                                    $badgeText    = "REJECTED";
+                                }
+
+                                $pctPajak = isset($r['proj_persen_pajak']) && floatval($r['proj_persen_pajak']) > 0 ? floatval($r['proj_persen_pajak']) : 11.00;
+                                $nomPajak = floatval($r['proj_nominal_pajak'] ?? 0);
+                                if ($hasProject && $nomPajak <= 0 && isset($r['proj_budget']) && floatval($r['proj_budget']) > 0) {
+                                    $nomPajak = round((floatval($r['proj_budget']) * $pctPajak) / 100, 2);
+                                }
                             ?>
-                            <tr class="hover:bg-slate-50/70 transition req-row align-middle"
+                            <tr class="<?= $rowClass ?> transition-all duration-150 req-row align-middle"
                                 data-search="<?= htmlspecialchars(strtolower(($r['client_name'] ?? '') . ' ' . ($r['client_email'] ?? '') . ' ' . ($r['title'] ?? ''))) ?>"
-                                data-status="<?= htmlspecialchars($r['status'] ?? 'Under Review') ?>">
+                                data-status="<?= htmlspecialchars($status) ?>">
 
                                 <!-- Klien & Instansi -->
-                                <td class="py-3.5 px-4">
-                                    <p class="font-semibold text-slate-900 text-xs sm:text-sm truncate"><?= htmlspecialchars($r['client_name'] ?? '-') ?></p>
+                                <td class="py-3.5 px-4 max-w-[220px]">
+                                    <p class="font-bold text-slate-900 text-xs sm:text-sm truncate mb-0.5"><?= htmlspecialchars($r['client_name'] ?? '-') ?></p>
                                     <p class="text-xs text-slate-400 font-normal truncate"><?= htmlspecialchars($r['client_email'] ?? '-') ?></p>
-                                    <p class="text-[11px] text-emerald-700 font-semibold truncate mt-0.5"><?= htmlspecialchars($r['company_name'] ?? 'PT. / Individual') ?></p>
+                                    <p class="text-[11px] text-teal-700 font-semibold truncate mt-0.5"><?= htmlspecialchars($r['company_name'] ?? 'PT. / Individual') ?></p>
                                 </td>
 
                                 <!-- Judul Proyek -->
-                                <td class="py-3.5 px-4">
-                                    <p class="font-medium text-slate-800 leading-snug truncate"><?= htmlspecialchars($r['title'] ?? '-') ?></p>
-                                    <p class="text-xs text-slate-400 font-normal mt-0.5">
-                                        <i class="fa-regular fa-clock mr-1"></i><?= !empty($r['created_at']) ? date('d M Y', strtotime($r['created_at'])) : '-' ?>
+                                <td class="py-3.5 px-4 max-w-[250px]">
+                                    <p class="font-semibold text-slate-800 leading-snug truncate mb-0.5" title="<?= htmlspecialchars($r['title'] ?? '-') ?>"><?= htmlspecialchars($r['title'] ?? '-') ?></p>
+                                    <p class="text-xs text-slate-400 font-normal flex items-center gap-1">
+                                        <i class="fa-regular fa-clock text-[10px]"></i> <?= !empty($r['created_at']) ? date('d M Y', strtotime($r['created_at'])) : '-' ?>
                                     </p>
                                 </td>
 
                                 <!-- Est. Budget -->
-                                <td class="py-3.5 px-4 font-mono font-semibold text-slate-800 text-xs sm:text-sm truncate">
+                                <td class="py-3.5 px-4 text-right font-mono font-bold text-slate-900 text-xs sm:text-sm whitespace-nowrap">
                                     Rp <?= number_format($r['budget_estimation'] ?? 0, 0, ',', '.') ?>
                                 </td>
 
+                                <!-- Kolom Pajak Dinamis -->
+                                <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                    <?php if ($hasProject): ?>
+                                        <p class="font-mono font-bold text-amber-600 text-xs sm:text-sm">
+                                            Rp <?= number_format($nomPajak, 0, ',', '.') ?>
+                                        </p>
+                                        <span class="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded inline-block mt-0.5">
+                                            PPN <?= number_format($pctPajak, 1) ?>%
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="block text-center text-slate-400 font-normal italic text-xs" title="Belum dikonversi ke proyek">-</span>
+                                    <?php endif; ?>
+                                </td>
+
                                 <!-- Dokumen BRD -->
-                                <td class="py-3.5 px-4 text-center">
+                                <td class="py-3.5 px-4 text-center whitespace-nowrap">
                                     <?php if ($brd_url !== ''): ?>
-                                        <a href="<?= $brd_url ?>" target="_blank" class="btn-press px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-lg text-xs font-semibold hover:bg-emerald-100 transition inline-flex items-center gap-1 shadow-2xs" title="Unduh BRD">
-                                            <i class="fa-solid fa-file-pdf text-emerald-600"></i> BRD
+                                        <a href="<?= $brd_url ?>" target="_blank" class="btn-press px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-semibold hover:bg-emerald-100 transition inline-flex items-center gap-1 shadow-2xs" title="Unduh BRD">
+                                            <i class="fa-solid fa-file-pdf text-emerald-600"></i> Dokumen
                                         </a>
                                     <?php else: ?>
                                         <span class="text-slate-400 italic text-xs font-normal">-</span>
@@ -254,68 +311,65 @@ foreach ($requirements as $r) {
                                 </td>
 
                                 <!-- Status Badge -->
-                                <td class="py-3.5 px-4 text-center">
-                                    <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase inline-block border tracking-wider whitespace-nowrap
-                                        <?php
-                                            switch($r['status']) {
-                                                case 'Under Review': echo 'bg-blue-50 text-blue-700 border-blue-200'; break;
-                                                case 'Proposal Sent': echo 'bg-amber-50 text-amber-800 border-amber-200'; break;
-                                                case 'Deal / Accepted': echo 'bg-emerald-50 text-emerald-700 border-emerald-200'; break;
-                                                case 'Rejected': echo 'bg-slate-100 text-slate-600 border-slate-200'; break;
-                                                default: echo 'bg-slate-50 text-slate-600 border-slate-200';
-                                            }
-                                        ?>">
-                                        <?= htmlspecialchars($r['status'] ?? 'Under Review') ?>
+                                <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                    <span class="px-2.5 py-1 rounded-lg text-[10px] uppercase inline-flex items-center gap-1.5 border tracking-wider <?= $badgeClass ?>">
+                                        <?php if ($hasPulseDot): ?>
+                                            <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                                        <?php endif; ?>
+                                        <?= $badgeText ?>
                                     </span>
                                 </td>
 
-                                <!-- Akses Cepat (Aksi Gercep Admin) -->
-                                <td class="py-3.5 px-4 text-center">
-                                    <div class="flex items-center justify-center flex-wrap gap-1.5">
+                                <!-- Akses Cepat (AKSI) -->
+                                <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                    <div class="inline-flex items-center justify-center gap-1.5">
                                         
-                                        <!-- 1. Detail & Chat Lobby -->
-                                        <a href="detail.php?id=<?= $r['id'] ?>" class="btn-press relative px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl transition inline-flex items-center gap-1 shadow-xs" title="Detail Spec & Chat Lobby">
+                                        <!-- Detail & Chat Lobby -->
+                                        <a href="detail.php?id=<?= $r['id'] ?>" class="btn-press relative px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl transition inline-flex items-center gap-1.5 shadow-xs" title="Detail Spec & Chat Lobby">
                                             <i class="fa-solid fa-comments text-xs"></i> Chat
                                             <?php if ($unread > 0): ?>
                                                 <span class="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold min-w-[16px] h-[16px] px-1 rounded-full flex items-center justify-center border border-white animate-pulse"><?= $unread ?></span>
                                             <?php endif; ?>
                                         </a>
 
-                                        <?php if ($hasProject): ?>
-                                            <!-- 2. Proposal (SPH) Quick Action -->
-                                            <a href="../proposals/print_proposal.php?project_id=<?= $r['linked_project_id'] ?>" target="_blank" class="btn-press px-2.5 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-xs font-bold transition inline-flex items-center gap-1" title="Tinjau & Kirim Surat Penawaran (SPH)">
-                                                <i class="fa-solid fa-file-signature text-xs"></i> SPH
+                                        <?php if ($status === 'Rejected'): ?>
+                                            <a href="index.php?action=delete&id=<?= $r['id'] ?>" onclick="return confirm('Pengajuan ini berstatus Rejected. Yakin ingin menghapus data ini beserta seluruh catatan negosiasinya?')" 
+                                               class="btn-press px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-semibold text-xs rounded-xl transition inline-flex items-center gap-1 shadow-xs" title="Hapus Data Rejected">
+                                                <i class="fa-solid fa-trash-can text-xs"></i> Hapus
                                             </a>
-
-                                            <!-- 3. Contract (SPK) Quick Action -->
-                                            <?php if ($hasContract): ?>
-                                                <a href="../contracts/print_pdf.php?id=<?= $r['linked_contract_id'] ?>" target="_blank" class="btn-press px-2.5 py-1.5 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-xs font-bold transition inline-flex items-center gap-1" title="Tinjau & Kirim Kontrak SPK">
-                                                    <i class="fa-solid fa-file-contract text-xs"></i> SPK
+                                        <?php else: ?>
+                                            <?php if ($hasProject): ?>
+                                                <a href="../proposals/print_proposal.php?project_id=<?= $r['linked_project_id'] ?>" target="_blank" class="btn-press px-2.5 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-xs font-bold transition inline-flex items-center gap-1" title="Tinjau & Kirim Surat Penawaran (SPH)">
+                                                    <i class="fa-solid fa-file-signature text-xs"></i>
                                                 </a>
+
+                                                <?php if ($hasContract): ?>
+                                                    <a href="../contracts/print_pdf.php?id=<?= $r['linked_contract_id'] ?>" target="_blank" class="btn-press px-2.5 py-1.5 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-xs font-bold transition inline-flex items-center gap-1" title="Tinjau & Kirim Kontrak SPK">
+                                                        <i class="fa-solid fa-file-contract text-xs"></i>
+                                                    </a>
+                                                <?php else: ?>
+                                                    <a href="../contracts/generate.php?project_id=<?= $r['linked_project_id'] ?>" class="btn-press px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition inline-flex items-center gap-1 shadow-xs" title="Buat Kontrak SPK Baru">
+                                                        <i class="fa-solid fa-plus text-[10px]"></i> SPK
+                                                    </a>
+                                                <?php endif; ?>
+
+                                                <a href="../projects/detail.php?id=<?= $r['linked_project_id'] ?>" class="btn-press p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 rounded-xl text-xs font-semibold inline-flex items-center justify-center" title="Lihat Workspace Proyek">
+                                                    <i class="fa-solid fa-folder-open"></i>
+                                                </a>
+
                                             <?php else: ?>
-                                                <a href="../contracts/generate.php?project_id=<?= $r['linked_project_id'] ?>" class="btn-press px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition inline-flex items-center gap-1 shadow-xs" title="Buat Kontrak SPK Baru">
-                                                    <i class="fa-solid fa-plus text-[10px]"></i> SPK
+                                                <a href="../projects/index.php?convert_req=1&req_id=<?= $r['id'] ?>&client_name=<?= urlencode($r['client_name']) ?>&title=<?= urlencode($r['title']) ?>&budget=<?= urlencode($r['budget_estimation']) ?>" 
+                                                   class="btn-press px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl transition inline-flex items-center gap-1.5 shadow-xs" title="Konversi Kebutuhan Klien ke Proyek Aktif">
+                                                    <i class="fa-solid fa-wand-magic-sparkles text-xs"></i> Convert
                                                 </a>
                                             <?php endif; ?>
 
-                                            <!-- 4. Proyek Detail Link -->
-                                            <a href="../projects/detail.php?id=<?= $r['linked_project_id'] ?>" class="btn-press p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 rounded-xl text-xs font-semibold" title="Lihat Workspace Proyek">
-                                                <i class="fa-solid fa-folder-open"></i>
-                                            </a>
-
-                                        <?php else: ?>
-                                            <!-- Convert to Active Project -->
-                                            <a href="../projects/index.php?convert_req=1&req_id=<?= $r['id'] ?>&client_name=<?= urlencode($r['client_name']) ?>&title=<?= urlencode($r['title']) ?>&budget=<?= urlencode($r['budget_estimation']) ?>" 
-                                               class="btn-press px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl transition inline-flex items-center gap-1 shadow-xs" title="Konversi Kebutuhan Klien ke Proyek Aktif">
-                                                <i class="fa-solid fa-wand-magic-sparkles text-xs"></i> Convert
+                                            <a href="index.php?action=delete&id=<?= $r['id'] ?>" onclick="return confirm('Yakin ingin menghapus data requirement ini beserta obrolan negosiasinya?')" 
+                                               class="btn-press p-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl transition inline-flex items-center justify-center" title="Hapus Data">
+                                                <i class="fa-solid fa-trash-can text-xs"></i>
                                             </a>
                                         <?php endif; ?>
 
-                                        <!-- Hapus Requirement -->
-                                        <a href="index.php?action=delete&id=<?= $r['id'] ?>" onclick="return confirm('Yakin ingin menghapus data requirement ini beserta obrolan negosiasinya?')" 
-                                           class="btn-press p-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl transition inline-flex items-center justify-center" title="Hapus Data">
-                                            <i class="fa-solid fa-trash-can text-xs"></i>
-                                        </a>
                                     </div>
                                 </td>
                             </tr>

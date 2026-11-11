@@ -1,5 +1,6 @@
 <?php
 session_start();
+date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/config/database.php';
 
 // 1. Proteksi Wajib Login
@@ -14,49 +15,104 @@ if (strtolower($_SESSION['role'] ?? '') !== 'admin') {
     exit;
 }
 
-// Fetch Ringkasan Statistik Utama
-$totalProjects = $pdo->query("SELECT COUNT(*) FROM projects")->fetchColumn() ?? 0;
-$totalBudget   = $pdo->query("SELECT SUM(budget) FROM projects")->fetchColumn() ?? 0;
+// Auto-Migration Schema: Pastikan kolom pajak pada tabel projects siap digunakan
+try {
+    $pdo->exec("ALTER TABLE projects ADD COLUMN persen_pajak DECIMAL(5,2) DEFAULT 11.00 AFTER budget");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE projects ADD COLUMN nominal_pajak DECIMAL(15,2) DEFAULT 0.00 AFTER persen_pajak");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE projects ADD COLUMN total_nilai DECIMAL(15,2) DEFAULT 0.00 AFTER nominal_pajak");
+} catch (Exception $e) {}
 
-// Perhitungan Realisasi Biaya Dinamis dari Tabel Expenses
-$realisasiBiaya = $pdo->query("SELECT SUM(jumlah_biaya) FROM expenses")->fetchColumn() ?? 0; 
-$profitMargin   = $totalBudget > 0 ? round((($totalBudget - $realisasiBiaya) / $totalBudget) * 100, 1) : 0;
-$profitRp       = $totalBudget - $realisasiBiaya;
+// Fetch Ringkasan Statistik Utama (dengan Safe Fallback & Perhitungan Inc. PPN)
+try {
+    $totalProjects     = (int)($pdo->query("SELECT COUNT(*) FROM projects")->fetchColumn() ?? 0);
+    $totalBudget       = (float)($pdo->query("SELECT COALESCE(SUM(budget), 0) FROM projects")->fetchColumn() ?? 0);
+    $totalNilaiKontrak = (float)($pdo->query("SELECT COALESCE(SUM(COALESCE(NULLIF(total_nilai, 0), budget + ROUND((budget * COALESCE(NULLIF(persen_pajak, 0), 11.00)) / 100, 2))), 0) FROM projects")->fetchColumn() ?? 0);
+} catch (Exception $e) {
+    $totalProjects     = 0;
+    $totalBudget       = 0.0;
+    $totalNilaiKontrak = 0.0;
+}
 
-// Metrik Tambahan Portofolio Keuangan & Status Proyek
-$realizedRevenue = $pdo->query("SELECT COALESCE(SUM(jumlah_tagihan), 0) FROM invoices WHERE status = 'Paid'")->fetchColumn() ?? 0;
-$unpaidRevenue   = $pdo->query("SELECT COALESCE(SUM(jumlah_tagihan), 0) FROM invoices WHERE status != 'Paid'")->fetchColumn() ?? 0;
+// Perhitungan Realisasi Biaya Dinamis dari Tabel Expenses (Safe Exec)
+try {
+    $realisasiBiaya = (float)($pdo->query("SELECT COALESCE(SUM(jumlah_biaya), 0) FROM expenses")->fetchColumn() ?? 0);
+} catch (Exception $e) {
+    $realisasiBiaya = 0.0;
+}
 
-$completedProjects  = $pdo->query("SELECT COUNT(*) FROM projects WHERE status = 'Completed'")->fetchColumn() ?? 0;
-$inProgressProjects = $pdo->query("SELECT COUNT(*) FROM projects WHERE status = 'In Progress'")->fetchColumn() ?? 0;
-$onHoldProjects     = $pdo->query("SELECT COUNT(*) FROM projects WHERE status IN ('On Hold', 'Planning')")->fetchColumn() ?? 0;
+// Metrik Arus Kas & Revenue (Inc. PPN)
+try {
+    $realizedRevenue = (float)($pdo->query("SELECT COALESCE(SUM(COALESCE(NULLIF(total_tagihan, 0), jumlah_tagihan + ROUND((jumlah_tagihan * COALESCE(NULLIF(persen_pajak, 0), 11.00)) / 100, 2))), 0) FROM invoices WHERE LOWER(status) = 'paid'")->fetchColumn() ?? 0);
+} catch (Exception $e) {
+    $realizedRevenue = 0.0;
+}
+
+// Piutang Klien (Inc. PPN): Total Kontrak Inc PPN dikurangi Realized Paid Inc PPN
+$unpaidRevenue = max(0, $totalNilaiKontrak - $realizedRevenue);
+
+// Profit Realized & Profit Margin
+$profitRp     = $realizedRevenue - $realisasiBiaya;
+$profitMargin = $totalNilaiKontrak > 0 ? round((($totalNilaiKontrak - $realisasiBiaya) / $totalNilaiKontrak) * 100, 1) : 0;
+
+try {
+    $completedProjects  = (int)($pdo->query("SELECT COUNT(*) FROM projects WHERE status = 'Completed'")->fetchColumn() ?? 0);
+    $inProgressProjects = (int)($pdo->query("SELECT COUNT(*) FROM projects WHERE status = 'In Progress'")->fetchColumn() ?? 0);
+    $onHoldProjects     = (int)($pdo->query("SELECT COUNT(*) FROM projects WHERE status IN ('On Hold', 'Planning')")->fetchColumn() ?? 0);
+} catch (Exception $e) {
+    $completedProjects  = 0;
+    $inProgressProjects = 0;
+    $onHoldProjects     = 0;
+}
 
 // Perhitungan Persentase Proyek Selesai
-$completionPercentage = $totalProjects > 0 ? round(($completedProjects / $totalProjects) * 100) : 0;
+$completionPercentage = $totalProjects > 0 ? min(100, round(($completedProjects / $totalProjects) * 100)) : 0;
 
-// 3. LOGIKA PAGINATION PROYEK
+// 3. LOGIKA PAGINATION PROYEK YANG AMAN
 $limit = 5; // Maksimal 5 proyek per halaman
-$page  = isset($_GET['page']) && is_numeric($_GET['page']) ? (int)$_GET['page'] : 1;
-if ($page < 1) $page = 1;
-
 $totalPages = $totalProjects > 0 ? (int)ceil($totalProjects / $limit) : 1;
+
+$page = isset($_GET['page']) && is_numeric($_GET['page']) ? (int)$_GET['page'] : 1;
+if ($page < 1) $page = 1;
 if ($page > $totalPages) $page = $totalPages;
 
-$offset = ($page - 1) * $limit;
+$offset = max(0, ($page - 1) * $limit);
 
-// Fetch Daftar Proyek Terbatas per Halaman
-$stmtProjects = $pdo->prepare("SELECT * FROM projects ORDER BY created_at DESC LIMIT :limit OFFSET :offset");
-$stmtProjects->bindValue(':limit', $limit, PDO::PARAM_INT);
-$stmtProjects->bindValue(':offset', $offset, PDO::PARAM_INT);
-$stmtProjects->execute();
-$projects = $stmtProjects->fetchAll();
+// Fetch Daftar Proyek Terbatas per Halaman (Include Perhitungan Nilai Inc PPN)
+try {
+    $stmtProjects = $pdo->prepare("
+        SELECT p.*, 
+               COALESCE(NULLIF(p.persen_pajak, 0), 11.00) AS persen_pajak_final,
+               COALESCE(NULLIF(p.total_nilai, 0), p.budget + ROUND((p.budget * COALESCE(NULLIF(p.persen_pajak, 0), 11.00)) / 100, 2)) AS total_nilai_final 
+        FROM projects p 
+        ORDER BY p.id DESC 
+        LIMIT :limit OFFSET :offset
+    ");
+    $stmtProjects->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $stmtProjects->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmtProjects->execute();
+    $projects = $stmtProjects->fetchAll();
+} catch (Exception $e) {
+    $projects = [];
+}
 
 require_once __DIR__ . '/includes/header.php';
 require_once __DIR__ . '/includes/sidebar.php';
 ?>
 
+<!-- Google Fonts: Plus Jakarta Sans -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
 <style>
-    /* Custom Micro-Animations & Glow Effects */
+    body, input, select, button, h1, h2, h3, h4, h5, h6 { 
+        font-family: 'Plus Jakarta Sans', sans-serif !important; 
+    }
+
     .btn-press {
         transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, box-shadow 0.2s ease;
         will-change: transform;
@@ -78,10 +134,14 @@ require_once __DIR__ . '/includes/sidebar.php';
         background: radial-gradient(circle at 85% 20%, rgba(16, 185, 129, 0.22) 0%, transparent 60%);
     }
 
-    /* Custom Progress Bar Motion */
     .progress-bar-fill {
         transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 </style>
 
 <main class="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto w-full min-w-0 bg-[#f8fafc] text-slate-800 font-sans selection:bg-emerald-600 selection:text-white">
@@ -115,14 +175,12 @@ require_once __DIR__ . '/includes/sidebar.php';
 
         <!-- Action Buttons / Quick Link Navigation -->
         <div class="shrink-0 relative z-10 flex items-center gap-3 flex-wrap sm:flex-nowrap">
-            <!-- Tombol Tambah Proyek Baru (Warna Putih Bersih + Teks Hijau Emerald) -->
             <a href="modules/projects/index.php" 
                class="btn-press px-4 py-2.5 bg-white hover:bg-emerald-50 text-emerald-950 font-extrabold rounded-2xl text-xs transition shadow-md shadow-emerald-950/30 flex items-center justify-center gap-2 border border-white/40">
                 <i class="fa-solid fa-plus text-xs text-emerald-600"></i>
                 <span>Tambah Proyek Baru</span>
             </a>
             
-            <!-- Tombol Laporan Keuangan (Semi-Transparent White) -->
             <a href="modules/reports/index.php" 
                class="btn-press px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-2xl text-xs backdrop-blur-md transition border border-white/20 flex items-center justify-center gap-2">
                 <i class="fa-solid fa-chart-line text-xs text-emerald-300"></i>
@@ -159,23 +217,23 @@ require_once __DIR__ . '/includes/sidebar.php';
             </div>
         </div>
 
-        <!-- 2. Total Budget / Nilai Kontrak -->
+        <!-- 2. Total Budget / Nilai Kontrak (Inc. PPN) -->
         <div class="card-dashboard bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs hover:border-emerald-300">
             <div class="flex justify-between items-start mb-3">
                 <div>
-                    <span class="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">TOTAL ANGGARAN</span>
-                    <span class="text-[11px] text-slate-500 font-medium">Nilai akumulasi kontrak</span>
+                    <span class="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">TOTAL NILAI KONTRAK</span>
+                    <span class="text-[11px] text-slate-500 font-medium">Termasuk PPN</span>
                 </div>
                 <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-base shrink-0 border border-blue-100">
                     <i class="fa-solid fa-vault"></i>
                 </div>
             </div>
             <div>
-                <div class="text-xl sm:text-2xl font-extrabold text-slate-900 font-mono tracking-tight truncate" title="Rp <?= number_format($totalBudget, 0, ',', '.') ?>">
-                    Rp <?= number_format($totalBudget, 0, ',', '.') ?>
+                <div class="text-xl sm:text-2xl font-extrabold text-slate-900 font-mono tracking-tight truncate" title="Rp <?= number_format($totalNilaiKontrak, 0, ',', '.') ?>">
+                    Rp <?= number_format($totalNilaiKontrak, 0, ',', '.') ?>
                 </div>
-                <div class="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-100 text-[11px] text-blue-600 font-semibold">
-                    <i class="fa-solid fa-file-contract text-[10px]"></i> Estimasi total pengerjaan
+                <div class="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-100 text-[11px] text-slate-500 font-medium truncate">
+                    <span>Subtotal DPP: <strong class="text-slate-800">Rp <?= number_format($totalBudget, 0, ',', '.') ?></strong></span>
                 </div>
             </div>
         </div>
@@ -206,7 +264,7 @@ require_once __DIR__ . '/includes/sidebar.php';
             <div class="flex justify-between items-start mb-3">
                 <div>
                     <span class="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">MARGIN PROFIT</span>
-                    <span class="text-[11px] text-slate-500 font-medium">Estimasi sisa anggaran</span>
+                    <span class="text-[11px] text-slate-500 font-medium">Rasio efisiensi biaya</span>
                 </div>
                 <div class="w-10 h-10 rounded-xl <?= $profitMargin >= 0 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100' ?> flex items-center justify-center text-base shrink-0 border">
                     <i class="fa-solid fa-chart-pie"></i>
@@ -220,7 +278,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                     </span>
                 </div>
                 <div class="mt-2 pt-2 border-t border-slate-100 text-[11px] <?= $profitRp >= 0 ? 'text-emerald-700' : 'text-red-600' ?> font-bold truncate">
-                    Keuntungan: Rp <?= number_format($profitRp, 0, ',', '.') ?>
+                    Profit Real (Kas): Rp <?= number_format($profitRp, 0, ',', '.') ?>
                 </div>
             </div>
         </div>
@@ -230,13 +288,13 @@ require_once __DIR__ . '/includes/sidebar.php';
     <!-- SEKSI ANALITIK DETIL & AKSES MODUL -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         
-        <!-- Analytics Card 1: Arus Kas Realized vs Piutang -->
+        <!-- Analytics Card 1: Arus Kas Realized vs Piutang (Inc. PPN) -->
         <div class="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
             <div>
                 <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
                     <div>
                         <h3 class="text-xs font-extrabold uppercase text-slate-900 tracking-wider">ARUS KAS & BILLING</h3>
-                        <p class="text-[11px] text-slate-400">Realisasi pembayaran invoice klien</p>
+                        <p class="text-[11px] text-slate-400">Realisasi pembayaran invoice klien (Inc. PPN)</p>
                     </div>
                     <div class="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs border border-emerald-100">
                         <i class="fa-solid fa-wallet"></i>
@@ -244,11 +302,11 @@ require_once __DIR__ . '/includes/sidebar.php';
                 </div>
                 <div class="space-y-3 my-2">
                     <div class="p-3 bg-emerald-50/60 rounded-xl border border-emerald-100">
-                        <span class="text-[10px] font-bold text-emerald-800 uppercase block mb-0.5">Dana Masuk (Invoice Terbayar / Paid)</span>
+                        <span class="text-[10px] font-bold text-emerald-800 uppercase block mb-0.5">Dana Masuk (Paid Inc. PPN)</span>
                         <span class="text-base font-extrabold text-emerald-700 font-mono">Rp <?= number_format($realizedRevenue, 0, ',', '.') ?></span>
                     </div>
                     <div class="p-3 bg-amber-50/60 rounded-xl border border-amber-100">
-                        <span class="text-[10px] font-bold text-amber-800 uppercase block mb-0.5">Piutang Klien (Invoice Belum Lunas)</span>
+                        <span class="text-[10px] font-bold text-amber-800 uppercase block mb-0.5">Piutang Klien (Unpaid Inc. PPN)</span>
                         <span class="text-base font-extrabold text-amber-700 font-mono">Rp <?= number_format($unpaidRevenue, 0, ',', '.') ?></span>
                     </div>
                 </div>
@@ -370,7 +428,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                     <tr class="bg-slate-50 text-slate-400 uppercase font-extrabold text-[10px] tracking-wider border-b border-slate-200">
                         <th class="py-3.5 px-4">Nama Proyek</th>
                         <th class="py-3.5 px-4">Klien</th>
-                        <th class="py-3.5 px-4">Anggaran Kontrak</th>
+                        <th class="py-3.5 px-4">Nilai Kontrak (Inc. PPN)</th>
                         <th class="py-3.5 px-4">Tenggat Waktu (Deadline)</th>
                         <th class="py-3.5 px-4 text-center">Status</th>
                     </tr>
@@ -386,7 +444,10 @@ require_once __DIR__ . '/includes/sidebar.php';
                             </td>
                         </tr>
                     <?php else: ?>
-                        <?php foreach ($projects as $p): ?>
+                        <?php foreach ($projects as $p): 
+                            $tot_val = floatval($p['total_nilai_final'] ?? 0);
+                            $pct_tax = floatval($p['persen_pajak_final'] ?? 11);
+                        ?>
                             <tr class="hover:bg-slate-50/80 transition-colors">
                                 <td class="py-3.5 px-4 font-bold text-slate-900">
                                     <a href="modules/projects/detail.php?id=<?= $p['id'] ?>" class="hover:text-emerald-700 transition flex items-center gap-2.5">
@@ -397,12 +458,13 @@ require_once __DIR__ . '/includes/sidebar.php';
                                     </a>
                                 </td>
                                 <td class="py-3.5 px-4 text-slate-600 font-medium"><?= htmlspecialchars($p['klien']) ?></td>
-                                <td class="py-3.5 px-4 font-bold font-mono text-slate-800">
-                                    Rp <?= number_format($p['budget'], 0, ',', '.') ?>
+                                <td class="py-3.5 px-4 font-bold font-mono text-emerald-700">
+                                    Rp <?= number_format($tot_val, 0, ',', '.') ?>
+                                    <span class="block text-[10px] text-amber-700 font-semibold font-sans">(Inc. PPN <?= number_format($pct_tax, 1) ?>%)</span>
                                 </td>
                                 <td class="py-3.5 px-4 text-slate-500 font-medium">
                                     <i class="fa-regular fa-calendar-check text-slate-400 mr-1 text-xs"></i>
-                                    <?= date('d M Y', strtotime($p['deadline'])) ?>
+                                    <?= !empty($p['deadline']) ? date('d M Y', strtotime($p['deadline'])) : '-' ?>
                                 </td>
                                 <td class="py-3.5 px-4 text-center">
                                     <span class="px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase inline-block border tracking-wider
@@ -428,7 +490,9 @@ require_once __DIR__ . '/includes/sidebar.php';
             <?php if (empty($projects)): ?>
                 <div class="text-center py-8 text-slate-400 text-xs font-medium">Belum ada proyek terdaftar.</div>
             <?php else: ?>
-                <?php foreach ($projects as $p): ?>
+                <?php foreach ($projects as $p): 
+                    $tot_val = floatval($p['total_nilai_final'] ?? 0);
+                ?>
                     <a href="modules/projects/detail.php?id=<?= $p['id'] ?>" 
                        class="block bg-slate-50/60 hover:bg-emerald-50/40 border border-slate-200/80 rounded-2xl p-4 transition active:scale-[0.99] space-y-2.5">
                         <div class="flex items-start justify-between gap-2">
@@ -458,12 +522,12 @@ require_once __DIR__ . '/includes/sidebar.php';
 
                         <div class="flex items-center justify-between pt-2 border-t border-slate-200/60 text-xs">
                             <div>
-                                <span class="text-slate-400 block font-bold uppercase text-[9px]">Budget Kontrak</span>
-                                <span class="font-extrabold text-slate-900 font-mono">Rp <?= number_format($p['budget'], 0, ',', '.') ?></span>
+                                <span class="text-slate-400 block font-bold uppercase text-[9px]">Total Inc. PPN</span>
+                                <span class="font-extrabold text-emerald-700 font-mono">Rp <?= number_format($tot_val, 0, ',', '.') ?></span>
                             </div>
                             <div class="text-right">
                                 <span class="text-slate-400 block font-bold uppercase text-[9px]">Deadline</span>
-                                <span class="font-semibold text-slate-600"><?= date('d M Y', strtotime($p['deadline'])) ?></span>
+                                <span class="font-semibold text-slate-600"><?= !empty($p['deadline']) ? date('d M Y', strtotime($p['deadline'])) : '-' ?></span>
                             </div>
                         </div>
                     </a>

@@ -1,38 +1,59 @@
 <?php
+session_start();
+date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../../config/database.php';
+
+// Proteksi Halaman: Wajib Login
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../../login.php");
+    exit;
+}
 
 // Handle Hapus Kontrak
 if (isset($_GET['delete'])) {
-    $delete_id = $_GET['delete'];
+    $delete_id = intval($_GET['delete']);
     $stmtDel = $pdo->prepare("DELETE FROM contracts WHERE id = ?");
     $stmtDel->execute([$delete_id]);
-    header("Location: index.php");
+    header("Location: index.php?msg=deleted");
     exit;
 }
 
 require_once __DIR__ . '/../../includes/header.php';
 require_once __DIR__ . '/../../includes/sidebar.php';
 
-// Pastikan struktur tabel contracts siap
-$pdo->exec("
-    CREATE TABLE IF NOT EXISTS `contracts` (
-        `id` INT AUTO_INCREMENT PRIMARY KEY,
-        `project_id` INT NULL,
-        `nomor_kontrak` VARCHAR(100) NOT NULL,
-        `tanggal_mulai` DATE NULL,
-        `tanggal_selesai` DATE NULL,
-        `durasi_bulan` INT DEFAULT 1,
-        `nilai_kontrak` DECIMAL(15,2) DEFAULT 0.00,
-        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-");
+// Auto-Migration Schema: Pastikan tabel dan kolom pajak siap
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS `contracts` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `project_id` INT NULL,
+            `nomor_kontrak` VARCHAR(100) NOT NULL,
+            `tanggal_mulai` DATE NULL,
+            `tanggal_selesai` DATE NULL,
+            `durasi_bulan` INT DEFAULT 1,
+            `nilai_kontrak` DECIMAL(15,2) DEFAULT 0.00,
+            `persen_pajak` DECIMAL(5,2) DEFAULT 11.00,
+            `nominal_pajak` DECIMAL(15,2) DEFAULT 0.00,
+            `total_kontrak` DECIMAL(15,2) DEFAULT 0.00,
+            `file_pdf` VARCHAR(255) DEFAULT NULL,
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    ");
+} catch (Exception $e) {}
 
-// Fetch semua kontrak yang tersimpan
+try { $pdo->exec("ALTER TABLE contracts ADD COLUMN persen_pajak DECIMAL(5,2) DEFAULT 11.00 AFTER nilai_kontrak"); } catch (Exception $e) {}
+try { $pdo->exec("ALTER TABLE contracts ADD COLUMN nominal_pajak DECIMAL(15,2) DEFAULT 0.00 AFTER persen_pajak"); } catch (Exception $e) {}
+try { $pdo->exec("ALTER TABLE contracts ADD COLUMN total_kontrak DECIMAL(15,2) DEFAULT 0.00 AFTER nominal_pajak"); } catch (Exception $e) {}
+
+// Fetch semua kontrak dengan preservasi tarif 0% PPN
 $stmt = $pdo->query("
     SELECT c.*, 
            COALESCE(p.nama_projek, 'Kontrak Mandiri / Pengajuan') as nama_projek, 
            COALESCE(p.klien, '-') as klien, 
-           COALESCE(p.budget, c.nilai_kontrak) as budget 
+           IF(c.nilai_kontrak IS NOT NULL AND c.nilai_kontrak > 0, c.nilai_kontrak, COALESCE(p.budget, 0)) as dpp_final,
+           IF(c.persen_pajak IS NOT NULL, c.persen_pajak, COALESCE(p.persen_pajak, 11.00)) as persen_pajak_final,
+           IF(c.nominal_pajak IS NOT NULL, c.nominal_pajak, COALESCE(p.nominal_pajak, 0)) as nominal_pajak_final,
+           IF(c.total_kontrak IS NOT NULL AND c.total_kontrak > 0, c.total_kontrak, COALESCE(p.total_nilai, 0)) as total_kontrak_final
     FROM contracts c
     LEFT JOIN projects p ON c.project_id = p.id
     ORDER BY c.created_at DESC
@@ -49,22 +70,10 @@ $contracts = $stmt->fetchAll();
     body, input, select, button, h1, h2, h3, h4, h5, h6 { 
         font-family: 'Plus Jakarta Sans', sans-serif !important; 
     }
-
-    .btn-press { 
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
-    }
-    .btn-press:active { 
-        transform: translateY(1px); 
-    }
-
-    .input-glow { 
-        transition: box-shadow .2s ease, border-color .2s ease; 
-    }
-    .input-glow:focus { 
-        border-color: #059669; 
-        box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.12); 
-    }
-
+    .btn-press { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+    .btn-press:active { transform: translateY(1px); }
+    .input-glow { transition: box-shadow .2s ease, border-color .2s ease; }
+    .input-glow:focus { border-color: #059669; box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.12); }
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
@@ -73,13 +82,13 @@ $contracts = $stmt->fetchAll();
 
 <main class="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto w-full min-w-0 bg-[#f8fafc] text-slate-800 selection:bg-emerald-600 selection:text-white">
     
-    <!-- Header Banner Navigation (Konsisten dengan Proposals) -->
+    <!-- Header Banner Navigation -->
     <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs">
         <div>
             <div class="flex items-center gap-2 mb-1">
                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span class="text-xs font-semibold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-0.5 rounded-full">
-                    MODUL KONTRAK KERJA & PERJANJIAN
+                    KONTRAK KERJA & PERJANJIAN (SPK)
                 </span>
             </div>
             <h1 class="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Generator Kontrak Kerja & PDF</h1>
@@ -89,6 +98,13 @@ $contracts = $stmt->fetchAll();
             <i class="fa-solid fa-file-circle-plus text-xs sm:text-sm"></i> Buat Kontrak Baru
         </a>
     </div>
+
+    <!-- Alert Notifications -->
+    <?php if (isset($_GET['msg']) && $_GET['msg'] === 'deleted'): ?>
+        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
+            <i class="fa-solid fa-trash-can text-red-500 text-base"></i> Dokumen kontrak berhasil dihapus dari arsip!
+        </div>
+    <?php endif; ?>
 
     <!-- Live Search & Filter Bar -->
     <div class="bg-white border border-slate-200/90 rounded-2xl p-4 mb-6 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -112,13 +128,13 @@ $contracts = $stmt->fetchAll();
         </div>
 
         <div class="w-full overflow-x-auto">
-            <table class="w-full text-left border-collapse text-xs sm:text-sm table-fixed min-w-[850px]">
+            <table class="w-full text-left border-collapse text-xs sm:text-sm table-fixed min-w-[950px]">
                 <thead>
                     <tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        <th class="py-3.5 px-4 w-[20%]">NO. KONTRAK</th>
-                        <th class="py-3.5 px-4 w-[28%]">PROYEK & KLIEN</th>
-                        <th class="py-3.5 px-4 w-[20%]">DURASI PENGERJAAN</th>
-                        <th class="py-3.5 px-4 w-[16%] text-right">NILAI KONTRAK</th>
+                        <th class="py-3.5 px-4 w-[18%]">NO. KONTRAK</th>
+                        <th class="py-3.5 px-4 w-[24%]">PROYEK & KLIEN</th>
+                        <th class="py-3.5 px-4 w-[18%]">DURASI PENGERJAAN</th>
+                        <th class="py-3.5 px-4 w-[24%] text-right">RINCIAN NILAI KONTRAK</th>
                         <th class="py-3.5 px-4 w-[10%] text-center">CETAK</th>
                         <th class="py-3.5 px-4 w-[6%] text-center">AKSI</th>
                     </tr>
@@ -132,6 +148,12 @@ $contracts = $stmt->fetchAll();
                         </tr>
                     <?php else: ?>
                         <?php foreach ($contracts as $c): ?>
+                            <?php
+                                $dpp_val       = floatval($c['dpp_final']);
+                                $pct_pajak     = floatval($c['persen_pajak_final']);
+                                $nom_pajak     = is_numeric($c['nominal_pajak_final']) ? floatval($c['nominal_pajak_final']) : round(($dpp_val * $pct_pajak) / 100, 2);
+                                $tot_kontrak   = (floatval($c['total_kontrak_final']) > 0) ? floatval($c['total_kontrak_final']) : ($dpp_val + $nom_pajak);
+                            ?>
                             <tr class="hover:bg-slate-50/70 transition contract-row align-middle"
                                 data-search="<?= htmlspecialchars(strtolower(($c['nomor_kontrak'] ?? '') . ' ' . ($c['nama_projek'] ?? '') . ' ' . ($c['klien'] ?? ''))) ?>">
                                 
@@ -151,13 +173,15 @@ $contracts = $stmt->fetchAll();
                                     </p>
                                 </td>
                                 
-                                <td class="py-3.5 px-4 text-right font-mono font-semibold text-slate-900 text-xs sm:text-sm whitespace-nowrap">
-                                    Rp <?= number_format($c['nilai_kontrak'], 0, ',', '.') ?>
+                                <td class="py-3.5 px-4 text-right whitespace-nowrap font-mono">
+                                    <p class="text-xs text-slate-700 font-semibold">DPP: Rp <?= number_format($dpp_val, 0, ',', '.') ?></p>
+                                    <p class="text-[11px] text-amber-600 font-medium">PPN (<?= number_format($pct_pajak, 1) ?>%): Rp <?= number_format($nom_pajak, 0, ',', '.') ?></p>
+                                    <p class="text-xs font-bold text-emerald-700 border-t border-slate-200 pt-0.5 mt-0.5">Total Inc. Pajak: Rp <?= number_format($tot_kontrak, 0, ',', '.') ?></p>
                                 </td>
                                 
                                 <td class="py-3.5 px-4 text-center whitespace-nowrap">
                                     <a href="print_pdf.php?id=<?= $c['id'] ?>" target="_blank" class="btn-press px-2.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-lg text-xs font-semibold hover:bg-emerald-100 transition inline-flex items-center gap-1.5 shadow-2xs">
-                                        <i class="fa-solid fa-print text-emerald-600"></i> Cetak / PDF
+                                        <i class="fa-solid fa-print text-emerald-600"></i> Cetak SPK
                                     </a>
                                 </td>
                                 
@@ -248,7 +272,7 @@ function renderPagination() {
     nextBtn.innerHTML = '<i class="fa-solid fa-chevron-right text-xs"></i>';
     nextBtn.className = `btn-press px-2.5 py-1 rounded-lg font-semibold text-xs ${currentPage === totalPages ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
     nextBtn.disabled = currentPage === totalPages;
-    nextBtn.onclick = () => { if(currentPage < totalPages) { currentPage--; renderPagination(); } };
+    nextBtn.onclick = () => { if(currentPage < totalPages) { currentPage++; renderPagination(); } };
     controls.appendChild(nextBtn);
 }
 </script>

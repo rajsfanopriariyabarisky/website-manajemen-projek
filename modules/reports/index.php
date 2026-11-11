@@ -1,5 +1,6 @@
 <?php
 session_start();
+date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../../config/database.php';
 
 // Proteksi Halaman: Wajib Login
@@ -8,7 +9,18 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// Handle Export Excel (.xls) Berbasis XML Excel Native
+// Auto-Migration Schema: Pastikan kolom pajak pada tabel projects siap digunakan
+try {
+    $pdo->exec("ALTER TABLE projects ADD COLUMN persen_pajak DECIMAL(5,2) DEFAULT 11.00 AFTER budget");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE projects ADD COLUMN nominal_pajak DECIMAL(15,2) DEFAULT 0.00 AFTER persen_pajak");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE projects ADD COLUMN total_nilai DECIMAL(15,2) DEFAULT 0.00 AFTER nominal_pajak");
+} catch (Exception $e) {}
+
+// Handle Export Excel (.xls) Berbasis XML Excel Native dengan Active Formula
 if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     $project_filter = $_GET['project_id'] ?? 'All';
     $search_filter  = trim($_GET['search'] ?? '');
@@ -20,10 +32,20 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
     header("Expires: 0");
 
     if ($project_filter !== 'All') {
-        // Mode 1: Export Detail Pembukuan 1 Proyek
+        // Mode 1: Export Detail Pembukuan 1 Proyek Spesifik
         $stmtP = $pdo->prepare("SELECT * FROM projects WHERE id = ?");
         $stmtP->execute([$project_filter]);
         $proj = $stmtP->fetch();
+
+        if (!$proj) {
+            echo "Proyek tidak ditemukan.";
+            exit;
+        }
+
+        $dpp_val     = floatval($proj['budget'] ?? 0);
+        $pct_pajak   = floatval($proj['persen_pajak'] ?? 11.00);
+        $nom_pajak   = floatval($proj['nominal_pajak'] ?? 0) > 0 ? floatval($proj['nominal_pajak']) : round(($dpp_val * $pct_pajak) / 100, 2);
+        $tot_kontrak = floatval($proj['total_nilai'] ?? 0) > 0 ? floatval($proj['total_nilai']) : ($dpp_val + $nom_pajak);
 
         $stmtE = $pdo->prepare("SELECT * FROM expenses WHERE project_id = ? ORDER BY tanggal_pengeluaran ASC");
         $stmtE->execute([$project_filter]);
@@ -33,16 +55,19 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         $stmtInv->execute([$project_filter]);
         $invoicesList = $stmtInv->fetchAll();
 
-        $calcTotalInv  = array_sum(array_column($invoicesList, 'jumlah_tagihan'));
+        $calcTotalInv  = 0;
         $calcPaidRev   = 0;
-        $calcUnpaid    = 0;
         foreach ($invoicesList as $iv) {
+            $iv_pct = floatval($iv['persen_pajak'] ?? $pct_pajak);
+            $iv_nom = floatval($iv['nominal_pajak'] ?? 0) > 0 ? floatval($iv['nominal_pajak']) : round((floatval($iv['jumlah_tagihan']) * $iv_pct) / 100, 2);
+            $iv_tot = floatval($iv['total_tagihan'] ?? 0) > 0 ? floatval($iv['total_tagihan']) : (floatval($iv['jumlah_tagihan']) + $iv_nom);
+
+            $calcTotalInv += $iv_tot;
             if (strtolower($iv['status']) === 'paid') {
-                $calcPaidRev += $iv['jumlah_tagihan'];
-            } else {
-                $calcUnpaid += $iv['jumlah_tagihan'];
+                $calcPaidRev += $iv_tot;
             }
         }
+        $calcUnpaid    = max(0, $tot_kontrak - $calcPaidRev);
         $calcTotalExp  = array_sum(array_column($expensesList, 'jumlah_biaya'));
         $calcNetProfit = $calcPaidRev - $calcTotalExp;
 
@@ -64,34 +89,43 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         </head>
         <body>
             <table>
-                <tr><td colspan="6" class="title-company">PT. CIPTA TEKNOLOGI CENDEKIA</td></tr>
-                <tr><td colspan="6" class="title-doc">PEMBUKUAN KEUANGAN & AUDIT LEDGER PROYEK</td></tr>
-                <tr><td colspan="6" style="font-size: 9pt; color: #64748b;">Tanggal Ekspor: <?= date('d F Y H:i:s') ?> WIB</td></tr>
+                <tr><td colspan="7" class="title-company">PT. CIPTA TEKNOLOGI CENDEKIA</td></tr>
+                <tr><td colspan="7" class="title-doc">PEMBUKUAN KEUANGAN & AUDIT LEDGER PROYEK</td></tr>
+                <tr><td colspan="7" style="font-size: 9pt; color: #64748b;">Tanggal Ekspor: <?= date('d F Y H:i:s') ?> WIB</td></tr>
             </table>
             <br>
             <table class="border-all" cellpadding="5">
-                <tr class="bg-header"><td colspan="6">INFORMASI PROYEK & METRIK KONTRAK</td></tr>
+                <tr class="bg-header"><td colspan="7">INFORMASI PROYEK & METRIK KONTRAK</td></tr>
                 <tr>
-                    <td><b>Nama Proyek:</b></td><td colspan="2"><?= htmlspecialchars($proj['nama_projek']) ?></td>
-                    <td><b>Klien / Status:</b></td><td colspan="2"><?= htmlspecialchars($proj['klien']) ?> (<?= $proj['status'] ?>)</td>
+                    <td><b>Nama Proyek:</b></td><td colspan="2"><?= htmlspecialchars($proj['nama_projek'] ?? '') ?></td>
+                    <td><b>Klien / Status:</b></td><td colspan="3"><?= htmlspecialchars($proj['klien'] ?? '') ?> (<?= htmlspecialchars($proj['status'] ?? '') ?>)</td>
                 </tr>
                 <tr>
-                    <td><b>Nilai Total Kontrak:</b></td>
-                    <td colspan="5" class="num-bold"><?= $proj['budget'] ?></td>
+                    <td><b>Subtotal Proyek (DPP):</b></td>
+                    <td colspan="2" class="num-bold"><?= $dpp_val ?></td>
+                    <td><b>PPN (<?= number_format($pct_pajak, 1) ?>%):</b></td>
+                    <td colspan="3" class="num-bold" style="color: #b45309;"><?= $nom_pajak ?></td>
+                </tr>
+                <tr>
+                    <td><b>Total Nilai Kontrak (Inc. Pajak):</b></td>
+                    <td colspan="6" class="num-bold" style="color: #047857; font-size: 12pt;"><?= $tot_kontrak ?></td>
                 </tr>
             </table>
             <br>
             <table class="border-all" cellpadding="5">
-                <tr class="bg-section"><td colspan="6">I. LEDGER INVOICE & PENERIMAAN DANA (REVENUE)</td></tr>
+                <tr class="bg-section"><td colspan="7">I. LEDGER INVOICE & PENERIMAAN DANA (REVENUE INC. PPN)</td></tr>
                 <tr style="background-color: #e2e8f0; font-weight: bold; text-align: center;">
-                    <th>No</th><th>Tanggal Tagihan</th><th>No. Invoice</th><th>Keterangan Termin</th><th>Status</th><th>Jumlah Tagihan (Rp)</th>
+                    <th>No</th><th>Tanggal Tagihan</th><th>No. Invoice</th><th>Keterangan Termin</th><th>Status</th><th>Jumlah Tagihan (DPP)</th><th>Total Inc. PPN (Rp)</th>
                 </tr>
                 <?php 
-                $startRowInv = 16;
+                $startRowInv = 13;
                 $rowInvCount = 0;
                 if (!empty($invoicesList)): 
                     foreach ($invoicesList as $idx => $inv): 
                         $rowInvCount++;
+                        $iv_pct = floatval($inv['persen_pajak'] ?? $pct_pajak);
+                        $iv_nom = floatval($inv['nominal_pajak'] ?? 0) > 0 ? floatval($inv['nominal_pajak']) : round((floatval($inv['jumlah_tagihan']) * $iv_pct) / 100, 2);
+                        $iv_tot = floatval($inv['total_tagihan'] ?? 0) > 0 ? floatval($inv['total_tagihan']) : (floatval($inv['jumlah_tagihan']) + $iv_nom);
                 ?>
                     <tr>
                         <td align="center"><?= $idx + 1 ?></td>
@@ -100,26 +134,27 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
                         <td><?= htmlspecialchars($inv['keterangan_termin']) ?></td>
                         <td align="center"><b><?= htmlspecialchars($inv['status']) ?></b></td>
                         <td class="num-curr"><?= (float)$inv['jumlah_tagihan'] ?></td>
+                        <td class="num-curr"><?= $iv_tot ?></td>
                     </tr>
                 <?php 
                     endforeach; 
                 else: 
                 ?>
-                    <tr><td colspan="6" align="center" style="color: #94a3b8;">Belum ada data invoice terbit.</td></tr>
+                    <tr><td colspan="7" align="center" style="color: #94a3b8;">Belum ada data invoice terbit.</td></tr>
                 <?php endif; ?>
                 
                 <?php $totalInvRow = $startRowInv + max(1, $rowInvCount); ?>
                 <tr class="bg-total">
-                    <td colspan="5" align="right"><b>TOTAL SELURUH TAGIHAN (INVOICES):</b></td>
-                    <td class="num-bold" x:fmla="=SUM(F<?= $startRowInv ?>:F<?= $totalInvRow - 1 ?>)"><?= $calcTotalInv ?></td>
+                    <td colspan="6" align="right"><b>TOTAL SELURUH TAGIHAN (INVOICES INC. PPN):</b></td>
+                    <td class="num-bold" x:fmla="=SUM(G<?= $startRowInv ?>:G<?= $totalInvRow - 1 ?>)"><?= $calcTotalInv ?></td>
                 </tr>
                 <tr class="bg-total">
-                    <td colspan="5" align="right" style="color: #047857;"><b>TOTAL DANA MASUK (REALIZED PAID REVENUE):</b></td>
-                    <td class="num-bold" style="color: #047857;" x:fmla='=SUMIF(E<?= $startRowInv ?>:E<?= $totalInvRow - 1 ?>; "Paid"; F<?= $startRowInv ?>:F<?= $totalInvRow - 1 ?>)'><?= $calcPaidRev ?></td>
+                    <td colspan="6" align="right" style="color: #047857;"><b>TOTAL DANA MASUK (REALIZED PAID REVENUE INC. PPN):</b></td>
+                    <td class="num-bold" style="color: #047857;" x:fmla='=SUMIF(E<?= $startRowInv ?>:E<?= $totalInvRow - 1 ?>; "Paid"; G<?= $startRowInv ?>:G<?= $totalInvRow - 1 ?>)'><?= $calcPaidRev ?></td>
                 </tr>
                 <tr class="bg-total">
-                    <td colspan="5" align="right" style="color: #b45309;"><b>TOTAL PIUTANG / UNPAID INVOICES:</b></td>
-                    <td class="num-bold" style="color: #b45309;" x:fmla='=SUMIF(E<?= $startRowInv ?>:E<?= $totalInvRow - 1 ?>; "<>Paid"; F<?= $startRowInv ?>:F<?= $totalInvRow - 1 ?>)'><?= $calcUnpaid ?></td>
+                    <td colspan="6" align="right" style="color: #b45309;"><b>TOTAL SISA PIUTANG / UNPAID (INC. PPN):</b></td>
+                    <td class="num-bold" style="color: #b45309;"><?= $calcUnpaid ?></td>
                 </tr>
             </table>
             <br>
@@ -159,10 +194,10 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
             <br>
             <?php $paidRevRow = $totalInvRow + 1; ?>
             <table class="border-all" cellpadding="5">
-                <tr class="bg-header"><td colspan="2">III. RINGKASAN REKAPITULASI KEUANGAN AKHIR (FORMULA ACTIVE)</td></tr>
+                <tr class="bg-header"><td colspan="2">III. RINGKASAN REKAPITULASI KEUANGAN AKHIR</td></tr>
                 <tr>
-                    <td width="300">Total Realized Revenue (Dana Masuk)</td>
-                    <td class="num-bold" style="color: #047857;" x:fmla="=F<?= $paidRevRow ?>"><?= $calcPaidRev ?></td>
+                    <td width="300">Total Realized Revenue (Dana Masuk Inc. PPN)</td>
+                    <td class="num-bold" style="color: #047857;" x:fmla="=G<?= $paidRevRow ?>"><?= $calcPaidRev ?></td>
                 </tr>
                 <tr>
                     <td>Total Realisasi Pengeluaran Operasional</td>
@@ -170,18 +205,20 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
                 </tr>
                 <tr style="background-color: #d1fae5; font-size: 12pt;">
                     <td><b>NET PROFIT REAL (BERSIH DANA MASUK)</b></td>
-                    <td class="num-bold" style="color: #047857; font-size: 12pt;" x:fmla="=F<?= $paidRevRow ?>-F<?= $totalExpRow ?>"><?= $calcNetProfit ?></td>
+                    <td class="num-bold" style="color: #047857; font-size: 12pt;" x:fmla="=G<?= $paidRevRow ?>-F<?= $totalExpRow ?>"><?= $calcNetProfit ?></td>
                 </tr>
             </table>
         </body>
         </html>
         <?php
     } else {
-        // Mode 2: Export Konsolidasi Seluruh Proyek
+        // Mode 2: Export Konsolidasi Seluruh Portofolio Proyek (DENGAN REVENUE INC PPN)
         $sqlExcel = "
             SELECT p.*, 
-                   COALESCE((SELECT SUM(i.jumlah_tagihan) FROM invoices i WHERE i.project_id = p.id AND i.status = 'Paid'), 0) AS realized_paid,
-                   COALESCE((SELECT SUM(i.jumlah_tagihan) FROM invoices i WHERE i.project_id = p.id AND i.status != 'Paid'), 0) AS unpaid_piutang,
+                   COALESCE(NULLIF(p.persen_pajak, 0), 11.00) AS persen_pajak_final,
+                   COALESCE(NULLIF(p.nominal_pajak, 0), ROUND((p.budget * COALESCE(NULLIF(p.persen_pajak, 0), 11.00)) / 100, 2)) AS nominal_pajak_final,
+                   COALESCE(NULLIF(p.total_nilai, 0), p.budget + ROUND((p.budget * COALESCE(NULLIF(p.persen_pajak, 0), 11.00)) / 100, 2)) AS total_nilai_final,
+                   COALESCE((SELECT SUM(COALESCE(NULLIF(i.total_tagihan, 0), i.jumlah_tagihan + ROUND((i.jumlah_tagihan * COALESCE(NULLIF(i.persen_pajak, 0), 11.00))/100, 2))) FROM invoices i WHERE i.project_id = p.id AND LOWER(i.status) = 'paid'), 0) AS realized_paid,
                    COALESCE((SELECT SUM(e.jumlah_biaya) FROM expenses e WHERE e.project_id = p.id), 0) AS total_expense
             FROM projects p
             WHERE 1=1
@@ -197,13 +234,22 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         $stmtAll->execute($paramsExcel);
         $allReports = $stmtAll->fetchAll();
 
-        $cBudget = 0; $cPaid = 0; $cUnpaid = 0; $cExp = 0; $cProfit = 0;
+        $cBudget = 0; $cPajak = 0; $cTotalVal = 0; $cPaid = 0; $cUnpaid = 0; $cExp = 0; $cProfit = 0;
         foreach ($allReports as $ar) {
-            $cBudget += $ar['budget'];
-            $cPaid   += $ar['realized_paid'];
-            $cUnpaid += $ar['unpaid_piutang'];
-            $cExp    += $ar['total_expense'];
-            $cProfit += ($ar['realized_paid'] - $ar['total_expense']);
+            $dpp    = floatval($ar['budget']);
+            $pajak  = floatval($ar['nominal_pajak_final']);
+            $tot    = floatval($ar['total_nilai_final']);
+            $paid   = floatval($ar['realized_paid']);
+            $unpaid = max(0, $tot - $paid);
+            $exp    = floatval($ar['total_expense']);
+
+            $cBudget   += $dpp;
+            $cPajak    += $pajak;
+            $cTotalVal += $tot;
+            $cPaid     += $paid;
+            $cUnpaid   += $unpaid;
+            $cExp      += $exp;
+            $cProfit   += ($paid - $exp);
         }
         ?>
         <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
@@ -223,33 +269,40 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
         </head>
         <body>
             <table>
-                <tr><td colspan="9" class="title-company">PT. CIPTA TEKNOLOGI CENDEKIA</td></tr>
-                <tr><td colspan="9" class="title-doc">PEMBUKUAN KONSOLIDASI KEUANGAN SELURUH PORTOFOLIO PROYEK</td></tr>
-                <tr><td colspan="9" style="font-size: 9pt; color: #64748b;">Tanggal Ekspor: <?= date('d F Y H:i:s') ?> WIB</td></tr>
+                <tr><td colspan="11" class="title-company">PT. CIPTA TEKNOLOGI CENDEKIA</td></tr>
+                <tr><td colspan="11" class="title-doc">PEMBUKUAN KONSOLIDASI KEUANGAN SELURUH PORTOFOLIO PROYEK</td></tr>
+                <tr><td colspan="11" style="font-size: 9pt; color: #64748b;">Tanggal Ekspor: <?= date('d F Y H:i:s') ?> WIB</td></tr>
             </table>
             <br>
             <table class="border-all" cellpadding="5">
-                <tr class="bg-header"><td colspan="9">REKAPITULASI LEDGER FINANCIAL PORTOFOLIO</td></tr>
+                <tr class="bg-header"><td colspan="11">REKAPITULASI LEDGER FINANCIAL PORTOFOLIO</td></tr>
                 <tr class="bg-sub-header">
-                    <th>No</th><th>Nama Proyek</th><th>Klien</th><th>Status Proyek</th><th>Nilai Kontrak (Rp)</th><th>Realized Paid (Rp)</th><th>Unpaid / Piutang (Rp)</th><th>Operational Expense (Rp)</th><th>Net Profit Real (Rp)</th>
+                    <th>No</th><th>Nama Proyek</th><th>Klien</th><th>Status Proyek</th><th>Subtotal DPP (Rp)</th><th>PPN Pajak (Rp)</th><th>Total Inc. Pajak (Rp)</th><th>Realized Paid Inc PPN (Rp)</th><th>Unpaid / Piutang Inc PPN (Rp)</th><th>Operational Expense (Rp)</th><th>Net Profit Real (Rp)</th>
                 </tr>
                 <?php 
-                $startRowCons = 9;
+                $startRowCons = 8;
                 $rowCountCons = count($allReports);
                 foreach ($allReports as $idx => $r): 
                     $rowNum = $startRowCons + $idx;
-                    $np = $r['realized_paid'] - $r['total_expense'];
+                    $paid   = floatval($r['realized_paid']);
+                    $dpp    = floatval($r['budget']);
+                    $tot    = floatval($r['total_nilai_final']);
+                    $unpaid = max(0, $tot - $paid);
+                    $exp    = floatval($r['total_expense']);
+                    $np     = $paid - $exp;
                 ?>
                     <tr>
                         <td align="center"><?= $idx + 1 ?></td>
                         <td><b><?= htmlspecialchars($r['nama_projek']) ?></b></td>
                         <td><?= htmlspecialchars($r['klien']) ?></td>
                         <td align="center"><?= htmlspecialchars($r['status']) ?></td>
-                        <td class="num-curr"><?= (float)$r['budget'] ?></td>
-                        <td class="num-curr"><?= (float)$r['realized_paid'] ?></td>
-                        <td class="num-curr"><?= (float)$r['unpaid_piutang'] ?></td>
-                        <td class="num-curr"><?= (float)$r['total_expense'] ?></td>
-                        <td class="num-bold" style="color: #047857;" x:fmla="=F<?= $rowNum ?>-H<?= $rowNum ?>"><?= $np ?></td>
+                        <td class="num-curr"><?= $dpp ?></td>
+                        <td class="num-curr"><?= floatval($r['nominal_pajak_final']) ?></td>
+                        <td class="num-curr"><?= $tot ?></td>
+                        <td class="num-curr"><?= $paid ?></td>
+                        <td class="num-curr"><?= $unpaid ?></td>
+                        <td class="num-curr"><?= $exp ?></td>
+                        <td class="num-bold" style="color: #047857;" x:fmla="=H<?= $rowNum ?>-J<?= $rowNum ?>"><?= $np ?></td>
                     </tr>
                 <?php endforeach; ?>
 
@@ -257,10 +310,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
                 <tr class="bg-total" style="font-size: 11pt;">
                     <td colspan="4" align="right"><b>TOTAL KONSOLIDASI PORTOFOLIO:</b></td>
                     <td class="num-bold" x:fmla="=SUM(E<?= $startRowCons ?>:E<?= $endRowCons ?>)"><?= $cBudget ?></td>
-                    <td class="num-bold" style="color: #047857;" x:fmla="=SUM(F<?= $startRowCons ?>:F<?= $endRowCons ?>)"><?= $cPaid ?></td>
-                    <td class="num-bold" style="color: #b45309;" x:fmla="=SUM(G<?= $startRowCons ?>:G<?= $endRowCons ?>)"><?= $cUnpaid ?></td>
-                    <td class="num-bold" style="color: #b45309;" x:fmla="=SUM(H<?= $startRowCons ?>:H<?= $endRowCons ?>)"><?= $cExp ?></td>
-                    <td class="num-bold" style="color: #047857;" x:fmla="=SUM(I<?= $startRowCons ?>:I<?= $endRowCons ?>)"><?= $cProfit ?></td>
+                    <td class="num-bold" style="color: #b45309;" x:fmla="=SUM(F<?= $startRowCons ?>:F<?= $endRowCons ?>)"><?= $cPajak ?></td>
+                    <td class="num-bold" style="color: #047857;" x:fmla="=SUM(G<?= $startRowCons ?>:G<?= $endRowCons ?>)"><?= $cTotalVal ?></td>
+                    <td class="num-bold" style="color: #047857;" x:fmla="=SUM(H<?= $startRowCons ?>:H<?= $endRowCons ?>)"><?= $cPaid ?></td>
+                    <td class="num-bold" style="color: #b45309;" x:fmla="=SUM(I<?= $startRowCons ?>:I<?= $endRowCons ?>)"><?= $cUnpaid ?></td>
+                    <td class="num-bold" style="color: #b45309;" x:fmla="=SUM(J<?= $startRowCons ?>:J<?= $endRowCons ?>)"><?= $cExp ?></td>
+                    <td class="num-bold" style="color: #047857;" x:fmla="=SUM(K<?= $startRowCons ?>:K<?= $endRowCons ?>)"><?= $cProfit ?></td>
                 </tr>
             </table>
         </body>
@@ -281,10 +336,13 @@ $offset           = ($page - 1) * $limit;
 
 $projectsList = $pdo->query("SELECT id, nama_projek, klien FROM projects ORDER BY nama_projek ASC")->fetchAll();
 
+// SQL Query Utama: Mengkalkulasi Realized Paid Inc PPN
 $sqlGrand = "
     SELECT p.*, 
-           COALESCE((SELECT SUM(i.jumlah_tagihan) FROM invoices i WHERE i.project_id = p.id AND i.status = 'Paid'), 0) AS realized_paid,
-           COALESCE((SELECT SUM(i.jumlah_tagihan) FROM invoices i WHERE i.project_id = p.id AND i.status != 'Paid'), 0) AS unpaid_piutang,
+           COALESCE(NULLIF(p.persen_pajak, 0), 11.00) AS persen_pajak_final,
+           COALESCE(NULLIF(p.nominal_pajak, 0), ROUND((p.budget * COALESCE(NULLIF(p.persen_pajak, 0), 11.00)) / 100, 2)) AS nominal_pajak_final,
+           COALESCE(NULLIF(p.total_nilai, 0), p.budget + ROUND((p.budget * COALESCE(NULLIF(p.persen_pajak, 0), 11.00)) / 100, 2)) AS total_nilai_final,
+           COALESCE((SELECT SUM(COALESCE(NULLIF(i.total_tagihan, 0), i.jumlah_tagihan + ROUND((i.jumlah_tagihan * COALESCE(NULLIF(i.persen_pajak, 0), 11.00))/100, 2))) FROM invoices i WHERE i.project_id = p.id AND LOWER(i.status) = 'paid'), 0) AS realized_paid,
            COALESCE((SELECT SUM(e.jumlah_biaya) FROM expenses e WHERE e.project_id = p.id), 0) AS total_expense
     FROM projects p
     WHERE 1=1
@@ -292,7 +350,7 @@ $sqlGrand = "
 $paramsGrand = [];
 if ($selected_project !== 'All') {
     $sqlGrand .= " AND p.id = ?";
-    $paramsGrand[] = $selected_project;
+    $paramsGrand[] = intval($selected_project);
 }
 if (!empty($search_query)) {
     $sqlGrand .= " AND (p.nama_projek LIKE ? OR p.klien LIKE ?)";
@@ -305,32 +363,39 @@ $stmtGrand->execute($paramsGrand);
 $allGrandReports = $stmtGrand->fetchAll();
 
 $grandBudget       = 0;
+$grandPajak        = 0;
+$grandTotalVal     = 0;
 $grandRealizedPaid = 0;
 $grandUnpaid       = 0;
 $grandExpense      = 0;
 
 foreach ($allGrandReports as $r) {
-    $grandExpense      += $r['total_expense'];
-    $grandUnpaid       += $r['unpaid_piutang'];
-    $grandRealizedPaid += $r['realized_paid'];
+    $dpp          = floatval($r['budget']);
+    $tot          = floatval($r['total_nilai_final']);
+    $paid         = floatval($r['realized_paid']);
+    $unpaid       = max(0, $tot - $paid);
+    $exp          = floatval($r['total_expense']);
 
-    if (!in_array($r['status'], ['On Hold', 'Planning'])) {
-        $grandBudget += $r['budget'];
-    }
+    $grandBudget       += $dpp;
+    $grandPajak        += floatval($r['nominal_pajak_final']);
+    $grandTotalVal     += $tot;
+    $grandRealizedPaid += $paid;
+    $grandUnpaid       += $unpaid;
+    $grandExpense      += $exp;
 }
 $grandNetProfit = $grandRealizedPaid - $grandExpense;
 
 $totalRows  = count($allGrandReports);
 $totalPages = max(1, ceil($totalRows / $limit));
 
-$sqlPaged = $sqlGrand . " ORDER BY p.created_at DESC LIMIT $limit OFFSET $offset";
+$sqlPaged = $sqlGrand . " ORDER BY p.created_at DESC LIMIT " . intval($limit) . " OFFSET " . intval($offset);
 $stmtPaged = $pdo->prepare($sqlPaged);
 $stmtPaged->execute($paramsGrand);
 $reports = $stmtPaged->fetchAll();
 
 if ($selected_project !== 'All') {
     $stmtExpDetail = $pdo->prepare("SELECT * FROM expenses WHERE project_id = ? ORDER BY tanggal_pengeluaran DESC");
-    $stmtExpDetail->execute([$selected_project]);
+    $stmtExpDetail->execute([intval($selected_project)]);
     $expensesDetails = $stmtExpDetail->fetchAll();
 } else {
     $expensesDetails = [];
@@ -380,19 +445,19 @@ if ($selected_project !== 'All') {
             font-family: 'Segoe UI', Arial, sans-serif !important;
             -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
         }
-        @page { size: A4 portrait; margin: 10mm 12mm 10mm 12mm; }
-        .print-header-pdf { width: 100% !important; margin-bottom: 15px !important; padding-bottom: 8px !important; border-bottom: 3px double #047857 !important; }
-        .print-logo-img { width: 52px !important; height: 52px !important; object-fit: cover !important; border-radius: 6px !important; }
-        .pdf-table { width: 100% !important; border-collapse: collapse !important; font-size: 9.5px !important; margin-bottom: 15px !important; }
-        .pdf-table th { background-color: #065f46 !important; color: #ffffff !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 8.5px !important; padding: 6px 6px !important; border: 1px solid #065f46 !important; }
-        .pdf-table td { border: 1px solid #cbd5e1 !important; padding: 6px 7px !important; color: #1e293b !important; }
-        .pdf-summary-table { width: 100% !important; border-collapse: collapse !important; margin-bottom: 15px !important; }
-        .pdf-summary-table th { background-color: #047857 !important; color: #ffffff !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 8.5px !important; padding: 6px 8px !important; border: 1px solid #047857 !important; text-align: center !important; }
-        .pdf-summary-table td { font-weight: 800 !important; color: #0f172a !important; font-size: 10px !important; padding: 6px 8px !important; border: 1px solid #cbd5e1 !important; text-align: center !important; background-color: #f8fafc !important; }
-        .pdf-badge { border: 1px solid #047857 !important; background: #ecfdf5 !important; padding: 1px 5px !important; font-weight: 800 !important; font-size: 7.5px !important; text-transform: uppercase !important; white-space: nowrap !important; color: #047857 !important; border-radius: 3px !important; }
-        .pdf-signatures { display: flex !important; justify-content: space-between !important; margin-top: 30px !important; page-break-inside: avoid !important; width: 100% !important; }
-        .pdf-sig-box { text-align: center !important; width: 30% !important; font-size: 9.5px !important; color: #334155 !important; }
-        .pdf-sig-line { margin-top: 45px !important; font-weight: 800 !important; text-decoration: underline !important; color: #0f172a !important; }
+        @page { size: A4 landscape; margin: 8mm 10mm 8mm 10mm; }
+        .print-header-pdf { width: 100% !important; margin-bottom: 12px !important; padding-bottom: 6px !important; border-bottom: 3px double #047857 !important; }
+        .print-logo-img { width: 48px !important; height: 48px !important; object-fit: cover !important; border-radius: 6px !important; }
+        .pdf-table { width: 100% !important; border-collapse: collapse !important; font-size: 8.5px !important; margin-bottom: 12px !important; }
+        .pdf-table th { background-color: #065f46 !important; color: #ffffff !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 8px !important; padding: 5px 4px !important; border: 1px solid #065f46 !important; }
+        .pdf-table td { border: 1px solid #cbd5e1 !important; padding: 5px 5px !important; color: #1e293b !important; }
+        .pdf-summary-table { width: 100% !important; border-collapse: collapse !important; margin-bottom: 12px !important; }
+        .pdf-summary-table th { background-color: #047857 !important; color: #ffffff !important; font-weight: 800 !important; text-transform: uppercase !important; font-size: 8px !important; padding: 5px 6px !important; border: 1px solid #047857 !important; text-align: center !important; }
+        .pdf-summary-table td { font-weight: 800 !important; color: #0f172a !important; font-size: 9px !important; padding: 5px 6px !important; border: 1px solid #cbd5e1 !important; text-align: center !important; background-color: #f8fafc !important; }
+        .pdf-badge { border: 1px solid #047857 !important; background: #ecfdf5 !important; padding: 1px 4px !important; font-weight: 800 !important; font-size: 7px !important; text-transform: uppercase !important; white-space: nowrap !important; color: #047857 !important; border-radius: 3px !important; }
+        .pdf-signatures { display: flex !important; justify-content: space-between !important; margin-top: 25px !important; page-break-inside: avoid !important; width: 100% !important; }
+        .pdf-sig-box { text-align: center !important; width: 30% !important; font-size: 8.5px !important; color: #334155 !important; }
+        .pdf-sig-line { margin-top: 40px !important; font-weight: 800 !important; text-decoration: underline !important; color: #0f172a !important; }
     }
 </style>
 
@@ -400,22 +465,21 @@ if ($selected_project !== 'All') {
 <div id="print-area-pdf">
     <div class="print-header-pdf">
         <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 14px;">
-                <img src="/website%20manajemen%20projek/assets/images/logo.jpg" alt="Logo PT CTC" class="print-logo-img">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <img src="../../assets/images/logo.png" alt="Logo PT CTC" class="print-logo-img" onerror="this.onerror=null; this.src='../../assets/img/logo.png';">
                 <div>
-                    <h1 style="font-size: 13pt; font-weight: 900; color: #0f172a; margin: 0; text-transform: uppercase;">PT. CIPTA TEKNOLOGI CENDEKIA</h1>
-                    <p style="font-size: 8.5pt; font-weight: 700; color: #047857; margin: 2px 0 0 0;">Enterprise IT Solution, Software Development & Financial Control</p>
-                    <p style="font-size: 7.5pt; color: #64748b; margin: 2px 0 0 0;">Perumahan Cahaya Garuda Residence Kav. 31, Bojongsari, Kota Depok, Jawa Barat |</p>
-                    <p style="font-size: 7.5pt; color: #64748b; margin: 1px 0 0 0;">Email: ciptateknologicendekia@gmail.com | Website: https://ctc-nusantara.com</p>
+                    <h1 style="font-size: 12pt; font-weight: 900; color: #0f172a; margin: 0; text-transform: uppercase;">PT. CIPTA TEKNOLOGI CENDEKIA</h1>
+                    <p style="font-size: 8pt; font-weight: 700; color: #047857; margin: 2px 0 0 0;">Enterprise IT Solution, Software Development & Financial Control</p>
+                    <p style="font-size: 7pt; color: #64748b; margin: 1px 0 0 0;">Email: ciptateknologicendekia@gmail.com | Website: https://ctc-nusantara.com</p>
                 </div>
             </div>
-            <div style="text-align: right; font-size: 8pt; color: #475569;">
+            <div style="text-align: right; font-size: 7.5pt; color: #475569;">
                 <span style="font-weight: 900; color: #047857; background: #ecfdf5; padding: 2px 6px; border-radius: 4px; border: 1px solid #a7f3d0; text-transform: uppercase;">CONFIDENTIAL AUDIT</span>
                 <p style="margin-top: 4px;">Tanggal Cetak: <?= date('d F Y') ?></p>
             </div>
         </div>
-        <div style="text-align: center; margin-top: 10px; padding-top: 6px;">
-            <h2 style="font-size: 10pt; font-weight: 900; text-transform: uppercase; color: #0f172a; border-bottom: 2px solid #0f172a; display: inline-block; padding-bottom: 2px; margin: 0;">
+        <div style="text-align: center; margin-top: 8px; padding-top: 4px;">
+            <h2 style="font-size: 9.5pt; font-weight: 900; text-transform: uppercase; color: #0f172a; border-bottom: 2px solid #0f172a; display: inline-block; padding-bottom: 2px; margin: 0;">
                 <?= $selected_project === 'All' ? 'LAPORAN KONSOLIDASI KEUANGAN SELURUH PROYEK' : 'LAPORAN DETAIL KEUANGAN PROYEK' ?>
             </h2>
         </div>
@@ -424,14 +488,18 @@ if ($selected_project !== 'All') {
     <table class="pdf-summary-table">
         <thead>
             <tr>
-                <th>REALIZED REVENUE (PAID)</th>
+                <th>SUBTOTAL PROYEK (DPP)</th>
+                <th>TOTAL PAJAK (PPN)</th>
+                <th>REALIZED REVENUE (INC PPN)</th>
                 <th>OPERATIONAL EXPENSE</th>
                 <th>NET PROFIT BERSIH REAL</th>
-                <th>PIUTANG (UNPAID)</th>
+                <th>PIUTANG UNPAID (INC PPN)</th>
             </tr>
         </thead>
         <tbody>
             <tr>
+                <td>Rp <?= number_format($grandBudget, 0, ',', '.') ?></td>
+                <td>Rp <?= number_format($grandPajak, 0, ',', '.') ?></td>
                 <td>Rp <?= number_format($grandRealizedPaid, 0, ',', '.') ?></td>
                 <td>Rp <?= number_format($grandExpense, 0, ',', '.') ?></td>
                 <td>Rp <?= number_format($grandNetProfit, 0, ',', '.') ?></td>
@@ -446,9 +514,11 @@ if ($selected_project !== 'All') {
                 <th>Nama Proyek</th>
                 <th>Klien</th>
                 <th style="text-align: center;">Status</th>
-                <th style="text-align: right;">Nilai Kontrak</th>
-                <th style="text-align: right;">Paid (Dana Masuk)</th>
-                <th style="text-align: right;">Unpaid (Piutang)</th>
+                <th style="text-align: right;">Subtotal DPP</th>
+                <th style="text-align: right;">PPN Pajak</th>
+                <th style="text-align: right;">Total Inc. Pajak</th>
+                <th style="text-align: right;">Paid (Inc. PPN)</th>
+                <th style="text-align: right;">Unpaid (Inc. PPN)</th>
                 <th style="text-align: right;">Pengeluaran</th>
                 <th style="text-align: right;">Net Profit Real</th>
             </tr>
@@ -456,14 +526,18 @@ if ($selected_project !== 'All') {
         <tbody>
             <?php if (empty($reports)): ?>
                 <tr>
-                    <td colspan="8" style="text-align: center; color: #94a3b8; font-style: italic;">Data laporan tidak ditemukan.</td>
+                    <td colspan="10" style="text-align: center; color: #94a3b8; font-style: italic;">Data laporan tidak ditemukan.</td>
                 </tr>
             <?php else: ?>
                 <?php foreach ($reports as $r): 
-                    $isHold = in_array($r['status'], ['On Hold', 'Planning']);
-                    $paidRevenue = $r['realized_paid'];
-                    $unpaid = $r['unpaid_piutang'];
-                    $expense = $r['total_expense'];
+                    $dpp_val       = floatval($r['budget']);
+                    $pct_pajak     = floatval($r['persen_pajak_final']);
+                    $nom_pajak     = floatval($r['nominal_pajak_final']);
+                    $tot_kontrak   = floatval($r['total_nilai_final']);
+                    
+                    $paidRevenue   = floatval($r['realized_paid']);
+                    $unpaid        = max(0, $tot_kontrak - $paidRevenue);
+                    $expense       = floatval($r['total_expense']);
                     $netProfitReal = $paidRevenue - $expense;
                 ?>
                     <tr>
@@ -473,7 +547,13 @@ if ($selected_project !== 'All') {
                             <span class="pdf-badge"><?= htmlspecialchars($r['status']) ?></span>
                         </td>
                         <td style="text-align: right;">
-                            <?= $isHold ? 'Rp 0 (Hold)' : 'Rp ' . number_format($r['budget'], 0, ',', '.') ?>
+                            Rp <?= number_format($dpp_val, 0, ',', '.') ?>
+                        </td>
+                        <td style="text-align: right; color: #b45309;">
+                            Rp <?= number_format($nom_pajak, 0, ',', '.') ?> (<?= number_format($pct_pajak, 1) ?>%)
+                        </td>
+                        <td style="text-align: right; font-weight: bold;">
+                            Rp <?= number_format($tot_kontrak, 0, ',', '.') ?>
                         </td>
                         <td style="text-align: right; font-weight: bold; color: #047857;">
                             Rp <?= number_format($paidRevenue, 0, ',', '.') ?>
@@ -494,8 +574,8 @@ if ($selected_project !== 'All') {
     </table>
 
     <?php if ($selected_project !== 'All'): ?>
-        <div style="margin-top: 15px;">
-            <h3 style="font-size: 10pt; font-weight: 800; color: #0f172a; margin-bottom: 6px;">Item Pengeluaran Operasional Proyek</h3>
+        <div style="margin-top: 12px;">
+            <h3 style="font-size: 9pt; font-weight: 800; color: #0f172a; margin-bottom: 5px;">Item Pengeluaran Operasional Proyek</h3>
             <table class="pdf-table">
                 <thead>
                     <tr>
@@ -529,17 +609,17 @@ if ($selected_project !== 'All') {
         <div class="pdf-sig-box">
             <p><strong>Dibuat Oleh:</strong></p>
             <p class="pdf-sig-line">( Finance Staff )</p>
-            <p style="font-size: 8.5px; margin-top: 2px;">PT. CTC Finance Dept</p>
+            <p style="font-size: 8px; margin-top: 2px;">PT. CTC Finance Dept</p>
         </div>
         <div class="pdf-sig-box">
             <p><strong>Diterima Oleh:</strong></p>
             <p class="pdf-sig-line">( Lead PM )</p>
-            <p style="font-size: 8.5px; margin-top: 2px;">Project Manager</p>
+            <p style="font-size: 8px; margin-top: 2px;">Project Manager</p>
         </div>
         <div class="pdf-sig-box">
             <p><strong>Disetujui Oleh:</strong></p>
             <p class="pdf-sig-line">( Executive VP )</p>
-            <p style="font-size: 8.5px; margin-top: 2px;">VP Operations</p>
+            <p style="font-size: 8px; margin-top: 2px;">VP Operations</p>
         </div>
     </div>
 </div>
@@ -552,11 +632,11 @@ if ($selected_project !== 'All') {
             <div class="flex items-center gap-2 mb-1">
                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span class="text-xs font-semibold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-0.5 rounded-full">
-                    MODUL 4 • LAPORAN KEUANGAN & PROFITABILITAS
+                    LAPORAN KEUANGAN & PROFITABILITAS
                 </span>
             </div>
             <h1 class="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Laporan Keuangan & Profitabilitas</h1>
-            <p class="text-xs sm:text-sm text-slate-500 font-normal mt-0.5">Analisis realisasi dana masuk, pengeluaran operasional, dan margin profit PT. CTC.</p>
+            <p class="text-xs sm:text-sm text-slate-500 font-normal mt-0.5">Analisis realisasi dana masuk, pengeluaran operasional, pajak PPN, dan margin profit PT. CTC.</p>
         </div>
         
         <div class="flex items-center gap-2.5 shrink-0 flex-wrap sm:flex-nowrap">
@@ -573,7 +653,7 @@ if ($selected_project !== 'All') {
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-slate-300 transition">
             <div class="flex items-center justify-between mb-1">
-                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">REALIZED REVENUE (PAID)</span>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">REALIZED REVENUE (INC PPN)</span>
                 <div class="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs">
                     <i class="fa-solid fa-wallet"></i>
                 </div>
@@ -608,13 +688,13 @@ if ($selected_project !== 'All') {
 
         <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-slate-300 transition">
             <div class="flex items-center justify-between mb-1">
-                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">UNPAID / PIUTANG KLIEN</span>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">UNPAID / PIUTANG (INC PPN)</span>
                 <div class="w-7 h-7 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center text-xs">
                     <i class="fa-solid fa-clock"></i>
                 </div>
             </div>
             <h3 class="text-xl md:text-2xl font-bold text-slate-800 font-mono">Rp <?= number_format($grandUnpaid, 0, ',', '.') ?></h3>
-            <span class="text-xs text-amber-700 font-medium mt-1 block">Tagihan belum lunas</span>
+            <span class="text-xs text-amber-700 font-medium mt-1 block">Tagihan belum lunas (Inc PPN)</span>
         </div>
     </div>
 
@@ -633,10 +713,10 @@ if ($selected_project !== 'All') {
                     <i class="fa-solid fa-filter text-emerald-600"></i> Scope:
                 </label>
                 <select name="project_id" onchange="this.form.submit()" class="input-glow w-full md:w-auto px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold bg-white text-slate-700 focus:outline-none">
-                    <option value="All" <?= $selected_project === 'All' ? 'selected' : '' ?>>📊 Seluruh Proyek (Konsolidasi Portfolio)</option>
+                    <option value="All" <?= $selected_project === 'All' ? 'selected' : '' ?>>Seluruh Proyek (Konsolidasi Portfolio)</option>
                     <?php foreach ($projectsList as $pl): ?>
                         <option value="<?= $pl['id'] ?>" <?= $selected_project == $pl['id'] ? 'selected' : '' ?>>
-                            📂 <?= htmlspecialchars($pl['nama_projek']) ?> (<?= htmlspecialchars($pl['klien']) ?>)
+                            <?= htmlspecialchars($pl['nama_projek']) ?> (<?= htmlspecialchars($pl['klien']) ?>)
                         </option>
                     <?php endforeach; ?>
                 </select>
@@ -662,14 +742,15 @@ if ($selected_project !== 'All') {
 
         <!-- Desktop View (Tabel) -->
         <div class="hidden md:block overflow-x-auto">
-            <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[800px]">
+            <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[950px]">
                 <thead>
                     <tr class="bg-slate-50 text-slate-500 uppercase font-semibold text-xs tracking-wider border-b border-slate-200">
-                        <th class="py-3.5 px-4">NAMA PROYEK</th>
-                        <th class="py-3.5 px-4">KLIEN</th>
+                        <th class="py-3.5 px-4">NAMA PROYEK & KLIEN</th>
                         <th class="py-3.5 px-4 text-center">STATUS</th>
-                        <th class="py-3.5 px-4 text-right">NILAI KONTRAK</th>
-                        <th class="py-3.5 px-4 text-right">PAID (DANA MASUK)</th>
+                        <th class="py-3.5 px-4 text-right">SUBTOTAL DPP</th>
+                        <th class="py-3.5 px-4 text-right">PPN PAJAK</th>
+                        <th class="py-3.5 px-4 text-right">TOTAL INC. PAJAK</th>
+                        <th class="py-3.5 px-4 text-right">PAID (INC. PPN)</th>
                         <th class="py-3.5 px-4 text-right">UNPAID (PIUTANG)</th>
                         <th class="py-3.5 px-4 text-right">PENGELUARAN</th>
                         <th class="py-3.5 px-4 text-right">NET PROFIT REAL</th>
@@ -678,7 +759,7 @@ if ($selected_project !== 'All') {
                 <tbody class="divide-y divide-slate-100">
                     <?php if (empty($reports)): ?>
                         <tr>
-                            <td colspan="8" class="text-center py-10 text-slate-400 font-normal">
+                            <td colspan="9" class="text-center py-10 text-slate-400 font-normal">
                                 <div class="w-12 h-12 mx-auto mb-2 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center text-xl">
                                     <i class="fa-solid fa-chart-line"></i>
                                 </div>
@@ -687,22 +768,29 @@ if ($selected_project !== 'All') {
                         </tr>
                     <?php else: ?>
                         <?php foreach ($reports as $r): 
-                            $isHold = in_array($r['status'], ['On Hold', 'Planning']);
-                            $paidRevenue = $r['realized_paid'];
-                            $unpaid = $r['unpaid_piutang'];
-                            $expense = $r['total_expense'];
+                            $dpp_val       = floatval($r['budget']);
+                            $pct_pajak     = floatval($r['persen_pajak_final']);
+                            $nom_pajak     = floatval($r['nominal_pajak_final']);
+                            $tot_kontrak   = floatval($r['total_nilai_final']);
+
+                            $paidRevenue   = floatval($r['realized_paid']);
+                            $unpaid        = max(0, $tot_kontrak - $paidRevenue);
+                            $expense       = floatval($r['total_expense']);
                             $netProfitReal = $paidRevenue - $expense;
                         ?>
                             <tr class="hover:bg-slate-50/80 transition">
-                                <td class="py-3.5 px-4 font-bold text-slate-900"><?= htmlspecialchars($r['nama_projek']) ?></td>
-                                <td class="py-3.5 px-4 text-slate-600 font-normal"><?= htmlspecialchars($r['klien']) ?></td>
+                                <td class="py-3.5 px-4">
+                                    <p class="font-bold text-slate-900 text-xs sm:text-sm leading-tight mb-0.5"><?= htmlspecialchars($r['nama_projek']) ?></p>
+                                    <span class="text-xs text-slate-400 font-normal">Klien: <strong class="text-slate-600 font-semibold"><?= htmlspecialchars($r['klien']) ?></strong></span>
+                                </td>
                                 <td class="py-3.5 px-4 text-center">
                                     <span class="px-2.5 py-1 rounded-lg text-xs font-semibold uppercase inline-block border tracking-wider
                                         <?php
                                             switch($r['status']) {
+                                                case 'Planning': echo 'bg-amber-50 text-amber-700 border-amber-200'; break;
                                                 case 'In Progress': echo 'bg-blue-50 text-blue-700 border-blue-200'; break;
                                                 case 'Completed': echo 'bg-emerald-50 text-emerald-700 border-emerald-200'; break;
-                                                case 'On Hold': echo 'bg-amber-50 text-amber-700 border-amber-200'; break;
+                                                case 'On Hold': echo 'bg-red-50 text-red-700 border-red-200'; break;
                                                 default: echo 'bg-slate-100 text-slate-600 border-slate-200';
                                             }
                                         ?>">
@@ -710,11 +798,14 @@ if ($selected_project !== 'All') {
                                     </span>
                                 </td>
                                 <td class="py-3.5 px-4 text-right font-mono font-semibold text-slate-800">
-                                    <?php if ($isHold): ?>
-                                        <span class="text-amber-600 font-normal">Rp 0 <span class="text-[10px] bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-semibold">Hold</span></span>
-                                    <?php else: ?>
-                                        Rp <?= number_format($r['budget'], 0, ',', '.') ?>
-                                    <?php endif; ?>
+                                    Rp <?= number_format($dpp_val, 0, ',', '.') ?>
+                                </td>
+                                <td class="py-3.5 px-4 text-right font-mono text-xs text-amber-600 font-semibold">
+                                    Rp <?= number_format($nom_pajak, 0, ',', '.') ?>
+                                    <span class="text-[10px] font-sans block text-amber-700">(PPN <?= number_format($pct_pajak, 1) ?>%)</span>
+                                </td>
+                                <td class="py-3.5 px-4 text-right font-mono font-bold text-slate-900">
+                                    Rp <?= number_format($tot_kontrak, 0, ',', '.') ?>
                                 </td>
                                 <td class="py-3.5 px-4 text-right font-mono font-bold text-emerald-600">
                                     Rp <?= number_format($paidRevenue, 0, ',', '.') ?>
@@ -741,9 +832,11 @@ if ($selected_project !== 'All') {
                 <p class="text-center py-6 text-xs text-slate-400 font-normal">Data laporan tidak ditemukan.</p>
             <?php else: ?>
                 <?php foreach ($reports as $r): 
-                    $paidRevenue = $r['realized_paid'];
-                    $expense = $r['total_expense'];
+                    $paidRevenue   = floatval($r['realized_paid']);
+                    $expense       = floatval($r['total_expense']);
                     $netProfitReal = $paidRevenue - $expense;
+                    $tot_kontrak   = floatval($r['total_nilai_final']);
+                    $unpaid        = max(0, $tot_kontrak - $paidRevenue);
                 ?>
                     <div class="p-4 border border-slate-200/90 rounded-xl bg-slate-50/50 space-y-2">
                         <div class="flex justify-between items-start gap-2">
@@ -757,11 +850,19 @@ if ($selected_project !== 'All') {
                         </div>
                         <div class="pt-2 border-t border-slate-200/80 grid grid-cols-2 gap-2 text-xs font-mono">
                             <div>
-                                <span class="text-slate-400 block font-sans text-[10px]">Paid Revenue:</span>
+                                <span class="text-slate-400 block font-sans text-[10px]">Total Inc. Pajak:</span>
+                                <span class="font-bold text-slate-800">Rp <?= number_format($tot_kontrak, 0, ',', '.') ?></span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block font-sans text-[10px]">Paid Revenue (Inc PPN):</span>
                                 <span class="font-bold text-emerald-600">Rp <?= number_format($paidRevenue, 0, ',', '.') ?></span>
                             </div>
                             <div>
-                                <span class="text-slate-400 block font-sans text-[10px]">Net Profit:</span>
+                                <span class="text-slate-400 block font-sans text-[10px]">Unpaid / Piutang:</span>
+                                <span class="font-bold text-slate-600">Rp <?= number_format($unpaid, 0, ',', '.') ?></span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block font-sans text-[10px]">Net Profit Real:</span>
                                 <span class="font-bold <?= $netProfitReal >= 0 ? 'text-emerald-700' : 'text-red-600' ?>">Rp <?= number_format($netProfitReal, 0, ',', '.') ?></span>
                             </div>
                         </div>

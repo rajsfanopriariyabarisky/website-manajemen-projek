@@ -13,9 +13,92 @@ if (
     exit;
 }
 
-$client_id    = intval($_SESSION['client_user_id']);
-$client_nama  = $_SESSION['client_nama'] ?? 'Klien';
-$client_email = $_SESSION['client_email'] ?? '';
+$client_id = intval($_SESSION['client_user_id']);
+
+// Sinkronkan variabel Sesi Klien dengan Database Master Terbaru
+$stmtSyncClient = $pdo->prepare("SELECT * FROM clients WHERE id = ? LIMIT 1");
+$stmtSyncClient->execute([$client_id]);
+$client_db_sync = $stmtSyncClient->fetch();
+
+if (!$client_db_sync || (int)$client_db_sync['is_verified'] !== 1) {
+    unset(
+        $_SESSION['client_logged_in'],
+        $_SESSION['client_user_id'],
+        $_SESSION['client_nama'],
+        $_SESSION['client_email'],
+        $_SESSION['client_token']
+    );
+    header('Location: login.php');
+    exit;
+}
+
+// Update variabel lokal & Sesi PHP
+$client_nama  = $client_db_sync['nama'];
+$client_email = $client_db_sync['email'];
+$_SESSION['client_nama']  = $client_nama;
+$_SESSION['client_email'] = $client_email;
+
+// AJAX Endpoint: Real-Time Metadata & Client Profile Sync (Status, Project ID, Contract ID, & Profil)
+if (isset($_GET['ajax_meta']) && $_GET['ajax_meta'] == '1' && isset($_GET['req_id'])) {
+    header('Content-Type: application/json');
+    $req_id = intval($_GET['req_id']);
+    
+    // Verifikasi real-time status akun dari DB
+    $stmtCCheck = $pdo->prepare("SELECT nama, email, is_verified FROM clients WHERE id = ? LIMIT 1");
+    $stmtCCheck->execute([$client_id]);
+    $cCheck = $stmtCCheck->fetch();
+
+    if (!$cCheck || (int)$cCheck['is_verified'] !== 1) {
+        unset(
+            $_SESSION['client_logged_in'],
+            $_SESSION['client_user_id'],
+            $_SESSION['client_nama'],
+            $_SESSION['client_email'],
+            $_SESSION['client_token']
+        );
+        echo json_encode(['success' => false, 'logged_out' => true]);
+        exit;
+    }
+
+    // Auto-update Sesi & Variabel
+    $_SESSION['client_nama']  = $cCheck['nama'];
+    $_SESSION['client_email'] = $cCheck['email'];
+    $client_nama  = $cCheck['nama'];
+    $client_email = $cCheck['email'];
+
+    $stmtReqMeta = $pdo->prepare("SELECT id, title, status FROM client_requirements WHERE id = ? AND (client_id = ? OR LOWER(client_email) = LOWER(?)) LIMIT 1");
+    $stmtReqMeta->execute([$req_id, $client_id, $client_email]);
+    $rMeta = $stmtReqMeta->fetch();
+    
+    $pId = 0;
+    $cId = 0;
+    $status = $rMeta['status'] ?? 'Under Review';
+    
+    if ($rMeta) {
+        $stmtPMeta = $pdo->prepare("SELECT id FROM projects WHERE requirement_id = ? OR (LOWER(nama_projek) = LOWER(?) AND LOWER(klien) LIKE LOWER(?)) ORDER BY id DESC LIMIT 1");
+        $stmtPMeta->execute([$req_id, $rMeta['title'], '%' . $client_nama . '%']);
+        $pMeta = $stmtPMeta->fetch();
+        if ($pMeta) {
+            $pId = intval($pMeta['id']);
+            $stmtCMeta = $pdo->prepare("SELECT id FROM contracts WHERE project_id = ? ORDER BY id DESC LIMIT 1");
+            $stmtCMeta->execute([$pId]);
+            $cMeta = $stmtCMeta->fetch();
+            if ($cMeta) {
+                $cId = intval($cMeta['id']);
+            }
+        }
+    }
+    
+    echo json_encode([
+        'success'      => true,
+        'status'       => $status,
+        'project_id'   => $pId,
+        'contract_id'  => $cId,
+        'client_nama'  => $cCheck['nama'],
+        'client_email' => $cCheck['email']
+    ]);
+    exit;
+}
 
 // Handle Logout Khusus Client
 if (isset($_GET['action']) && $_GET['action'] === 'logout') {
@@ -40,6 +123,21 @@ $stmtReqs = $pdo->prepare(
 $stmtReqs->execute([$client_id, $client_email]);
 $requirements = $stmtReqs->fetchAll();
 
+// Target requirement yang dipilih
+$selected_id = isset($_GET['req_id'])
+    ? intval($_GET['req_id'])
+    : ($requirements[0]['id'] ?? 0);
+
+// Auto-Update client_read = 1 untuk requirement yang sedang dibuka aktif
+if ($selected_id > 0) {
+    $stmtMarkRead = $pdo->prepare("
+        UPDATE deal_chats 
+        SET client_read = 1 
+        WHERE requirement_id = ? AND sender_type = 'admin' AND client_read = 0
+    ");
+    $stmtMarkRead->execute([$selected_id]);
+}
+
 // Unread chat per requirement
 $stmtUnread = $pdo->prepare(
     "SELECT requirement_id, COUNT(*) AS c
@@ -55,11 +153,6 @@ $stmtUnread = $pdo->prepare(
 );
 $stmtUnread->execute([$client_id, $client_email]);
 $unreadMap = $stmtUnread->fetchAll(PDO::FETCH_KEY_PAIR);
-
-// Target requirement yang dipilih
-$selected_id = isset($_GET['req_id'])
-    ? intval($_GET['req_id'])
-    : ($requirements[0]['id'] ?? 0);
 
 $active_req = null;
 $linked_project = null;
@@ -81,13 +174,21 @@ if ($selected_id > 0) {
     $active_req = $stmtActive->fetch();
 
     if ($active_req) {
-        // Cari proyek terhubung untuk opsi unduh Surat Penawaran (SPH)
-        $stmtProj = $pdo->prepare("SELECT * FROM projects WHERE requirement_id = ? OR LOWER(nama_projek) LIKE LOWER(?) LIMIT 1");
-        $stmtProj->execute([$active_req['id'], '%' . $active_req['title'] . '%']);
+        $stmtProj = $pdo->prepare("
+            SELECT * FROM projects 
+            WHERE requirement_id = ? 
+               OR (LOWER(nama_projek) = LOWER(?) AND LOWER(klien) LIKE LOWER(?))
+            ORDER BY id DESC LIMIT 1
+        ");
+        $stmtProj->execute([
+            $active_req['id'], 
+            $active_req['title'], 
+            '%' . $client_nama . '%'
+        ]);
         $linked_project = $stmtProj->fetch();
 
         if ($linked_project) {
-            $stmtContract = $pdo->prepare("SELECT * FROM contracts WHERE project_id = ? LIMIT 1");
+            $stmtContract = $pdo->prepare("SELECT * FROM contracts WHERE project_id = ? ORDER BY id DESC LIMIT 1");
             $stmtContract->execute([$linked_project['id']]);
             $linked_contract = $stmtContract->fetch();
         }
@@ -118,12 +219,11 @@ if ($selected_id > 0) {
         .btn-press { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
         .btn-press:active { transform: translateY(1px); }
 
-        /* Animasi pop-in bubble chat (konsisten dengan chatbox tasks) */
         @keyframes chatPop {
-            from { opacity: 0; transform: translateY(12px) scale(0.8); }
+            from { opacity: 0; transform: translateY(8px) scale(0.96); }
             to   { opacity: 1; transform: translateY(0) scale(1); }
         }
-        .chat-pop { animation: chatPop 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        .chat-pop { animation: chatPop 0.25s cubic-bezier(0.16, 1, 0.3, 1) both; }
         .input-glow:focus { border-color: #059669; box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.12); }
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -148,7 +248,7 @@ if ($selected_id > 0) {
     <div class="flex items-center gap-3">
         <a href="profile.php" class="group relative btn-press flex items-center gap-2 px-3.5 py-1.5 bg-slate-50 hover:bg-emerald-50/80 hover:border-emerald-300 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-700 hover:text-emerald-800 transition-all shadow-2xs" title="Lihat Profil">
             <i class="fa-solid fa-circle-user text-emerald-600 text-sm group-hover:scale-110 transition-transform"></i>
-            <span class="truncate max-w-[110px] sm:max-w-none"><?= htmlspecialchars($client_nama) ?></span>
+            <span id="hdrClientNama" class="truncate max-w-[110px] sm:max-w-none"><?= htmlspecialchars($client_nama) ?></span>
             <i class="fa-solid fa-chevron-right text-[10px] text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all"></i>
 
             <div class="absolute top-full left-1/2 -translate-x-1/2 mt-2 hidden group-hover:flex items-center gap-1.5 bg-slate-900 text-white text-[10px] font-medium py-1 px-2.5 rounded-lg shadow-xl whitespace-nowrap z-50 pointer-events-none transition-all">
@@ -178,7 +278,7 @@ if ($selected_id > 0) {
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 flex-1">
 
         <!-- Sidebar Requirements -->
-        <div class="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm flex flex-col h-[400px] lg:h-[650px]">
+        <div class="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm flex flex-col h-[400px] lg:h-[680px]">
 
             <div class="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0 gap-2">
                 <h2 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
@@ -204,7 +304,21 @@ if ($selected_id > 0) {
                 <div class="space-y-2 overflow-y-auto flex-1 pr-1 min-h-0">
 
                     <?php foreach ($requirements as $r): ?>
-                        <?php $uc = (int) ($unreadMap[$r['id']] ?? 0); ?>
+                        <?php 
+                            $uc = (int) ($unreadMap[$r['id']] ?? 0);
+                            $rStatus = $r['status'] ?? 'Under Review';
+                            
+                            $stClass = 'bg-slate-50 text-slate-600 border-slate-200/70';
+                            if ($rStatus === 'Under Review') {
+                                $stClass = 'bg-rose-100 text-rose-700 border-rose-300 font-bold';
+                            } elseif ($rStatus === 'Proposal Sent') {
+                                $stClass = 'bg-amber-50 text-amber-800 border-amber-200 font-bold';
+                            } elseif (in_array($rStatus, ['Deal / Accepted', 'Approved', 'In Progress', 'Completed'])) {
+                                $stClass = 'bg-emerald-50 text-emerald-700 border-emerald-300 font-bold';
+                            } elseif ($rStatus === 'Rejected') {
+                                $stClass = 'bg-slate-200 text-slate-700 border-slate-300 font-bold';
+                            }
+                        ?>
 
                         <a href="portal.php?req_id=<?= $r['id'] ?>"
                            class="block p-3.5 rounded-xl border transition-all duration-150 <?= ($active_req && $active_req['id'] == $r['id']) ? 'bg-emerald-50/60 border-emerald-500/80 shadow-xs ring-1 ring-emerald-500/20' : 'bg-white border-slate-200/80 hover:bg-slate-50 hover:border-slate-300' ?>">
@@ -226,8 +340,8 @@ if ($selected_id > 0) {
                                     <?= date('d M Y', strtotime($r['created_at'])) ?>
                                 </span>
 
-                                <span class="px-2 py-0.5 rounded-md font-semibold uppercase text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200/70 tracking-wider truncate">
-                                    <?= htmlspecialchars($r['status']) ?>
+                                <span id="sidebarStatusBadge-<?= $r['id'] ?>" class="px-2 py-0.5 rounded-md text-[9px] uppercase tracking-wider truncate border <?= $stClass ?>">
+                                    <?= htmlspecialchars($rStatus) ?>
                                 </span>
                             </div>
                         </a>
@@ -239,7 +353,7 @@ if ($selected_id > 0) {
         </div>
 
         <!-- Chat Lobby Container -->
-        <div class="lg:col-span-2 bg-white border border-slate-200/90 rounded-2xl flex flex-col h-[560px] sm:h-[620px] lg:h-[650px] shadow-sm overflow-hidden relative">
+        <div class="lg:col-span-2 bg-white border border-slate-200/90 rounded-2xl flex flex-col h-[560px] sm:h-[620px] lg:h-[680px] shadow-sm overflow-hidden relative">
 
             <?php if (!$active_req): ?>
 
@@ -253,36 +367,49 @@ if ($selected_id > 0) {
             <?php else: ?>
 
                 <!-- Chat Header -->
-                <div class="p-4 sm:px-6 bg-white border-b border-slate-200/90 flex flex-col sm:flex-row items-start sm:items-center justify-between shrink-0 z-10 gap-3">
-                    <div class="pr-2 min-w-0">
-                        <h2 class="text-xs sm:text-sm font-bold text-slate-900 tracking-tight uppercase truncate">
-                            <?= htmlspecialchars($active_req['title']) ?>
-                        </h2>
-                        <p class="text-[11px] text-slate-500 font-normal mt-0.5">
-                            Diskusi Scope & Surat Penawaran dengan Tim PT. CTC
-                        </p>
+                <div class="p-4 sm:px-6 bg-white border-b border-slate-200/90 shrink-0 z-10 space-y-3">
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div class="pr-2 min-w-0">
+                            <h2 class="text-xs sm:text-sm font-bold text-slate-900 tracking-tight uppercase truncate">
+                                <?= htmlspecialchars($active_req['title']) ?>
+                            </h2>
+                            <p class="text-[11px] text-slate-500 font-normal mt-0.5">
+                                Diskusi Scope & Surat Penawaran dengan Tim PT. CTC
+                            </p>
+                        </div>
+
+                        <!-- Container Akses Cepat PDF & Badge Status (Dynamic Sync Real-Time) -->
+                        <div class="flex items-center gap-2 flex-wrap justify-end">
+                            <div id="hdrActionButtons" class="flex items-center gap-2 flex-wrap">
+                                <!-- Rendered dynamically by updateHeaderUI JS -->
+                            </div>
+
+                            <span id="hdrStatusBadge" class="px-2.5 py-1 text-[9.5px] uppercase rounded-lg border tracking-wider shrink-0">
+                                STATUS: <?= htmlspecialchars($active_req['status'] ?? 'Under Review') ?>
+                            </span>
+                        </div>
                     </div>
 
-                    <div class="flex items-center gap-2 flex-wrap justify-end">
-                        <!-- LOGIKA KETAT: Tombol Proposal SPH hanya jika Proposal Sent atau Deal / Accepted -->
-                        <?php if ($linked_project && ($active_req['status'] === 'Proposal Sent' || $active_req['status'] === 'Deal / Accepted')): ?>
-                            <a href="../modules/proposals/print_proposal.php?project_id=<?= $linked_project['id'] ?>" target="_blank" class="btn-press px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 shrink-0 transition">
-                                <i class="fa-solid fa-file-pdf text-xs"></i>
-                                <span>Proposal SPH (PDF)</span>
+                    <!-- Panel Info Metadata Requirement & Lampiran BRD -->
+                    <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div class="flex items-center gap-3 text-slate-600 flex-wrap">
+                            <span>
+                                <strong class="text-slate-800 font-semibold">Estimasi Anggaran:</strong> 
+                                <span class="font-mono text-emerald-700 font-bold">Rp <?= number_format(floatval($active_req['budget_estimation'] ?? 0), 0, ',', '.') ?></span>
+                                <span class="text-[10px] text-slate-400 font-normal">(Belum inc. PPN)</span>
+                            </span>
+                            <span>•</span>
+                            <span class="text-slate-500 text-[11px]">
+                                Tanggal: <?= date('d M Y H:i', strtotime($active_req['created_at'])) ?> WIB
+                            </span>
+                        </div>
+
+                        <?php if (!empty($active_req['file_attachment'])): ?>
+                            <a href="../uploads/brd/<?= htmlspecialchars($active_req['file_attachment']) ?>" target="_blank" class="btn-press text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 bg-white border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition">
+                                <i class="fa-solid fa-paperclip text-emerald-600"></i>
+                                <span>Unduh Lampiran BRD</span>
                             </a>
                         <?php endif; ?>
-
-                        <!-- LOGIKA KETAT: Tombol Kontrak SPK HANYA TAMPIL jika sudah Deal / Accepted -->
-                        <?php if ($linked_contract && $active_req['status'] === 'Deal / Accepted'): ?>
-                            <a href="../modules/contracts/print_pdf.php?id=<?= $linked_contract['id'] ?>" target="_blank" class="btn-press px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 shrink-0 transition">
-                                <i class="fa-solid fa-file-contract text-xs"></i>
-                                <span>Kontrak SPK (PDF)</span>
-                            </a>
-                        <?php endif; ?>
-
-                        <span class="px-2.5 py-1 text-[9.5px] font-semibold uppercase rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 tracking-wider shrink-0">
-                            STATUS: <?= htmlspecialchars($active_req['status']) ?>
-                        </span>
                     </div>
                 </div>
 
@@ -313,12 +440,12 @@ if ($selected_id > 0) {
     </div>
 </main>
 
-<?php if ($active_req): ?>
+<?php if ($active_req) { ?>
 <script>
     const activeReqId = <?= (int) $active_req['id'] ?>;
-    const activeProjId = <?= (int) ($linked_project['id'] ?? 0) ?>;
-    const activeContractId = <?= (int) ($linked_contract['id'] ?? 0) ?>;
-    const activeStatus = '<?= htmlspecialchars($active_req['status']) ?>';
+    let activeProjId = <?= (int) ($linked_project['id'] ?? 0) ?>;
+    let activeContractId = <?= (int) ($linked_contract['id'] ?? 0) ?>;
+    let activeStatus = '<?= htmlspecialchars($active_req['status']) ?>';
 
     let lastChatId = 0;
     let chatHistoryLoaded = false;
@@ -339,62 +466,173 @@ if ($selected_id > 0) {
         return escapeHtml(str).replace(/\n/g, '<br>');
     }
 
-    function renderSingleChat(c, animate) {
-        const isClient = c.sender_type === 'client';
-        const isSystem = (c.sender_type === 'system' || (c.sender_name && c.sender_name.toLowerCase().includes('system')));
-        
-        const containerClass = isClient ? 'items-end' : 'items-start';
-        
-        let nameClass = 'text-slate-700 font-semibold';
-        if (isClient) {
-            nameClass = 'text-emerald-700 font-semibold';
-        } else if (isSystem) {
-            nameClass = 'text-emerald-800 font-bold';
+    // UPDATE UI HEADER & STATUS BADGE DYNAMICALLY WITHOUT REFRESH
+    function updateHeaderUI(status, projId, contractId) {
+        activeStatus = status;
+        if (projId > 0) activeProjId = projId;
+        if (contractId > 0) activeContractId = contractId;
+
+        // 1. Update Status Badge Header
+        const badge = document.getElementById('hdrStatusBadge');
+        if (badge) {
+            let hdrStClass = 'bg-slate-50 text-slate-600 border-slate-200';
+            if (status === 'Under Review') {
+                hdrStClass = 'bg-rose-100 text-rose-700 border-rose-300 font-bold';
+            } else if (status === 'Proposal Sent') {
+                hdrStClass = 'bg-amber-50 text-amber-800 border-amber-200 font-bold';
+            } else if (['Deal / Accepted', 'Approved', 'In Progress', 'Completed'].includes(status)) {
+                hdrStClass = 'bg-emerald-50 text-emerald-700 border-emerald-300 font-bold';
+            } else if (status === 'Rejected') {
+                hdrStClass = 'bg-slate-200 text-slate-700 border-slate-300 font-bold';
+            }
+            badge.className = `px-2.5 py-1 text-[9.5px] uppercase rounded-lg border tracking-wider shrink-0 ${hdrStClass}`;
+            badge.innerText = `STATUS: ${status}`;
         }
 
-        let bubbleClass = 'bg-white text-slate-800 rounded-tl-none border border-slate-200/90 shadow-2xs';
-        let messageFormatted = nl2br(c.message);
+        // 2. Update Status Badge Sidebar Kiri
+        const sbBadge = document.getElementById('sidebarStatusBadge-' + activeReqId);
+        if (sbBadge) {
+            let sbClass = 'bg-slate-50 text-slate-600 border-slate-200/70';
+            if (status === 'Under Review') {
+                sbClass = 'bg-rose-100 text-rose-700 border-rose-300 font-bold';
+            } else if (status === 'Proposal Sent') {
+                sbClass = 'bg-amber-50 text-amber-800 border-amber-200 font-bold';
+            } else if (['Deal / Accepted', 'Approved', 'In Progress', 'Completed'].includes(status)) {
+                sbClass = 'bg-emerald-50 text-emerald-700 border-emerald-300 font-bold';
+            } else if (status === 'Rejected') {
+                sbClass = 'bg-slate-200 text-slate-700 border-slate-300 font-bold';
+            }
+            sbBadge.className = `px-2 py-0.5 rounded-md text-[9px] uppercase tracking-wider truncate border ${sbClass}`;
+            sbBadge.innerText = status;
+        }
 
-        if (isClient) {
-            bubbleClass = 'bg-emerald-600 text-white rounded-tr-none';
-        } else if (isSystem) {
-            const isContractMsg = c.message.toLowerCase().includes('perjanjian') || c.message.toLowerCase().includes('kontrak') || c.message.toLowerCase().includes('spk');
-            const isProposalMsg = c.message.toLowerCase().includes('penawaran') || c.message.toLowerCase().includes('sph') || c.message.toLowerCase().includes('proposal');
-            
-            let btnActionHtml = '';
-            // Hanya tampilkan tombol di pesan sistem jika status memang sesuai
-            if (isContractMsg && activeContractId > 0 && activeStatus === 'Deal / Accepted') {
-                btnActionHtml = `
-                    <div class="pt-2">
-                        <a href="../modules/contracts/print_pdf.php?id=${activeContractId}" target="_blank" class="btn-press inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3.5 py-1.5 rounded-lg text-xs shadow-2xs transition">
-                            <i class="fa-solid fa-file-contract"></i> Lihat / Unduh Surat Perjanjian SPK (PDF)
-                        </a>
-                    </div>
-                `;
-            } else if (isProposalMsg && activeProjId > 0 && (activeStatus === 'Proposal Sent' || activeStatus === 'Deal / Accepted')) {
-                btnActionHtml = `
-                    <div class="pt-2">
-                        <a href="../modules/proposals/print_proposal.php?project_id=${activeProjId}" target="_blank" class="btn-press inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3.5 py-1.5 rounded-lg text-xs shadow-2xs transition">
-                            <i class="fa-solid fa-file-pdf"></i> Lihat / Unduh Surat Penawaran SPH (PDF)
-                        </a>
-                    </div>
+        // 3. Update Tombol PDF (SPH & SPK) di Header secara Real-Time
+        const btnContainer = document.getElementById('hdrActionButtons');
+        if (btnContainer) {
+            let html = '';
+            const validProposal = ['Proposal Sent', 'Deal / Accepted', 'Approved', 'In Progress', 'Completed'];
+            const validDeal     = ['Deal / Accepted', 'Approved', 'In Progress', 'Completed'];
+
+            if (activeProjId > 0 && validProposal.includes(status)) {
+                html += `
+                    <a href="../modules/proposals/print_proposal.php?project_id=${activeProjId}" target="_blank" class="btn-press px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 shrink-0 transition">
+                        <i class="fa-solid fa-file-pdf text-xs"></i>
+                        <span>Proposal SPH (PDF)</span>
+                    </a>
                 `;
             }
 
-            bubbleClass = 'bg-emerald-50/90 text-emerald-800 border border-emerald-300 rounded-tl-none font-medium shadow-2xs';
-            messageFormatted = `
-                <div class="space-y-2">
-                    <div class="flex items-center gap-2 text-emerald-900 font-bold border-b border-emerald-200 pb-1.5">
-                        <i class="fa-solid fa-file-signature text-emerald-600 text-base"></i>
-                        <span>Notifikasi Resmi CTC</span>
+            if (activeContractId > 0 && validDeal.includes(status)) {
+                html += `
+                    <a href="../modules/contracts/print_pdf.php?id=${activeContractId}" target="_blank" class="btn-press px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 shrink-0 transition">
+                        <i class="fa-solid fa-file-contract text-xs"></i>
+                        <span>Kontrak SPK (PDF)</span>
+                    </a>
+                `;
+            }
+
+            btnContainer.innerHTML = html;
+        }
+    }
+
+    // SYNC DATABASE METADATA REAL-TIME (Menjamin SPH, SPK, dan Profil Klien langsung aktif tanpa manual reload)
+    function syncRequirementMetadata() {
+        fetch(`portal.php?ajax_meta=1&req_id=${activeReqId}`, { cache: 'no-store' })
+            .then(res => res.json())
+            .then(meta => {
+                if (meta && meta.logged_out) {
+                    window.location.href = 'login.php';
+                    return;
+                }
+
+                if (meta && meta.success) {
+                    activeStatus     = meta.status || activeStatus;
+                    activeProjId     = parseInt(meta.project_id || 0, 10);
+                    activeContractId = parseInt(meta.contract_id || 0, 10);
+                    updateHeaderUI(activeStatus, activeProjId, activeContractId);
+
+                    // Auto Sync Nama Klien di Header secara Real-Time jika diubah oleh Admin
+                    if (meta.client_nama) {
+                        const hdrNamaElem = document.getElementById('hdrClientNama');
+                        if (hdrNamaElem) hdrNamaElem.innerText = meta.client_nama;
+                    }
+                }
+            })
+            .catch(err => console.error('syncRequirementMetadata:', err));
+    }
+
+    // RENDER SINGLE CHAT (BEBAS DOUBLE BUTTON & AUTOMATIC SYSTEM NOTIFICATION DISPATCHER)
+    function renderSingleChat(c, animate) {
+        const isClient = c.sender_type === 'client';
+        const isSystem = (c.sender_type === 'system' || (c.sender_name && c.sender_name.toLowerCase().includes('system')));
+        const popClass = animate ? ' chat-pop' : '';
+
+        // DETEKSI AKSI SISTEM / CHAT INFORMASI AUTOMATED CTC
+        if (isSystem) {
+            const msgLower = c.message.toLowerCase();
+            const isStatusChange = msgLower.includes('status pengajuan diperbarui menjadi') || msgLower.includes('status pengajuan:');
+
+            // Trigger sync metadata jika ada perubahan status pada pesan chat
+            if (c.message.includes('Proposal Sent') || c.message.includes('Deal / Accepted')) {
+                syncRequirementMetadata();
+            }
+
+            if (isStatusChange) {
+                const isDealAccepted = c.message.includes('Deal / Accepted');
+
+                // 1. Render Pill Status Terpusat di Tengah
+                let htmlPill = `
+                    <div class="flex justify-center my-3 w-full chat-bubble${popClass}" data-id="${c.id}">
+                        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-200/80 border border-slate-300/80 text-slate-700 text-[11px] font-semibold shadow-2xs">
+                            <i class="fa-solid fa-circle-info text-emerald-600 text-xs"></i>
+                            <span>${escapeHtml(c.message)}</span>
+                            <span class="text-[9px] text-slate-400 font-normal ml-1">• ${escapeHtml(c.created_at)} WIB</span>
+                        </div>
                     </div>
-                    <p class="leading-relaxed text-slate-700 font-normal">${nl2br(c.message)}</p>
-                    ${btnActionHtml}
-                </div>
-            `;
+                `;
+
+                // 2. Jika Deal / Accepted, LANGSUNG PUSH OTOMATIS Card Notifikasi Resmi SPK di bawahnya!
+                if (isDealAccepted) {
+                    htmlPill += `
+                        <div class="flex justify-center my-3 w-full chat-bubble${popClass}">
+                            <div class="max-w-[85%] sm:max-w-[75%] p-3.5 bg-emerald-50/90 border border-emerald-300 text-emerald-900 rounded-2xl shadow-2xs space-y-1.5 w-full sm:w-auto">
+                                <div class="flex items-center justify-between border-b border-emerald-200 pb-1.5 gap-2">
+                                    <span class="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-shield-halved text-emerald-600"></i> Notifikasi Resmi System CTC
+                                    </span>
+                                    <span class="text-[10px] text-emerald-600 font-normal">${escapeHtml(c.created_at)} WIB</span>
+                                </div>
+                                <p class="text-xs text-slate-700 leading-relaxed font-normal">Surat Perjanjian Kerja Sama (SPK) telah diterbitkan dan dapat diunduh melalui portal.</p>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                return htmlPill;
+            } else {
+                // Tampilan CARD NOTIFIKASI RESMI SYSTEM CTC (Untuk SPH, SPK manual, atau Notifikasi Lainnya)
+                return `
+                    <div class="flex justify-center my-3 w-full chat-bubble${popClass}" data-id="${c.id}">
+                        <div class="max-w-[85%] sm:max-w-[75%] p-3.5 bg-emerald-50/90 border border-emerald-300 text-emerald-900 rounded-2xl shadow-2xs space-y-1.5 w-full sm:w-auto">
+                            <div class="flex items-center justify-between border-b border-emerald-200 pb-1.5 gap-2">
+                                <span class="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-shield-halved text-emerald-600"></i> Notifikasi Resmi System CTC
+                                </span>
+                                <span class="text-[10px] text-emerald-600 font-normal">${escapeHtml(c.created_at)} WIB</span>
+                            </div>
+                            <p class="text-xs text-slate-700 leading-relaxed font-normal">${nl2br(c.message)}</p>
+                        </div>
+                    </div>
+                `;
+            }
         }
 
-        const popClass = animate ? ' chat-pop' : '';
+        // TAMPILAN BUBBLE CHAT HUMAN (CLIENT / ADMIN)
+        const containerClass = isClient ? 'items-end' : 'items-start';
+        const nameClass      = isClient ? 'text-emerald-700 font-semibold' : 'text-slate-700 font-semibold';
+        const bubbleClass    = isClient 
+            ? 'bg-emerald-600 text-white rounded-tr-none shadow-2xs' 
+            : 'bg-white text-slate-800 rounded-tl-none border border-slate-200/90 shadow-2xs';
 
         return `
             <div class="flex flex-col ${containerClass} w-full chat-bubble${popClass}" data-id="${c.id}">
@@ -405,7 +643,7 @@ if ($selected_id > 0) {
                 </div>
 
                 <div class="max-w-[85%] sm:max-w-[75%] p-3 sm:p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed break-words ${bubbleClass}">
-                    ${messageFormatted}
+                    ${nl2br(c.message)}
                 </div>
             </div>
         `;
@@ -442,14 +680,22 @@ if ($selected_id > 0) {
     }
 
     function fetchClientChats() {
+        syncRequirementMetadata();
+
         fetch(`../api_chat.php?action=fetch&req_id=${activeReqId}&last_id=${lastChatId}&reader=client`, { cache: 'no-store' })
             .then(res => res.json())
             .then(data => {
                 if (!data.success) return;
 
-                if (data.messages.length > 0) {
-                    data.messages.forEach(c => appendChat(c, chatHistoryLoaded));
-                    chatHistoryLoaded = true;
+                if (data.messages && data.messages.length > 0) {
+                    const now = new Date();
+                    data.messages.forEach(c => {
+                        let chatDate = new Date(c.created_at.replace(/-/g, '/'));
+                        if (chatDate <= now) {
+                            appendChat(c, chatHistoryLoaded);
+                            chatHistoryLoaded = true;
+                        }
+                    });
                 } else if (!chatHistoryLoaded) {
                     chatHistoryLoaded = true;
 
@@ -512,8 +758,9 @@ if ($selected_id > 0) {
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        const box = document.getElementById('chat-box');
+        updateHeaderUI(activeStatus, activeProjId, activeContractId);
 
+        const box = document.getElementById('chat-box');
         box.innerHTML = `
             <div class="empty-chat-notice text-center py-20 text-slate-400 font-normal">
                 <i class="fa-solid fa-comments text-4xl mb-3 block text-slate-300"></i>
@@ -531,7 +778,7 @@ if ($selected_id > 0) {
         });
     });
 </script>
-<?php endif; ?>
+<?php } ?>
 
 </body>
 </html>

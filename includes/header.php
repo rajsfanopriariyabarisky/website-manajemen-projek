@@ -5,13 +5,13 @@ if (session_status() === PHP_SESSION_NONE) {
 
 // Proteksi Wajib Login untuk Semua Halaman Admin yang Memakai Header Ini
 if (!isset($_SESSION['user_id'])) {
-    header("Location: /website%20manajemen%20projek/login.php");
+    header("Location: /ctc-hub/login.php");
     exit;
 }
 
 // Double Check Guard: Jika bukan admin, jangan biarkan me-render komponen Admin Header
 if (strtolower($_SESSION['role'] ?? '') !== 'admin') {
-    header("Location: /website%20manajemen%20projek/my_tasks.php");
+    header("Location: /ctc-hub/my_tasks.php");
     exit;
 }
 ?>
@@ -23,8 +23,8 @@ if (strtolower($_SESSION['role'] ?? '') !== 'admin') {
     <title>Sistem Manajemen Proyek PT. CTC</title>
 
     <!-- FAVICON TAB BROWSER -->
-    <link rel="shortcut icon" href="/website%20manajemen%20projek/assets/images/logo.png" type="image/png">
-    <link rel="icon" href="/website%20manajemen%20projek/assets/images/logo.png" type="image/png">
+    <link rel="shortcut icon" href="/ctc-hub/assets/images/logo.png" type="image/png">
+    <link rel="icon" href="/ctc-hub/assets/images/logo.png" type="image/png">
 
     <!-- GOOGLE FONTS & TAILWIND CSS -->
     <link rel="preconnect" href="https://fonts.googleapis.com">

@@ -28,10 +28,13 @@ if ($isPelunasan) {
     $invoiceHistory = $stmtInvList->fetchAll();
 
     $totalPaidReal = array_sum(array_column($invoiceHistory, 'jumlah_tagihan'));
+    $pct_pajak     = floatval($project['persen_pajak'] ?? 11.00);
+    $nom_pajak     = floatval($project['nominal_pajak'] ?? 0) > 0 ? floatval($project['nominal_pajak']) : round(($totalPaidReal * $pct_pajak) / 100, 2);
+    $totalIncTax   = floatval($project['total_nilai'] ?? 0) > 0 ? floatval($project['total_nilai']) : ($totalPaidReal + $nom_pajak);
 } else {
     // Mode Cetak Invoice Per Termin
     $stmt = $pdo->prepare("
-        SELECT i.*, p.nama_projek, p.klien, p.budget 
+        SELECT i.*, p.nama_projek, p.klien, p.budget, p.persen_pajak AS proj_persen_pajak
         FROM invoices i
         JOIN projects p ON i.project_id = p.id
         WHERE i.id = ?
@@ -43,18 +46,26 @@ if ($isPelunasan) {
         header("Location: index.php");
         exit;
     }
+
+    $dpp_val   = floatval($invoice['jumlah_tagihan']);
+    $pct_pajak = floatval($invoice['persen_pajak'] ?? 0) > 0 ? floatval($invoice['persen_pajak']) : floatval($invoice['proj_persen_pajak'] ?? 11.00);
+    $nom_pajak = floatval($invoice['nominal_pajak'] ?? 0) > 0 ? floatval($invoice['nominal_pajak']) : round(($dpp_val * $pct_pajak) / 100, 2);
+    $tot_tagihan = floatval($invoice['total_tagihan'] ?? 0) > 0 ? floatval($invoice['total_tagihan']) : ($dpp_val + $nom_pajak);
 }
 
 function terbilang($angka) {
+    $angka = abs((float)$angka);
     $satuan = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas"];
-    if ($angka < 12) return $satuan[$angka];
+    
+    if ($angka < 12) return $satuan[(int)$angka];
     if ($angka < 20) return terbilang($angka - 10) . " Belas";
-    if ($angka < 100) return terbilang(floor($angka / 10)) . " Puluh " . terbilang($angka % 10);
+    if ($angka < 100) return terbilang((int)($angka / 10)) . " Puluh " . terbilang($angka % 10);
     if ($angka < 200) return "Seratus " . terbilang($angka - 100);
-    if ($angka < 1000) return terbilang(floor($angka / 100)) . " Ratus " . terbilang($angka % 100);
+    if ($angka < 1000) return terbilang((int)($angka / 100)) . " Ratus " . terbilang($angka % 100);
     if ($angka < 2000) return "Seribu " . terbilang($angka - 1000);
-    if ($angka < 1000000) return terbilang(floor($angka / 1000)) . " Ribu " . terbilang($angka % 1000);
-    if ($angka < 1000000000) return terbilang(floor($angka / 1000000)) . " Juta " . terbilang($angka % 1000000);
+    if ($angka < 1000000) return terbilang((int)($angka / 1000)) . " Ribu " . terbilang($angka % 1000);
+    if ($angka < 1000000000) return terbilang((int)($angka / 1000000)) . " Juta " . terbilang($angka % 1000000);
+    if ($angka < 1000000000000) return terbilang((int)($angka / 1000000000)) . " Miliar " . terbilang(fmod($angka, 1000000000));
     return number_format($angka, 0, ',', '.');
 }
 
@@ -205,7 +216,8 @@ $backProjectTarget = $isPelunasan ? $project['id'] : $invoice['project_id'];
             <img src="../../assets/images/kopsurat-ctc.png"
                  alt="Kop Surat Utama"
                  class="kop-background"
-                 crossorigin="anonymous">
+                 crossorigin="anonymous"
+                 onerror="this.onerror=null; this.src='../../assets/img/kopsurat-ctc.png';">
 
             <div class="doc-font relative z-10 pt-[46mm] pb-[18mm] px-[20mm] h-full flex flex-col text-justify text-[11px] text-black">
                 
@@ -232,7 +244,7 @@ $backProjectTarget = $isPelunasan ? $project['id'] : $invoice['project_id'];
                         <p class="text-slate-700 mt-0.5">Sistem Proyek: <strong><?= htmlspecialchars($isPelunasan ? $project['nama_projek'] : $invoice['nama_projek']) ?></strong></p>
                     </div>
                     <div class="text-right space-y-0.5">
-                        <p><strong class="text-slate-500">Nilai Total Kontrak:</strong> <span class="font-mono font-bold text-slate-900">Rp <?= number_format($isPelunasan ? $project['budget'] : $invoice['budget'], 0, ',', '.') ?></span></p>
+                        <p><strong class="text-slate-500">Subtotal DPP Proyek:</strong> <span class="font-mono font-bold text-slate-900">Rp <?= number_format($isPelunasan ? $project['budget'] : $invoice['budget'], 0, ',', '.') ?></span></p>
                         <p><strong class="text-slate-500">Tanggal Terbit Dokumen:</strong> <?= date('d F Y') ?></p>
                         <?php if (!$isPelunasan): ?>
                             <p><strong class="text-slate-500">Tanggal Jatuh Tempo:</strong> <?= date('d F Y', strtotime($invoice['jatuh_tempo'])) ?></p>
@@ -257,7 +269,7 @@ $backProjectTarget = $isPelunasan ? $project['id'] : $invoice['project_id'];
                                     <th class="border border-emerald-800 p-2.5">Rincian Pembayaran Termin</th>
                                     <th class="border border-emerald-800 p-2.5">No. Invoice Ref</th>
                                     <th class="border border-emerald-800 p-2.5 text-center">Status</th>
-                                    <th class="border border-emerald-800 p-2.5 text-right">Nominal Terbayar</th>
+                                    <th class="border border-emerald-800 p-2.5 text-right">Nominal Terbayar (DPP)</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-200">
@@ -272,9 +284,17 @@ $backProjectTarget = $isPelunasan ? $project['id'] : $invoice['project_id'];
                                         <td class="border border-slate-300 p-2.5 text-right font-bold text-slate-900 font-mono">Rp <?= number_format($ih['jumlah_tagihan'], 0, ',', '.') ?></td>
                                     </tr>
                                 <?php endforeach; ?>
+                                <tr class="bg-slate-50 font-bold">
+                                    <td colspan="3" class="border border-slate-300 p-2 text-right uppercase text-[10px] text-slate-700">SUBTOTAL REALSASI DPP</td>
+                                    <td class="border border-slate-300 p-2 text-right text-slate-900 font-mono text-[11px]">Rp <?= number_format($totalPaidReal, 0, ',', '.') ?></td>
+                                </tr>
+                                <tr class="bg-slate-50 font-bold">
+                                    <td colspan="3" class="border border-slate-300 p-2 text-right uppercase text-[10px] text-slate-700">PPN PAJAK (<?= number_format($pct_pajak, 1) ?>%)</td>
+                                    <td class="border border-slate-300 p-2 text-right text-amber-700 font-mono text-[11px]">Rp <?= number_format($nom_pajak, 0, ',', '.') ?></td>
+                                </tr>
                                 <tr class="bg-emerald-50/90 font-bold border-t-2 border-emerald-800">
-                                    <td colspan="3" class="border border-slate-300 p-2.5 text-right uppercase text-[10.5px] text-emerald-950 font-black tracking-wide">TOTAL REALISASI PELUNASAN (100%)</td>
-                                    <td class="border border-slate-300 p-2.5 text-right text-emerald-900 font-mono text-[12px] font-black">Rp <?= number_format($totalPaidReal, 0, ',', '.') ?></td>
+                                    <td colspan="3" class="border border-slate-300 p-2.5 text-right uppercase text-[10.5px] text-emerald-950 font-black tracking-wide">TOTAL REALISASI PELUNASAN (INC. PPN)</td>
+                                    <td class="border border-slate-300 p-2.5 text-right text-emerald-900 font-mono text-[12px] font-black">Rp <?= number_format($totalIncTax, 0, ',', '.') ?></td>
                                 </tr>
                             </tbody>
                         </table>
@@ -286,7 +306,7 @@ $backProjectTarget = $isPelunasan ? $project['id'] : $invoice['project_id'];
                             <thead>
                                 <tr class="bg-emerald-900 text-white font-bold uppercase text-[9.5px] tracking-wider">
                                     <th class="border border-emerald-800 p-2.5">Deskripsi Tagihan Pekerjaan</th>
-                                    <th class="border border-emerald-800 p-2.5 w-32 text-center">Termin</th>
+                                    <th class="border border-emerald-800 p-2.5 w-28 text-center">Termin</th>
                                     <th class="border border-emerald-800 p-2.5 text-right w-40">Jumlah (IDR)</th>
                                 </tr>
                             </thead>
@@ -298,12 +318,20 @@ $backProjectTarget = $isPelunasan ? $project['id'] : $invoice['project_id'];
                                     </td>
                                     <td class="border border-slate-300 p-3 text-center font-bold text-emerald-900">Termin <?= $invoice['termin_ke'] ?></td>
                                     <td class="border border-slate-300 p-3 text-right font-mono font-bold text-slate-900 text-[11.5px]">
-                                        Rp <?= number_format($invoice['jumlah_tagihan'], 0, ',', '.') ?>
+                                        Rp <?= number_format($dpp_val, 0, ',', '.') ?>
                                     </td>
                                 </tr>
+                                <tr class="bg-slate-50 font-bold">
+                                    <td colspan="2" class="border border-slate-300 p-2 text-right uppercase text-[10px] text-slate-700">Subtotal DPP Tagihan</td>
+                                    <td class="border border-slate-300 p-2 text-right text-slate-900 font-mono text-[11px]">Rp <?= number_format($dpp_val, 0, ',', '.') ?></td>
+                                </tr>
+                                <tr class="bg-slate-50 font-bold">
+                                    <td colspan="2" class="border border-slate-300 p-2 text-right uppercase text-[10px] text-slate-700">PPN Pajak (<?= number_format($pct_pajak, 1) ?>%)</td>
+                                    <td class="border border-slate-300 p-2 text-right text-amber-700 font-mono text-[11px]">Rp <?= number_format($nom_pajak, 0, ',', '.') ?></td>
+                                </tr>
                                 <tr class="bg-emerald-50/90 font-bold border-t-2 border-emerald-800">
-                                    <td colspan="2" class="border border-slate-300 p-2.5 text-right uppercase text-[10.5px] text-emerald-950 font-black tracking-wide">Total Tagihan (Nett)</td>
-                                    <td class="border border-slate-300 p-2.5 text-right text-emerald-900 font-mono text-[12px] font-black">Rp <?= number_format($invoice['jumlah_tagihan'], 0, ',', '.') ?></td>
+                                    <td colspan="2" class="border border-slate-300 p-2.5 text-right uppercase text-[10.5px] text-emerald-950 font-black tracking-wide">Total Tagihan (Inc. PPN)</td>
+                                    <td class="border border-slate-300 p-2.5 text-right text-emerald-900 font-mono text-[12px] font-black">Rp <?= number_format($tot_tagihan, 0, ',', '.') ?></td>
                                 </tr>
                             </tbody>
                         </table>
@@ -312,7 +340,7 @@ $backProjectTarget = $isPelunasan ? $project['id'] : $invoice['project_id'];
 
                 <!-- Terbilang Box -->
                 <div class="p-3 bg-slate-50 border border-slate-300 rounded-lg text-[11px] italic text-slate-800 mb-6 font-sans shadow-xs">
-                    <strong>Terbilang:</strong> "<?= terbilang($isPelunasan ? $totalPaidReal : $invoice['jumlah_tagihan']) ?> Rupiah"
+                    <strong>Terbilang:</strong> "<?= terbilang($isPelunasan ? $totalIncTax : $tot_tagihan) ?> Rupiah"
                 </div>
 
                 <!-- Footer Tanda Tangan & Bank Transfer -->
@@ -337,7 +365,7 @@ $backProjectTarget = $isPelunasan ? $project['id'] : $invoice['project_id'];
                                      id="stempelImg"
                                      class="stempel-img absolute w-24 h-24 object-contain left-[25%] top-[-12px] -rotate-12 opacity-60"
                                      crossorigin="anonymous"
-                                     onerror="this.style.display='none'">
+                                     onerror="this.onerror=null; this.src='../../assets/img/Stempel.png';">
                             </div>
 
                             <div class="relative z-10">

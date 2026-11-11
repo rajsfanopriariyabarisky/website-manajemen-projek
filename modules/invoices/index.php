@@ -13,19 +13,22 @@ if (!isset($_SESSION['user_id'])) {
 $search_query  = trim($_GET['search'] ?? '');
 $filter_status = $_GET['status_filter'] ?? 'All';
 
-// Fetch All Projects with Invoices Summary
+// Fetch All Projects with Invoices Summary (Kalkulasi Pajak PPN Presisi)
 $sqlProjects = "
     SELECT 
         p.id AS project_id,
         p.nama_projek,
         p.klien,
         p.budget,
+        COALESCE(NULLIF(p.persen_pajak, 0), 11.00) AS persen_pajak_final,
+        COALESCE(NULLIF(p.nominal_pajak, 0), ROUND((p.budget * COALESCE(NULLIF(p.persen_pajak, 0), 11.00)) / 100, 2)) AS nominal_pajak_final,
+        COALESCE(NULLIF(p.total_nilai, 0), p.budget + ROUND((p.budget * COALESCE(NULLIF(p.persen_pajak, 0), 11.00)) / 100, 2)) AS total_nilai_final,
         p.tanggal_mulai,
         p.deadline,
         p.status AS project_status,
-        COALESCE(SUM(i.jumlah_tagihan), 0) AS total_invoiced,
-        COALESCE(SUM(CASE WHEN i.status = 'Paid' THEN i.jumlah_tagihan ELSE 0 END), 0) AS total_paid,
-        COALESCE(SUM(CASE WHEN i.status != 'Paid' THEN i.jumlah_tagihan ELSE 0 END), 0) AS total_unpaid,
+        COALESCE(SUM(i.jumlah_tagihan), 0) AS total_invoiced_dpp,
+        COALESCE(SUM(COALESCE(NULLIF(i.total_tagihan, 0), i.jumlah_tagihan + ROUND((i.jumlah_tagihan * COALESCE(NULLIF(i.persen_pajak, 0), 11.00))/100, 2))), 0) AS total_invoiced_inc_tax,
+        COALESCE(SUM(CASE WHEN LOWER(i.status) = 'paid' THEN COALESCE(NULLIF(i.total_tagihan, 0), i.jumlah_tagihan + ROUND((i.jumlah_tagihan * COALESCE(NULLIF(i.persen_pajak, 0), 11.00))/100, 2)) ELSE 0 END), 0) AS total_paid_inc_tax,
         COUNT(i.id) AS total_invoices_count,
         MAX(i.termin_ke) AS max_termin
     FROM projects p
@@ -47,13 +50,15 @@ $stmt = $pdo->prepare($sqlProjects);
 $stmt->execute($params);
 $allProjects = $stmt->fetchAll();
 
-// Filter Status Pembayaran di Level PHP
+// Filter Status Pembayaran di Level PHP (Didasarkan pada Total Inc. PPN)
 $filteredProjects = [];
 foreach ($allProjects as $proj) {
-    $budget    = (float)$proj['budget'];
-    $totalPaid = (float)$proj['total_paid'];
+    $totalNilai = (float)$proj['total_nilai_final'];
+    $totalPaid  = (float)$proj['total_paid_inc_tax'];
+    $unpaid     = $totalNilai - $totalPaid;
+    if ($unpaid < 0) $unpaid = 0;
 
-    if ($budget > 0 && $totalPaid >= $budget) {
+    if ($totalNilai > 0 && $totalPaid >= ($totalNilai - 1)) {
         $paymentStatus = 'Lunas';
     } elseif ($totalPaid > 0) {
         $paymentStatus = 'Partially Paid';
@@ -62,16 +67,20 @@ foreach ($allProjects as $proj) {
     }
 
     $proj['payment_status'] = $paymentStatus;
+    $proj['unpaid_inc_tax'] = $unpaid;
 
     if ($filter_status === 'All' || $filter_status === $paymentStatus) {
         $filteredProjects[] = $proj;
     }
 }
 
-// Grand Totals Rekapitulasi Keseluruhan Perusahaan
-$totalCompanyBudget   = $pdo->query("SELECT COALESCE(SUM(budget), 0) FROM projects")->fetchColumn();
-$totalCompanyPaid     = $pdo->query("SELECT COALESCE(SUM(jumlah_tagihan), 0) FROM invoices WHERE status = 'Paid'")->fetchColumn();
-$totalCompanyUnpaid   = $totalCompanyBudget - $totalCompanyPaid;
+// Grand Totals Rekapitulasi Keseluruhan Perusahaan (Termasuk PPN)
+$totalCompanyBudget     = (float)$pdo->query("SELECT COALESCE(SUM(budget), 0) FROM projects")->fetchColumn();
+$totalCompanyTotalNilai = (float)$pdo->query("SELECT COALESCE(SUM(COALESCE(NULLIF(total_nilai, 0), budget + ROUND((budget * COALESCE(NULLIF(persen_pajak, 0), 11.00)) / 100, 2))), 0) FROM projects")->fetchColumn();
+$totalCompanyPaid       = (float)$pdo->query("SELECT COALESCE(SUM(COALESCE(NULLIF(total_tagihan, 0), jumlah_tagihan + ROUND((jumlah_tagihan * COALESCE(NULLIF(persen_pajak, 0), 11.00)) / 100, 2))), 0) FROM invoices WHERE LOWER(status) = 'paid'")->fetchColumn();
+
+// Sisa Piutang Perusahaan: Total Nilai Kontrak Inc PPN - Total Dilunasi Inc PPN
+$totalCompanyUnpaid     = $totalCompanyTotalNilai - $totalCompanyPaid;
 if ($totalCompanyUnpaid < 0) $totalCompanyUnpaid = 0;
 
 // Data Rekap PDF
@@ -132,7 +141,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     <div class="print-header-pdf">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 14px;">
-                <img src="../../assets/images/logo.jpg" alt="Logo PT CTC" class="print-logo-img" onerror="this.style.display='none'">
+                <img src="../../assets/images/logo.png" alt="Logo PT CTC" class="print-logo-img" onerror="this.onerror=null; this.src='../../assets/img/logo.png';">
                 <div>
                     <h1 style="font-size: 13pt; font-weight: 900; color: #0f172a; margin: 0; text-transform: uppercase;">PT. CIPTA TEKNOLOGI CENDEKIA</h1>
                     <p style="font-size: 8.5pt; font-weight: 700; color: #047857; margin: 2px 0 0 0;">Enterprise IT Solution, Software Development & Financial Control</p>
@@ -156,13 +165,15 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 <th>No. Invoice</th>
                 <th>Proyek & Klien</th>
                 <th>Termin</th>
-                <th style="text-align: right;">Jumlah Tagihan</th>
+                <th style="text-align: right;">Jumlah Tagihan (Inc PPN)</th>
                 <th>Jatuh Tempo</th>
                 <th style="text-align: center;">Status</th>
             </tr>
         </thead>
         <tbody>
-            <?php foreach ($allInvoicesPrint as $invPrint): ?>
+            <?php foreach ($allInvoicesPrint as $invPrint): 
+                $tot_inc = floatval($invPrint['total_tagihan'] ?? 0) > 0 ? floatval($invPrint['total_tagihan']) : ($invPrint['jumlah_tagihan'] + floatval($invPrint['nominal_pajak'] ?? 0));
+            ?>
                 <tr>
                     <td style="font-weight: bold; font-family: monospace;"><?= htmlspecialchars($invPrint['nomor_invoice']) ?></td>
                     <td>
@@ -170,7 +181,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                         <span style="display: block; font-size: 8pt; color: #64748b;"><?= htmlspecialchars($invPrint['klien']) ?></span>
                     </td>
                     <td>Termin <?= $invPrint['termin_ke'] ?> (<?= htmlspecialchars($invPrint['keterangan_termin']) ?>)</td>
-                    <td style="text-align: right; font-weight: bold;">Rp <?= number_format($invPrint['jumlah_tagihan'], 0, ',', '.') ?></td>
+                    <td style="text-align: right; font-weight: bold;">Rp <?= number_format($tot_inc, 0, ',', '.') ?></td>
                     <td><?= date('d M Y', strtotime($invPrint['jatuh_tempo'])) ?></td>
                     <td style="text-align: center;"><span class="pdf-badge"><?= $invPrint['status'] ?></span></td>
                 </tr>
@@ -187,7 +198,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             <div class="flex items-center gap-2 mb-1">
                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span class="text-xs font-semibold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-0.5 rounded-full">
-                    MODUL BILLING SYSTEM • INVOICE PER PROYEK
+                    BILLING SYSTEM & INVOICE PER PROYEK
                 </span>
             </div>
             <h1 class="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Invoice & Penagihan Proyek</h1>
@@ -205,35 +216,35 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-slate-300 transition">
             <div class="flex items-center justify-between mb-1">
-                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Nilai Kontrak Proyek</span>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Subtotal DPP Proyek</span>
                 <div class="w-7 h-7 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center text-xs">
                     <i class="fa-solid fa-file-invoice-dollar"></i>
                 </div>
             </div>
             <h3 class="text-xl md:text-2xl font-bold text-slate-900 font-mono">Rp <?= number_format($totalCompanyBudget, 0, ',', '.') ?></h3>
-            <span class="text-xs text-slate-400 font-normal mt-1 block">Akumulasi seluruh proyek</span>
+            <span class="text-xs text-slate-400 font-normal mt-1 block">Akumulasi dasar seluruh proyek</span>
         </div>
 
         <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-emerald-300 transition">
             <div class="flex items-center justify-between mb-1">
-                <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Total Masuk Kas (Paid)</span>
+                <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Total Masuk Kas (Inc. PPN)</span>
                 <div class="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs">
                     <i class="fa-solid fa-check-double"></i>
                 </div>
             </div>
             <h3 class="text-xl md:text-2xl font-bold text-emerald-600 font-mono">Rp <?= number_format($totalCompanyPaid, 0, ',', '.') ?></h3>
-            <span class="text-xs text-emerald-700 font-medium mt-1 flex items-center gap-1"><i class="fa-solid fa-circle-check text-[10px]"></i> Total penerimaan lunas</span>
+            <span class="text-xs text-emerald-700 font-medium mt-1 flex items-center gap-1"><i class="fa-solid fa-circle-check text-[10px]"></i> Total penerimaan lunas (Inc PPN)</span>
         </div>
 
         <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs hover:border-amber-200 transition">
             <div class="flex items-center justify-between mb-1">
-                <span class="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Sisa Piutang Penagihan</span>
+                <span class="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Sisa Piutang Penagihan (Inc. PPN)</span>
                 <div class="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-xs">
                     <i class="fa-solid fa-clock"></i>
                 </div>
             </div>
             <h3 class="text-xl md:text-2xl font-bold text-amber-600 font-mono">Rp <?= number_format($totalCompanyUnpaid, 0, ',', '.') ?></h3>
-            <span class="text-xs text-amber-700 font-medium mt-1 block">Menunggu pembayaran termin</span>
+            <span class="text-xs text-amber-700 font-medium mt-1 block">Menunggu pembayaran (Inc PPN)</span>
         </div>
     </div>
 
@@ -295,10 +306,10 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     <?php else: ?>
                         <?php foreach ($filteredProjects as $p): 
                             $pBudget = (float)$p['budget'];
-                            $pPaid   = (float)$p['total_paid'];
-                            $pUnpaid = $pBudget - $pPaid;
-                            if ($pUnpaid < 0) $pUnpaid = 0;
-                            $percent = $pBudget > 0 ? min(100, round(($pPaid / $pBudget) * 100)) : 0;
+                            $pTotal  = (float)$p['total_nilai_final'];
+                            $pPaid   = (float)$p['total_paid_inc_tax'];
+                            $pUnpaid = (float)$p['unpaid_inc_tax'];
+                            $percent = $pTotal > 0 ? min(100, round(($pPaid / $pTotal) * 100)) : 0;
                         ?>
                             <tr class="invoice-row hover:bg-slate-50/70 transition align-middle"
                                 data-search="<?= htmlspecialchars(strtolower($p['nama_projek'] . ' ' . $p['klien'])) ?>"
@@ -342,12 +353,12 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                 <!-- Ringkasan Nominal -->
                                 <td class="py-3.5 px-4 font-mono">
                                     <div class="text-xs">
-                                        <span class="text-[10px] text-slate-400 font-sans block uppercase">Budget:</span>
+                                        <span class="text-[10px] text-slate-400 font-sans block uppercase">Subtotal DPP:</span>
                                         <span class="font-bold text-slate-900">Rp <?= number_format($pBudget, 0, ',', '.') ?></span>
                                     </div>
                                     <div class="text-xs mt-0.5">
-                                        <span class="text-[10px] text-slate-400 font-sans block uppercase">Sisa Piutang:</span>
-                                        <span class="font-semibold text-amber-600">Rp <?= number_format($pUnpaid, 0, ',', '.') ?></span>
+                                        <span class="text-[10px] text-slate-400 font-sans block uppercase">Total Inc PPN:</span>
+                                        <span class="font-semibold text-emerald-700">Rp <?= number_format($pTotal, 0, ',', '.') ?></span>
                                     </div>
                                 </td>
 

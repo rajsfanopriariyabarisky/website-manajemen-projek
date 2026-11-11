@@ -9,7 +9,7 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// Pastikan kolom requirement_id ada di tabel projects
+// Guard Schema: Pastikan kolom requirement_id pada tabel projects sudah siap
 try {
     $pdo->exec("ALTER TABLE projects ADD COLUMN requirement_id INT NULL AFTER client_token");
 } catch (Exception $e) {}
@@ -32,12 +32,16 @@ if ($req_id > 0) {
     }
 }
 
-// Handle Tambah Proyek Baru
+// Handle Tambah Proyek Baru dari Modal
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_project'])) {
     $nama_projek   = trim($_POST['nama_projek']);
     $klien         = trim($_POST['klien']);
-    $budget        = $_POST['budget'] ?? 0;
-    $status        = $_POST['status'] ?? 'On Hold'; // Default ke On Hold pas dikonversi
+    $budget        = floatval(str_replace(['.', ','], ['', '.'], $_POST['budget'] ?? 0)); // DPP
+    $persen_pajak  = floatval($_POST['persen_pajak'] ?? 11.00);
+    $nominal_pajak = round(($budget * $persen_pajak) / 100, 2);
+    $total_nilai   = $budget + $nominal_pajak;
+
+    $status        = $_POST['status'] ?? 'On Hold';
     $kategori_rab  = $_POST['kategori_rab'] ?? 'Website';
     $durasi_bulan  = max(1, (int)($_POST['durasi_bulan'] ?? 3));
     $tanggal_mulai = $_POST['tanggal_mulai'] ?? date('Y-m-d');
@@ -68,18 +72,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_project'])) {
         $rab_custom_json = json_encode($custom_items);
     }
 
-    if (!empty($nama_projek) && !empty($klien)) {
-        // 1. Insert data Proyek Baru beserta requirement_id
-        $stmtIns = $pdo->prepare("INSERT INTO projects (nama_projek, klien, budget, status, kategori_rab, rab_custom_data, tanggal_mulai, deadline, requirement_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmtIns->execute([$nama_projek, $klien, $budget, $status, $kategori_rab, $rab_custom_json, $tanggal_mulai, $deadline, $origin_req_id > 0 ? $origin_req_id : null]);
+    if (!empty($nama_projek) && !empty($klien) && $budget > 0) {
+        // 1. Insert data Proyek Baru beserta Pajak & requirement_id
+        $stmtIns = $pdo->prepare("
+            INSERT INTO projects 
+            (nama_projek, klien, budget, persen_pajak, nominal_pajak, total_nilai, status, kategori_rab, rab_custom_data, tanggal_mulai, deadline, requirement_id) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmtIns->execute([
+            $nama_projek, $klien, $budget, $persen_pajak, $nominal_pajak, $total_nilai,
+            $status, $kategori_rab, $rab_custom_json, $tanggal_mulai, $deadline,
+            $origin_req_id > 0 ? $origin_req_id : null
+        ]);
         $newProjectId = $pdo->lastInsertId();
 
-        // 2. Auto-create draf Kontrak
-        $nomorKontrak = sprintf("%03d", $newProjectId) . "/CTC-SPK/" . date('m/Y');
-        $stmtContract = $pdo->prepare("INSERT INTO contracts (project_id, nomor_kontrak, durasi_bulan, tanggal_mulai, tanggal_selesai, nilai_kontrak) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmtContract->execute([$newProjectId, $nomorKontrak, $durasi_bulan, $tanggal_mulai, $deadline, $budget]);
+        // 2. Auto-Update status requirement ke 'Proposal Sent' (jika dipicu dari Konversi Requirement)
+        if ($origin_req_id > 0) {
+            $reqStatusToSet = ($status === 'In Progress' || $status === 'Completed') ? 'Deal / Accepted' : 'Proposal Sent';
+            $stmtUpReq = $pdo->prepare("UPDATE client_requirements SET status = ? WHERE id = ?");
+            $stmtUpReq->execute([$reqStatusToSet, $origin_req_id]);
 
-        // KONTROL TERJAGA: Requirement status TETAP Under Review sampai admin secara eksplisit meninjau & mengirimkan Proposal via print_proposal.php
+            // Kirim notifikasi sistem di chat
+            $stmtSysChat = $pdo->prepare("INSERT INTO deal_chats (requirement_id, sender_type, sender_name, message, admin_read, client_read, created_at) VALUES (?, 'admin', 'System CTC', ?, 1, 0, NOW())");
+            $stmtSysChat->execute([$origin_req_id, "Surat Penawaran Resmi (SPH) telah diterbitkan dan dapat diunduh melalui portal."]);
+        }
+
+        // 3. Auto-create draf Kontrak SPK dengan Pajak Sinkron
+        $nomorKontrak = sprintf("%03d", $newProjectId) . "/CTC-SPK/" . date('m/Y');
+        $stmtContract = $pdo->prepare("
+            INSERT INTO contracts 
+            (project_id, nomor_kontrak, durasi_bulan, tanggal_mulai, tanggal_selesai, nilai_kontrak, persen_pajak, nominal_pajak, total_kontrak) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmtContract->execute([
+            $newProjectId, $nomorKontrak, $durasi_bulan, $tanggal_mulai, $deadline,
+            $budget, $persen_pajak, $nominal_pajak, $total_nilai
+        ]);
 
         header("Location: index.php?msg=created");
         exit;
@@ -164,7 +192,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             <div class="flex items-center gap-2 mb-1">
                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span class="text-xs font-semibold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-0.5 rounded-full">
-                    MODUL 1 • PORTFOLIO PROYEK
+                    PORTOFOLIO PROYEK
                 </span>
             </div>
             <h1 class="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Manajemen Proyek & Timeline</h1>
@@ -197,7 +225,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     <!-- Alert Notifications -->
     <?php if (isset($_GET['msg']) && $_GET['msg'] === 'created'): ?>
         <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
-            <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i> Proyek baru berhasil ditambahkan! Anda dapat meninjau proposal sebelum mengirimmnya ke Klien Portal.
+            <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i> Proyek baru berhasil ditambahkan! Konfigurasi PPN & SPK otomatis tersinkronkan.
         </div>
     <?php elseif (isset($_GET['msg']) && $_GET['msg'] === 'already_converted'): ?>
         <div class="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
@@ -247,6 +275,11 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     $totalT = $p['total_tasks'] ?? 0;
                     $compT  = $p['completed_tasks'] ?? 0;
                     $progressPct = $totalT > 0 ? round(($compT / $totalT) * 100) : 0;
+
+                    $dpp_val = floatval($p['budget']);
+                    $pct_pajak = isset($p['persen_pajak']) && floatval($p['persen_pajak']) > 0 ? floatval($p['persen_pajak']) : 11.00;
+                    $nom_pajak = isset($p['nominal_pajak']) && floatval($p['nominal_pajak']) > 0 ? floatval($p['nominal_pajak']) : round(($dpp_val * $pct_pajak) / 100, 2);
+                    $tot_nilai = isset($p['total_nilai']) && floatval($p['total_nilai']) > 0 ? floatval($p['total_nilai']) : ($dpp_val + $nom_pajak);
 
                     $todayTime    = new DateTime();
                     $deadlineTime = new DateTime($p['deadline']);
@@ -308,19 +341,19 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                             </div>
                         </div>
 
-                        <!-- Metric Box Budget & Pengeluaran -->
-                        <div class="bg-slate-50 border border-slate-200/70 rounded-xl p-3 grid grid-cols-2 gap-2 text-xs mb-4">
-                            <div>
-                                <span class="text-[10px] text-slate-400 font-medium block uppercase tracking-wider mb-0.5">Budget Proyek</span>
-                                <span class="font-bold text-slate-900 text-xs sm:text-sm font-mono">
-                                    Rp <?= number_format($p['budget'], 0, ',', '.') ?>
-                                </span>
+                        <!-- Metric Box Budget, PPN & Total Inc Pajak -->
+                        <div class="bg-slate-50 border border-slate-200/70 rounded-xl p-3 space-y-1.5 text-xs mb-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Subtotal (DPP)</span>
+                                <span class="font-mono font-bold text-slate-800">Rp <?= number_format($dpp_val, 0, ',', '.') ?></span>
                             </div>
-                            <div>
-                                <span class="text-[10px] text-slate-400 font-medium block uppercase tracking-wider mb-0.5">Pengeluaran</span>
-                                <span class="font-bold text-amber-600 text-xs sm:text-sm font-mono">
-                                    Rp <?= number_format($p['total_pengeluaran'], 0, ',', '.') ?>
-                                </span>
+                            <div class="flex justify-between items-center border-t border-slate-200/60 pt-1">
+                                <span class="text-[10px] text-slate-400 font-medium uppercase tracking-wider">PPN (<?= number_format($pct_pajak, 0) ?>%)</span>
+                                <span class="font-mono font-bold text-amber-600">Rp <?= number_format($nom_pajak, 0, ',', '.') ?></span>
+                            </div>
+                            <div class="flex justify-between items-center border-t border-slate-200/60 pt-1">
+                                <span class="text-[10px] text-emerald-800 font-bold uppercase tracking-wider">Total Inc. Pajak</span>
+                                <span class="font-mono font-bold text-emerald-700 text-xs sm:text-sm">Rp <?= number_format($tot_nilai, 0, ',', '.') ?></span>
                             </div>
                         </div>
                     </div>
@@ -385,30 +418,57 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 <input type="text" name="klien" value="<?= htmlspecialchars($auto_client) ?>" required placeholder="Contoh: PT. Puth Family" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-normal focus:outline-none placeholder:text-slate-400">
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Nilai Budget (Rp) <span class="text-red-500">*</span></label>
-                    <input type="number" name="budget" id="projectBudgetInput" value="<?= $auto_budget > 0 ? $auto_budget : '' ?>" required placeholder="20000000" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-mono font-semibold focus:outline-none placeholder:text-slate-400">
+            <!-- Budget DPP & PPN Input -->
+            <div class="grid grid-cols-3 gap-3">
+                <div class="col-span-2">
+                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Nilai Pekerjaan / DPP (Rp) <span class="text-red-500">*</span></label>
+                    <input type="number" name="budget" id="projectBudgetInput" value="<?= $auto_budget > 0 ? $auto_budget : '' ?>" oninput="calculateTaxPreviewModal()" required placeholder="10000000" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-mono font-semibold focus:outline-none placeholder:text-slate-400">
                 </div>
 
                 <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Status Proyek <span class="text-red-500">*</span></label>
-                    <select name="status" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
-                        <option value="On Hold" selected>On Hold (Draft Proposal)</option>
-                        <option value="In Progress">In Progress (Berjalan)</option>
-                        <option value="Completed">Completed (Selesai)</option>
-                    </select>
+                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Tarif PPN (%)</label>
+                    <div class="flex items-center bg-white border border-slate-300 rounded-xl px-2.5 py-2">
+                        <input type="number" name="persen_pajak" id="persenPajakInputModal" value="11.0" step="0.1" min="0" max="100" oninput="calculateTaxPreviewModal()" class="w-full text-xs font-mono font-bold focus:outline-none text-slate-800">
+                        <span class="text-xs font-bold text-slate-400 ml-0.5">%</span>
+                    </div>
                 </div>
             </div>
 
-            <div>
-                <label class="block text-xs font-medium text-slate-700 mb-1.5">Kategori & Template RAB <span class="text-red-500">*</span></label>
-                <select name="kategori_rab" id="kategoriRabSelect" onchange="toggleCustomRabSection()" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
-                    <option value="Website" selected>RAB Website (Auto-Calculate)</option>
-                    <option value="IoT">RAB IoT Hardware & Cloud (Auto-Calculate)</option>
-                    <option value="Mobile">RAB Mobile App Android/iOS (Auto-Calculate)</option>
-                    <option value="Custom">Custom RAB (Input Manual Komponen & % Persen)</option>
-                </select>
+            <!-- Live Card Summary Pajak Modal -->
+            <div class="bg-slate-50 border border-slate-200/80 p-3 rounded-xl grid grid-cols-3 gap-2 text-xs">
+                <div>
+                    <span class="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Subtotal (DPP)</span>
+                    <span class="font-mono font-bold text-slate-900 text-xs" id="modalPreviewDpp">Rp 0</span>
+                </div>
+                <div>
+                    <span class="text-[9px] font-bold uppercase tracking-wider text-amber-600 block">PPN (<span id="modalPreviewPajakPct">11.0%</span>)</span>
+                    <span class="font-mono font-semibold text-amber-600 text-xs" id="modalPreviewNominalPajak">Rp 0</span>
+                </div>
+                <div>
+                    <span class="text-[9px] font-bold uppercase tracking-wider text-emerald-700 block">Total Inc. Pajak</span>
+                    <span class="font-mono font-bold text-emerald-700 text-xs" id="modalPreviewTotalNilai">Rp 0</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Status Proyek <span class="text-red-500">*</span></label>
+                    <select name="status" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
+                        <option value="On Hold" selected>On Hold (Draft SPH / Penawaran)</option>
+                        <option value="In Progress">In Progress (Berjalan / Deal)</option>
+                        <option value="Completed">Completed (Selesai)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Kategori & Template RAB <span class="text-red-500">*</span></label>
+                    <select name="kategori_rab" id="kategoriRabSelect" onchange="toggleCustomRabSection()" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
+                        <option value="Website" selected>RAB Website (Auto-Calculate)</option>
+                        <option value="IoT">RAB IoT Hardware & Cloud (Auto-Calculate)</option>
+                        <option value="Mobile">RAB Mobile App Android/iOS (Auto-Calculate)</option>
+                        <option value="Custom">Custom RAB (Input Manual Komponen & % Persen)</option>
+                    </select>
+                </div>
             </div>
 
             <div id="customRabSection" class="hidden bg-slate-50 border border-slate-200 p-3.5 rounded-xl space-y-3">
@@ -458,7 +518,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     Batal
                 </button>
                 <button type="submit" class="btn-press px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs shadow-xs flex items-center gap-1.5">
-                    <i class="fa-solid fa-plus text-xs"></i> Simpan Proyek
+                    <i class="fa-solid fa-plus text-xs"></i> Simpan Proyek & Auto-Sync
                 </button>
             </div>
         </form>
@@ -472,14 +532,33 @@ let filteredCards = [];
 
 document.addEventListener('DOMContentLoaded', function() {
     filterProjects();
+    calculateTaxPreviewModal();
 });
 
 function openAddProjectModal() {
     document.getElementById('addProjectModal').classList.remove('hidden');
+    calculateTaxPreviewModal();
 }
 
 function closeAddProjectModal() {
     document.getElementById('addProjectModal').classList.add('hidden');
+}
+
+function calculateTaxPreviewModal() {
+    const budgetInput = document.getElementById('projectBudgetInput');
+    const taxInput    = document.getElementById('persenPajakInputModal');
+    if (!budgetInput || !taxInput) return;
+
+    const budget = parseFloat(budgetInput.value) || 0;
+    const taxPct = parseFloat(taxInput.value) || 0;
+
+    const nominalPajak = Math.round((budget * taxPct) / 100);
+    const totalNilai   = budget + nominalPajak;
+
+    document.getElementById('modalPreviewDpp').innerText          = 'Rp ' + budget.toLocaleString('id-ID');
+    document.getElementById('modalPreviewPajakPct').innerText     = taxPct.toFixed(1) + '%';
+    document.getElementById('modalPreviewNominalPajak').innerText = 'Rp ' + nominalPajak.toLocaleString('id-ID');
+    document.getElementById('modalPreviewTotalNilai').innerText   = 'Rp ' + totalNilai.toLocaleString('id-ID');
 }
 
 function toggleCustomRabSection() {
@@ -519,12 +598,13 @@ function calculateCustomPercentageTotal() {
     });
 
     const badge = document.getElementById('totalPersenBadge');
-    badge.innerText = `${total.toFixed(1)}% / 100%`;
-
-    if (Math.abs(total - 100) < 0.01) {
-        badge.className = "px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 text-xs font-mono font-bold";
-    } else {
-        badge.className = "px-2 py-0.5 rounded-md bg-red-100 text-red-700 text-xs font-mono font-bold";
+    if (badge) {
+        badge.innerText = `${total.toFixed(1)}% / 100%`;
+        if (Math.abs(total - 100) < 0.01) {
+            badge.className = "px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 text-xs font-mono font-bold";
+        } else {
+            badge.className = "px-2 py-0.5 rounded-md bg-red-100 text-red-700 text-xs font-mono font-bold";
+        }
     }
     return total;
 }

@@ -3,6 +3,33 @@ session_start();
 date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../../config/database.php';
 
+// Auto-Migration Guard: Pastikan tabel proposals dan kolom project_id ada
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS `proposals` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `project_id` INT NULL,
+            `nomor_proposal` VARCHAR(100) NOT NULL,
+            `client_name` VARCHAR(250) NOT NULL,
+            `client_email` VARCHAR(250) NOT NULL,
+            `title` VARCHAR(250) NOT NULL,
+            `nilai_penawaran` DECIMAL(15,2) DEFAULT 0.00,
+            `persen_pajak` DECIMAL(5,2) DEFAULT 11.00,
+            `nominal_pajak` DECIMAL(15,2) DEFAULT 0.00,
+            `total_penawaran` DECIMAL(15,2) DEFAULT 0.00,
+            `estimasi_pengerjaan` VARCHAR(100) NULL,
+            `ringkasan_scope` TEXT NULL,
+            `status` ENUM('Draft', 'Sent', 'Accepted', 'Rejected') DEFAULT 'Draft',
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    ");
+
+    $checkCol = $pdo->query("SHOW COLUMNS FROM `proposals` LIKE 'project_id'")->fetch();
+    if (!$checkCol) {
+        $pdo->exec("ALTER TABLE `proposals` ADD COLUMN `project_id` INT NULL AFTER `id`");
+    }
+} catch (Exception $e) {}
+
 $project_id = $_GET['project_id'] ?? $_GET['id'] ?? null;
 
 if (!$project_id) {
@@ -10,78 +37,175 @@ if (!$project_id) {
     exit;
 }
 
-// Fetch Data Proyek dari Database
-$stmt = $pdo->prepare("SELECT * FROM projects WHERE id = ?");
+// Fetch Data Proyek dari Database beserta Kontrak & Proposal Terkait (Presisi Prioritas FK)
+$stmt = $pdo->prepare("
+    SELECT p.*, 
+           c.id AS linked_contract_id,
+           c.nilai_kontrak AS dpp_kontrak,
+           c.persen_pajak AS contract_persen_pajak,
+           c.nominal_pajak AS contract_nominal_pajak,
+           c.total_kontrak AS contract_total_inc_pajak,
+           pr.id AS linked_proposal_id,
+           pr.nomor_proposal,
+           pr.persen_pajak AS proposal_persen_pajak,
+           pr.nominal_pajak AS proposal_nominal_pajak,
+           pr.total_penawaran AS proposal_total
+    FROM projects p 
+    LEFT JOIN contracts c ON c.project_id = p.id 
+    LEFT JOIN client_requirements cr ON p.requirement_id = cr.id
+    LEFT JOIN proposals pr ON (
+        pr.project_id = p.id OR
+        (pr.project_id IS NULL AND (
+            (p.klien IS NOT NULL AND p.klien != '' AND pr.client_name LIKE CONCAT('%', p.klien, '%')) OR
+            (pr.title LIKE CONCAT('%', p.nama_projek, '%')) OR
+            (cr.client_email IS NOT NULL AND pr.client_email = cr.client_email)
+        ))
+    )
+    WHERE p.id = ?
+    ORDER BY pr.id DESC
+    LIMIT 1
+");
 $stmt->execute([$project_id]);
 $project = $stmt->fetch();
 
-// Fallback: Jika tidak ada di tabel projects, cek di tabel proposals
+$prop_data = null;
+$real_project_id = null;
+
 if (!$project) {
+    // Fallback pencarian langsung ke tabel proposals jika ID berasal dari proposal
     $stmtProp = $pdo->prepare("SELECT * FROM proposals WHERE id = ?");
     $stmtProp->execute([$project_id]);
     $prop = $stmtProp->fetch();
 
     if ($prop) {
-        $project = [
-            'id' => $prop['id'],
-            'nama_projek' => $prop['title'],
-            'klien' => $prop['client_name'],
-            'budget' => $prop['nilai_penawaran'],
-            'tanggal_mulai' => $prop['created_at'],
-            'deadline' => date('Y-m-d', strtotime('+30 days', strtotime($prop['created_at']))),
-            'kategori_rab' => 'Website',
-            'status' => 'On Hold'
-        ];
+        $prop_data = $prop;
+        $real_project_id = !empty($prop['project_id']) ? intval($prop['project_id']) : null;
+        
+        if ($real_project_id) {
+            $stmtPReal = $pdo->prepare("SELECT * FROM projects WHERE id = ?");
+            $stmtPReal->execute([$real_project_id]);
+            $project = $stmtPReal->fetch();
+        }
+
+        if (!$project) {
+            $project = [
+                'id'            => null,
+                'nama_projek'   => $prop['title'],
+                'klien'         => $prop['client_name'],
+                'budget'        => $prop['nilai_penawaran'],
+                'tanggal_mulai' => $prop['created_at'],
+                'deadline'      => date('Y-m-d', strtotime('+30 days', strtotime($prop['created_at']))),
+                'kategori_rab'  => 'Website',
+                'status'        => 'On Hold'
+            ];
+        }
     } else {
         header("Location: ../projects/index.php");
         exit;
     }
+} else {
+    $real_project_id = (int)$project['id'];
+    if (!empty($project['linked_proposal_id'])) {
+        $stmtProp = $pdo->prepare("SELECT * FROM proposals WHERE id = ?");
+        $stmtProp->execute([$project['linked_proposal_id']]);
+        $prop_data = $stmtProp->fetch();
+    } else {
+        $stmtProp = $pdo->prepare("SELECT * FROM proposals WHERE project_id = ? OR title LIKE ? OR client_name LIKE ? ORDER BY id DESC LIMIT 1");
+        $stmtProp->execute([$project['id'], '%' . $project['nama_projek'] . '%', '%' . $project['klien'] . '%']);
+        $prop_data = $stmtProp->fetch();
+    }
+}
+
+// Otomatis Ambil Kategori RAB & Kalkulasi Pajak Berbasis Priority
+$kategoriRAB = $project['kategori_rab'] ?? 'Website';
+$totalBudget = (!empty($project['dpp_kontrak']) && (float)$project['dpp_kontrak'] > 0) 
+    ? (float)$project['dpp_kontrak'] 
+    : (float)($project['budget'] ?? 0); // DPP / Nilai Penawaran Bersih
+
+// 1. Penentuan Persen Pajak (Priority: Kontrak > Proposal > Proyek > Default 11.0% CTC SPH)
+if (isset($project['contract_persen_pajak']) && (float)$project['contract_persen_pajak'] > 0) {
+    $persenPajak = (float)$project['contract_persen_pajak'];
+} elseif (isset($prop_data['persen_pajak']) && (float)$prop_data['persen_pajak'] > 0) {
+    $persenPajak = (float)$prop_data['persen_pajak'];
+} elseif (isset($project['persen_pajak']) && (float)$project['persen_pajak'] > 0) {
+    $persenPajak = (float)$project['persen_pajak'];
+} else {
+    $persenPajak = 11.0;
+}
+
+// 2. Nominal Pajak & Total Nilai Inc Pajak
+if (!empty($project['contract_nominal_pajak']) && (float)$project['contract_nominal_pajak'] > 0) {
+    $nominalPajak = (float)$project['contract_nominal_pajak'];
+} elseif (!empty($prop_data['nominal_pajak']) && (float)$prop_data['nominal_pajak'] > 0) {
+    $nominalPajak = (float)$prop_data['nominal_pajak'];
+} elseif (!empty($project['nominal_pajak']) && (float)$project['nominal_pajak'] > 0) {
+    $nominalPajak = (float)$project['nominal_pajak'];
+} else {
+    $nominalPajak = round(($totalBudget * $persenPajak) / 100);
+}
+
+if (!empty($project['contract_total_inc_pajak']) && (float)$project['contract_total_inc_pajak'] > 0) {
+    $grandTotal = (float)$project['contract_total_inc_pajak'];
+} elseif (!empty($prop_data['total_penawaran']) && (float)$prop_data['total_penawaran'] > 0) {
+    $grandTotal = (float)$prop_data['total_penawaran'];
+} elseif (!empty($project['total_nilai']) && (float)$project['total_nilai'] > 0) {
+    $grandTotal = (float)$project['total_nilai'];
+} else {
+    $grandTotal = $totalBudget + $nominalPajak;
 }
 
 // ACTION: KIRIM PROPOSAL KE CLIENT PORTAL & CHAT LOBBY
 if (isset($_GET['action']) && $_GET['action'] === 'send_client') {
-    // Cari requirement_id terkait
     $reqId = $project['requirement_id'] ?? null;
     
-    if (!$reqId) {
-        // Fallback pencarian berdasarkan nama proyek atau nama klien
+    if (!$reqId && !empty($project['klien'])) {
         $stmtFindReq = $pdo->prepare("SELECT id FROM client_requirements WHERE LOWER(title) LIKE LOWER(?) OR LOWER(client_name) LIKE LOWER(?) ORDER BY id DESC LIMIT 1");
-        $stmtFindReq->execute(['%' . $project['nama_projek'] . '%', '%' . $project['klien'] . '%']);
+        $stmtFindReq->execute(['%' . ($project['nama_projek'] ?? '') . '%', '%' . ($project['klien'] ?? '') . '%']);
         $reqId = $stmtFindReq->fetchColumn();
     }
+
+    // Update Status Proposal Menjadi 'Sent'
+    if ($prop_data && !empty($prop_data['id'])) {
+        $stmtUpProp = $pdo->prepare("UPDATE proposals SET status = 'Sent' WHERE id = ?");
+        $stmtUpProp->execute([$prop_data['id']]);
+    }
+
+    $redirect_id = $real_project_id ? $real_project_id : ($prop_data['id'] ?? $project_id);
 
     if ($reqId) {
         // Update Status Requirement Klien -> Proposal Sent
         $stmtUpReq = $pdo->prepare("UPDATE client_requirements SET status = 'Proposal Sent' WHERE id = ?");
         $stmtUpReq->execute([$reqId]);
 
-        // Update Status Proyek -> On Hold
-        $stmtUpProj = $pdo->prepare("UPDATE projects SET status = 'On Hold' WHERE id = ?");
-        $stmtUpProj->execute([$project['id']]);
+        // Update Status Proyek Terkait (jika valid) -> On Hold
+        if ($real_project_id) {
+            $stmtUpProj = $pdo->prepare("UPDATE projects SET status = 'On Hold' WHERE id = ?");
+            $stmtUpProj->execute([$real_project_id]);
+        }
 
-        // Kirim Pesan Otomatis System ke Deal Chats Lobi Klien
-        $msgContent = "[SYSTEM] Surat Penawaran Harga (SPH) & Rincian RAB Resmi telah diterbitkan oleh Tim PT. Cipta Teknologi Cendekia untuk proyek: " . $project['nama_projek'] . ".\n\nAnda dapat mengunduh serta meninjau dokumen proposal resmi kapan saja melalui tombol Proposal PDF di atas.";
+        // Pesan Otomatis Lobi Chat dengan Rincian Pajak
+        $msgContent = "[SYSTEM] Surat Penawaran Harga (SPH) & Rincian RAB Resmi telah diterbitkan oleh Tim PT. Cipta Teknologi Cendekia untuk proyek: \"" . ($project['nama_projek'] ?? '') . "\".\n\n" .
+                      "• Subtotal Penawaran (DPP): Rp " . number_format($totalBudget, 0, ',', '.') . "\n" .
+                      "• Pajak PPN (" . number_format($persenPajak, 1) . "%): Rp " . number_format($nominalPajak, 0, ',', '.') . "\n" .
+                      "• Total Penawaran (Inc. Pajak): Rp " . number_format($grandTotal, 0, ',', '.') . "\n\n" .
+                      "Anda dapat mengunduh serta meninjau dokumen proposal resmi kapan saja melalui tombol Proposal PDF di atas.";
         
         $stmtInsertChat = $pdo->prepare("INSERT INTO deal_chats (requirement_id, sender_type, sender_name, message, client_read, created_at) VALUES (?, 'system', 'System CTC', ?, 0, NOW())");
         $stmtInsertChat->execute([$reqId, $msgContent]);
 
-        header("Location: print_proposal.php?project_id=" . $project['id'] . "&msg=proposal_sent");
+        header("Location: print_proposal.php?project_id=" . $redirect_id . "&msg=proposal_sent");
         exit;
     } else {
-        header("Location: print_proposal.php?project_id=" . $project['id'] . "&msg=req_not_found");
+        header("Location: print_proposal.php?project_id=" . $redirect_id . "&msg=req_not_found");
         exit;
     }
 }
 
-// Otomatis Ambil Kategori RAB
-$kategoriRAB = $project['kategori_rab'] ?? 'Website';
-$totalBudget = $project['budget'] ?? 0;
-
 // Hitung Durasi Pengerjaan
-$tglMulai = new DateTime($project['tanggal_mulai'] ?? 'now');
-$tglSelesai = new DateTime($project['deadline'] ?? '+30 days');
-$interval = $tglMulai->diff($tglSelesai);
-$durasiBulan = max(1, $interval->m + ($interval->y * 12));
+$tglMulai     = new DateTime($project['tanggal_mulai'] ?? 'now');
+$tglSelesai   = new DateTime($project['deadline'] ?? '+30 days');
+$interval     = $tglMulai->diff($tglSelesai);
+$durasiBulan  = max(1, $interval->m + ($interval->y * 12));
 $durasiMinggu = $durasiBulan * 4;
 
 // Penentuan Komponen RAB Sesuai Kategori
@@ -162,7 +286,7 @@ function bulanRomawi($bulan) {
     $map = [1 => 'I', 2 => 'II', 3 => 'III', 4 => 'IV', 5 => 'V', 6 => 'VI', 7 => 'VII', 8 => 'VIII', 9 => 'IX', 10 => 'X', 11 => 'XI', 12 => 'XII'];
     return $map[(int)$bulan] ?? 'I';
 }
-$noSurat = sprintf("%03d", $project['id']) . "-B/CTC-SP/" . bulanRomawi(date('n')) . "/" . date('Y');
+$noSurat = !empty($prop_data['nomor_proposal']) ? $prop_data['nomor_proposal'] : (sprintf("%03d", $project['id'] ?? rand(1, 999)) . "-B/CTC-SP/" . bulanRomawi(date('n')) . "/" . date('Y'));
 
 function terbilang($angka) {
     $satuan = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas"];
@@ -304,8 +428,8 @@ function terbilang($angka) {
 
     <!-- Action Bar (Browser Only) -->
     <div class="w-[210mm] mb-6 flex flex-col sm:flex-row justify-between items-center gap-3 no-print font-sans">
-        <a href="../projects/detail.php?id=<?= $project['id'] ?>" class="text-xs font-bold text-slate-300 hover:text-white flex items-center gap-1.5 transition">
-            <i class="fa-solid fa-arrow-left"></i> Kembali ke Detail Proyek
+        <a href="index.php" class="text-xs font-bold text-slate-300 hover:text-white flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-arrow-left"></i> Kembali ke Daftar Proposal
         </a>
 
         <?php if (isset($_GET['msg']) && $_GET['msg'] === 'proposal_sent'): ?>
@@ -315,7 +439,7 @@ function terbilang($angka) {
         <?php endif; ?>
 
         <div class="flex items-center gap-3">
-            <a href="print_proposal.php?project_id=<?= $project['id'] ?>&action=send_client" onclick="return confirm('Kirimkan dokumen proposal penawaran harga ini secara resmi ke Client Portal?')" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition text-xs shadow">
+            <a href="print_proposal.php?project_id=<?= $project_id ?>&action=send_client" onclick="return confirm('Kirimkan dokumen proposal penawaran harga ini secara resmi ke Client Portal?')" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition text-xs shadow">
                 <i class="fa-solid fa-paper-plane"></i> Kirim ke Klien Portal
             </a>
             <button onclick="window.print()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition text-xs shadow">
@@ -362,7 +486,7 @@ function terbilang($angka) {
                         Menindaklanjuti rencana kerja sama dan integrasi sistem pada <strong><?= htmlspecialchars($project['klien']) ?></strong>, kami dari <strong>PT. Cipta Teknologi Cendekia</strong> mengajukan penawaran resmi untuk pengembangan <strong>"<?= htmlspecialchars($project['nama_projek']) ?>"</strong>.
                     </p>
                     <p class="mb-5 leading-relaxed text-justify">
-                        Sistem ini dirancang khusus berbasis arsitektur modern, aman, dan dapat diandalkan untuk meningkatkan efisiensi operasional bisnis mitra secara terukur. Total nilai investasi komersial pengembangan sistem ini adalah sebesar <strong>Rp <?= number_format($totalBudget, 0, ',', '.') ?>,-</strong> (<em><?= terbilang($totalBudget) ?> Rupiah</em>) dengan estimasi durasi pengerjaan selama <strong><?= $durasiMinggu ?> Minggu (<?= $durasiBulan ?> Bulan)</strong>.
+                        Sistem ini dirancang khusus berbasis arsitektur modern, aman, dan dapat diandalkan untuk meningkatkan efisiensi operasional bisnis mitra secara terukur. Nilai penawaran bersih (DPP) pengembangan sistem ini adalah sebesar <strong>Rp <?= number_format($totalBudget, 0, ',', '.') ?>,-</strong><?= $persenPajak > 0 ? " dengan penambahan Pajak PPN (" . number_format($persenPajak, 1) . "%) sebesar <strong>Rp " . number_format($nominalPajak, 0, ',', '.') . ",-</strong> sehingga total investasi komersial menjadi <strong>Rp " . number_format($grandTotal, 0, ',', '.') . ",-</strong> (<em>" . terbilang($grandTotal) . " Rupiah</em>)" : " (<em>" . terbilang($totalBudget) . " Rupiah</em>)" ?> dengan estimasi durasi pengerjaan selama <strong><?= $durasiMinggu ?> Minggu (<?= $durasiBulan ?> Bulan)</strong>.
                     </p>
 
                     <!-- Executive Summary -->
@@ -460,12 +584,34 @@ function terbilang($angka) {
                                         <td class="border border-slate-300 p-2.5 text-right font-mono font-bold text-slate-800"><?= number_format($item['biaya'], 0, ',', '.') ?></td>
                                     </tr>
                                 <?php endforeach; ?>
+
+                                <!-- SUB TOTAL DPP -->
+                                <tr class="font-bold bg-slate-50 border-t-2 border-slate-300">
+                                    <td colspan="3" class="border border-slate-300 p-2 text-right uppercase text-[10px] text-slate-700 font-bold tracking-wide">
+                                        SUBTOTAL PENAWARAN (DPP)
+                                    </td>
+                                    <td class="border border-slate-300 p-2 text-right font-mono text-slate-800 text-[11px] font-bold">
+                                        Rp <?= number_format($totalBudget, 0, ',', '.') ?>
+                                    </td>
+                                </tr>
+
+                                <!-- NOMINAL PAJAK -->
+                                <tr class="font-bold bg-slate-50">
+                                    <td colspan="3" class="border border-slate-300 p-2 text-right uppercase text-[10px] text-amber-900 font-bold tracking-wide">
+                                        PAJAK PPN (<?= number_format($persenPajak, 1) ?>%)
+                                    </td>
+                                    <td class="border border-slate-300 p-2 text-right font-mono text-amber-800 text-[11px] font-bold">
+                                        Rp <?= number_format($nominalPajak, 0, ',', '.') ?>
+                                    </td>
+                                </tr>
+
+                                <!-- GRAND TOTAL -->
                                 <tr class="font-bold bg-emerald-50/70 border-t-2 border-emerald-800">
                                     <td colspan="3" class="border border-slate-300 p-2.5 text-right uppercase text-[10.5px] text-emerald-950 font-black tracking-wide">
-                                        TOTAL INVESTASI (Eksklusif PPN)
+                                        TOTAL INVESTASI (Inc. Pajak)
                                     </td>
                                     <td class="border border-slate-300 p-2.5 text-right font-mono text-emerald-900 text-[12px] font-black">
-                                        Rp <?= number_format($totalBudget, 0, ',', '.') ?>
+                                        Rp <?= number_format($grandTotal, 0, ',', '.') ?>
                                     </td>
                                 </tr>
                             </tbody>

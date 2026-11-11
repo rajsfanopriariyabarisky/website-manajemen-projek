@@ -4,6 +4,12 @@ session_start();
 date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../../config/database.php';
 
+// Proteksi Halaman: Wajib Login
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../../login.php");
+    exit;
+}
+
 $id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
 // Fetch Data Requirement HANYA jika Klien Terverifikasi OTP (is_verified = 1)
@@ -96,12 +102,12 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 </style>
 
-<main class="flex-1 p-4 md:p-6 overflow-y-auto bg-[#f8fafc] min-h-screen w-full font-sans text-slate-800 relative selection:bg-emerald-600 selection:text-white">
+<main class="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto bg-[#f8fafc] min-h-screen w-full font-sans text-slate-800 relative selection:bg-emerald-600 selection:text-white">
 
     <!-- Top Action Bar Header -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs">
         <div class="flex items-center gap-3.5 min-w-0">
-            <a href="index.php" class="btn-press w-10 h-10 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl flex items-center justify-center transition shrink-0" title="Kembali">
+            <a href="index.php" class="btn-press w-10 h-10 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl flex items-center justify-center transition shrink-0" title="Kembali ke Daftar Requirements">
                 <i class="fa-solid fa-arrow-left text-sm"></i>
             </a>
             <div class="min-w-0">
@@ -111,7 +117,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     </span>
                     <span class="text-xs font-normal text-slate-400">• <?= date('d M Y H:i', strtotime($req['created_at'])) ?> WIB</span>
                 </div>
-                <h1 class="text-lg sm:text-xl font-bold text-slate-900 tracking-tight leading-snug truncate">
+                <h1 class="text-lg sm:text-xl font-bold text-slate-900 tracking-tight leading-snug truncate" title="<?= htmlspecialchars($req['title']) ?>">
                     <?= htmlspecialchars($req['title']) ?>
                 </h1>
             </div>
@@ -120,13 +126,13 @@ require_once __DIR__ . '/../../includes/sidebar.php';
         <div class="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0 flex-wrap">
             <?php if ($linkedProject): ?>
                 <!-- Quick SPH Button -->
-                <a href="../proposals/print_proposal.php?project_id=<?= $linkedProject['id'] ?>" target="_blank" class="btn-press px-3 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-xl text-xs font-bold flex items-center gap-1.5 transition" title="Tinjau Surat Penawaran (SPH)">
+                <a href="../proposals/print_proposal.php?project_id=<?= $linkedProject['id'] ?>" target="_blank" class="btn-press px-3.5 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-xl text-xs font-bold flex items-center gap-1.5 transition" title="Tinjau Surat Penawaran (SPH)">
                     <i class="fa-solid fa-file-signature text-xs"></i> SPH
                 </a>
 
                 <!-- Quick SPK Button -->
                 <?php if (!empty($linkedProject['linked_contract_id'])): ?>
-                    <a href="../contracts/print_pdf.php?id=<?= $linkedProject['linked_contract_id'] ?>" target="_blank" class="btn-press px-3 py-2 bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 rounded-xl text-xs font-bold flex items-center gap-1.5 transition" title="Tinjau Kontrak SPK">
+                    <a href="../contracts/print_pdf.php?id=<?= $linkedProject['linked_contract_id'] ?>" target="_blank" class="btn-press px-3.5 py-2 bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 rounded-xl text-xs font-bold flex items-center gap-1.5 transition" title="Tinjau Kontrak SPK">
                         <i class="fa-solid fa-file-contract text-xs"></i> SPK
                     </a>
                 <?php else: ?>
@@ -161,9 +167,18 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
             <div class="flex items-center justify-between pb-4 border-b border-slate-100 gap-2">
                 <h3 class="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                    <i class="fa-solid fa-file-contract text-emerald-600"></i> Spesifikasi Proyek & Klien
+                    <i class="fa-solid fa-file-contract text-teal-600"></i> Spesifikasi Proyek & Klien
                 </h3>
-                <span class="px-3 py-1 text-xs font-semibold uppercase rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 tracking-wider shrink-0">
+                <span class="px-3 py-1 text-xs font-bold uppercase rounded-lg border tracking-wider shrink-0
+                    <?php
+                        switch($req['status']) {
+                            case 'Under Review': echo 'bg-rose-100 text-rose-700 border-rose-300'; break;
+                            case 'Proposal Sent': echo 'bg-amber-50 text-amber-800 border-amber-200'; break;
+                            case 'Deal / Accepted': echo 'bg-emerald-50 text-emerald-700 border-emerald-200'; break;
+                            case 'Rejected': echo 'bg-slate-200 text-slate-700 border-slate-300'; break;
+                            default: echo 'bg-slate-50 text-slate-600 border-slate-200';
+                        }
+                    ?>">
                     STATUS: <?= htmlspecialchars($req['status']) ?>
                 </span>
             </div>
@@ -172,38 +187,69 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/80 p-5 rounded-xl border border-slate-200/60">
                 <div>
                     <span class="text-slate-400 font-medium uppercase text-xs tracking-wider block mb-1">Penanggung Jawab Klien</span>
-                    <p class="font-semibold text-slate-900 text-sm sm:text-base"><?= htmlspecialchars($req['client_name']) ?></p>
+                    <p class="font-bold text-slate-900 text-sm sm:text-base"><?= htmlspecialchars($req['client_name']) ?></p>
                     <p class="text-slate-500 font-normal text-xs sm:text-sm mt-0.5 break-all"><?= htmlspecialchars($req['client_email']) ?></p>
                 </div>
 
                 <div>
                     <span class="text-slate-400 font-medium uppercase text-xs tracking-wider block mb-1">Perusahaan / Perorangan</span>
-                    <p class="font-semibold text-slate-800 text-sm"><?= htmlspecialchars($req['company_name'] ?? 'PT. / Individual') ?></p>
-                    <p class="text-slate-500 font-normal text-xs sm:text-sm mt-0.5"><i class="fa-solid fa-phone text-slate-400 mr-1.5"></i><?= htmlspecialchars($req['client_phone'] ?? '-') ?></p>
+                    <p class="font-bold text-slate-800 text-sm"><?= htmlspecialchars($req['company_name'] ?? 'PT. / Individual') ?></p>
+                    <p class="text-slate-500 font-normal text-xs sm:text-sm mt-0.5 flex items-center gap-1.5"><i class="fa-solid fa-phone text-slate-400 text-xs"></i><?= htmlspecialchars($req['client_phone'] ?? '-') ?></p>
                 </div>
             </div>
 
-            <!-- Budget & File BRD -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <!-- Budget, Pajak (PPN), & File BRD -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                
+                <!-- 1. Alokasi Budget Proyek (Estimasi / DPP) -->
                 <div class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
-                    <span class="text-xs font-medium uppercase text-slate-400 tracking-wider block mb-1">Alokasi Budget Proyek</span>
-                    <p class="font-mono font-bold text-emerald-700 text-base sm:text-lg">
+                    <span class="text-xs font-medium uppercase text-slate-400 tracking-wider block mb-1">Budget / DPP Proyek</span>
+                    <p class="font-mono font-bold text-teal-700 text-base">
                         Rp <?= number_format($req['budget_estimation'], 0, ',', '.') ?>
                     </p>
+                    <?php if ($linkedProject && floatval($linkedProject['budget']) > 0): ?>
+                        <span class="text-[11px] text-slate-500 font-medium block mt-0.5">
+                            DPP Proyek: Rp <?= number_format($linkedProject['budget'], 0, ',', '.') ?>
+                        </span>
+                    <?php endif; ?>
                 </div>
 
-                <!-- Lampiran Dokumen BRD -->
+                <!-- 2. Pajak Pertambahan Nilai (PPN) Dinamis -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+                    <span class="text-xs font-medium uppercase text-slate-400 tracking-wider block mb-1">Pajak Pertambahan Nilai</span>
+                    <?php if ($linkedProject): ?>
+                        <?php 
+                            $pctPajakDetail = isset($linkedProject['persen_pajak']) && floatval($linkedProject['persen_pajak']) > 0 ? floatval($linkedProject['persen_pajak']) : 11.00;
+                            $nomPajakDetail = floatval($linkedProject['nominal_pajak'] ?? 0);
+                            if ($nomPajakDetail <= 0 && floatval($linkedProject['budget']) > 0) {
+                                $nomPajakDetail = round((floatval($linkedProject['budget']) * $pctPajakDetail) / 100, 2);
+                            }
+                        ?>
+                        <p class="font-mono font-bold text-amber-600 text-base">
+                            Rp <?= number_format($nomPajakDetail, 0, ',', '.') ?>
+                        </p>
+                        <span class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded inline-block mt-0.5">
+                            PPN (<?= number_format($pctPajakDetail, 1) ?>%)
+                        </span>
+                    <?php else: ?>
+                        <p class="font-normal italic text-slate-400 text-sm mt-1">-</p>
+                        <span class="text-[11px] text-slate-400 block mt-0.5">(Belum Konversi Proyek)</span>
+                    <?php endif; ?>
+                </div>
+
+                <!-- 3. Lampiran Dokumen BRD -->
                 <div class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
                     <span class="text-xs font-medium uppercase text-slate-400 tracking-wider block mb-1">Lampiran Dokumen BRD</span>
                     <?php if ($brd_href !== ''): ?>
-                        <a href="<?= $brd_href ?>" target="_blank" class="text-emerald-700 font-semibold hover:underline flex items-center gap-1.5 text-xs sm:text-sm mt-1" title="Lihat Dokumen BRD">
-                            <i class="fa-solid fa-file-pdf text-emerald-600 shrink-0 text-base"></i>
+                        <a href="<?= $brd_href ?>" target="_blank" class="text-teal-700 font-semibold hover:underline flex items-center gap-1.5 text-xs sm:text-sm mt-1" title="Lihat Dokumen BRD">
+                            <i class="fa-solid fa-file-pdf text-teal-600 shrink-0 text-base"></i>
                             <span class="truncate"><?= htmlspecialchars($brd_filename) ?></span>
                         </a>
                     <?php else: ?>
-                        <span class="text-slate-400 italic font-normal text-xs sm:text-sm">Tidak ada lampiran dokumen</span>
+                        <span class="text-slate-400 italic font-normal text-xs sm:text-sm block mt-1">Tidak ada lampiran</span>
                     <?php endif; ?>
                 </div>
+
             </div>
 
             <!-- Deskripsi Scope -->
@@ -222,7 +268,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             <!-- Update Status Card -->
             <div class="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
                 <h3 class="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider pb-3 border-b border-slate-100 flex items-center gap-2">
-                    <i class="fa-solid fa-sliders text-emerald-600"></i> Kelola Status Proyek
+                    <i class="fa-solid fa-sliders text-teal-600"></i> Kelola Status Proyek
                 </h3>
 
                 <form method="POST" class="space-y-4">
@@ -250,7 +296,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     </h4>
 
                     <span id="unreadBadge" class="bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm animate-pulse border border-red-400/40 <?= $new_unread_count > 0 ? '' : 'hidden' ?>">
-                        <i class="fa-solid fa-bell text-xs bell-shake text-amber-300"></i> <span id="unreadCount">+<?= $new_unread_count ?> Pesan Baru</span>
+                        <i class="fa-solid fa-bell text-xs text-amber-300"></i> <span id="unreadCount">+<?= $new_unread_count ?> Pesan Baru</span>
                     </span>
                 </div>
 
@@ -274,7 +320,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             <!-- Modal Header -->
             <div class="p-4 sm:px-6 bg-slate-900 text-white flex items-center justify-between shrink-0 z-10">
                 <div class="flex items-center gap-3 min-w-0">
-                    <img src="../../assets/images/logo.png" alt="Logo CTC" class="h-8 w-auto object-contain shrink-0">
+                    <img src="../../assets/images/logo.png" alt="Logo CTC" class="h-8 w-auto object-contain shrink-0" onerror="this.onerror=null; this.src='../../assets/img/logo.png';">
                     <div class="min-w-0 border-l border-slate-700 pl-3">
                         <h3 class="text-xs sm:text-sm font-bold uppercase tracking-wider text-white truncate">Lobi Negosiasi & Diskusi Scope</h3>
                         <p class="text-xs text-slate-300 font-normal truncate">Klien: <strong class="text-emerald-400"><?= htmlspecialchars($req['client_name']) ?></strong></p>
@@ -289,7 +335,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             <!-- Modal Chat Box -->
             <div class="flex-1 relative overflow-hidden bg-slate-50/50 min-h-0">
                 <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
-                    <img src="../../assets/images/logo.png" alt="Watermark CTC Chat" class="w-[350px] max-w-[80vw] h-auto object-contain opacity-[0.04] mix-blend-multiply">
+                    <img src="../../assets/images/logo.png" alt="Watermark CTC Chat" class="w-[350px] max-w-[80vw] h-auto object-contain opacity-[0.04] mix-blend-multiply" onerror="this.onerror=null; this.src='../../assets/img/logo.png';">
                 </div>
 
                 <div id="modal-chat-box" class="h-full p-4 sm:p-6 overflow-y-auto space-y-4 text-xs sm:text-sm relative z-10">

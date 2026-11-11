@@ -1,5 +1,6 @@
 <?php
 session_start();
+date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../../config/database.php';
 
 // Proteksi Halaman: Wajib Login
@@ -15,8 +16,30 @@ if (!$id) {
     exit;
 }
 
-// Fetch Detail Proyek
-$stmt = $pdo->prepare("SELECT * FROM projects WHERE id = ?");
+// Fetch Detail Proyek, Kontrak (SPK), & Proposal (SPH) Terkait dengan Pola Matching persis detail.php
+$stmt = $pdo->prepare("
+    SELECT p.*, 
+           c.id AS linked_contract_id,
+           c.nilai_kontrak AS dpp_kontrak,
+           c.persen_pajak AS contract_persen_pajak,
+           c.nominal_pajak AS contract_nominal_pajak,
+           c.total_kontrak AS contract_total_inc_pajak,
+           pr.id AS linked_proposal_id,
+           pr.persen_pajak AS proposal_persen_pajak,
+           pr.nominal_pajak AS proposal_nominal_pajak,
+           pr.total_penawaran AS proposal_total
+    FROM projects p 
+    LEFT JOIN contracts c ON c.project_id = p.id 
+    LEFT JOIN client_requirements cr ON p.requirement_id = cr.id
+    LEFT JOIN proposals pr ON (
+        (p.klien IS NOT NULL AND p.klien != '' AND pr.client_name LIKE CONCAT('%', p.klien, '%')) OR
+        (pr.title LIKE CONCAT('%', p.nama_projek, '%')) OR
+        (cr.client_email IS NOT NULL AND pr.client_email = cr.client_email)
+    )
+    WHERE p.id = ?
+    ORDER BY pr.id DESC
+    LIMIT 1
+");
 $stmt->execute([$id]);
 $project = $stmt->fetch();
 
@@ -25,7 +48,44 @@ if (!$project) {
     exit;
 }
 
-// Fetch Tasks Proyek & PIC
+// Perhitungan Finansial Berbasis Pajak (Sinkron SPH Proposal & SPK Kontrak)
+$dpp_val = (!empty($project['dpp_kontrak']) && (float)$project['dpp_kontrak'] > 0) 
+    ? (float)$project['dpp_kontrak'] 
+    : (float)$project['budget'];
+
+// 1. Penentuan Persen Pajak (Priority: Kontrak > Proyek > Proposal > Default 11.0% CTC SPH)
+if (isset($project['contract_persen_pajak']) && (float)$project['contract_persen_pajak'] > 0) {
+    $persen_pajak = (float)$project['contract_persen_pajak'];
+} elseif (isset($project['persen_pajak']) && (float)$project['persen_pajak'] > 0) {
+    $persen_pajak = (float)$project['persen_pajak'];
+} elseif (isset($project['proposal_persen_pajak']) && (float)$project['proposal_persen_pajak'] > 0) {
+    $persen_pajak = (float)$project['proposal_persen_pajak'];
+} else {
+    $persen_pajak = 11.0;
+}
+
+// 2. Nominal Pajak & Total Nilai Inc Pajak
+if (!empty($project['contract_nominal_pajak']) && (float)$project['contract_nominal_pajak'] > 0) {
+    $nominal_pajak = (float)$project['contract_nominal_pajak'];
+} elseif (!empty($project['nominal_pajak']) && (float)$project['nominal_pajak'] > 0) {
+    $nominal_pajak = (float)$project['nominal_pajak'];
+} elseif (!empty($project['proposal_nominal_pajak']) && (float)$project['proposal_nominal_pajak'] > 0) {
+    $nominal_pajak = (float)$project['proposal_nominal_pajak'];
+} else {
+    $nominal_pajak = round(($dpp_val * $persen_pajak) / 100);
+}
+
+if (!empty($project['contract_total_inc_pajak']) && (float)$project['contract_total_inc_pajak'] > 0) {
+    $total_inc_pajak = (float)$project['contract_total_inc_pajak'];
+} elseif (!empty($project['total_nilai']) && (float)$project['total_nilai'] > 0) {
+    $total_inc_pajak = (float)$project['total_nilai'];
+} elseif (!empty($project['proposal_total']) && (float)$project['proposal_total'] > 0) {
+    $total_inc_pajak = (float)$project['proposal_total'];
+} else {
+    $total_inc_pajak = $dpp_val + $nominal_pajak;
+}
+
+// Fetch Tasks Proyek & PIC Single/Primary
 $stmtTasks = $pdo->prepare("
     SELECT t.*, u.nama AS nama_karyawan 
     FROM tasks t
@@ -35,6 +95,22 @@ $stmtTasks = $pdo->prepare("
 ");
 $stmtTasks->execute([$id]);
 $tasks = $stmtTasks->fetchAll();
+
+// Fetch Multi-Assignees Tim Pelaksana jika ada di tabel task_assignees
+$stmtAssignees = $pdo->prepare("
+    SELECT ta.task_id, u.nama 
+    FROM task_assignees ta
+    JOIN users u ON ta.user_id = u.id
+    JOIN tasks t ON ta.task_id = t.id
+    WHERE t.project_id = ?
+");
+$stmtAssignees->execute([$id]);
+$rawAssignees = $stmtAssignees->fetchAll();
+
+$taskAssigneesMap = [];
+foreach ($rawAssignees as $ra) {
+    $taskAssigneesMap[$ra['task_id']][] = $ra['nama'];
+}
 
 // Fetch Dokumen Vault Terlampir
 $stmtFiles = $pdo->prepare("SELECT * FROM project_files WHERE project_id = ? ORDER BY created_at DESC");
@@ -229,25 +305,27 @@ $noLaporan = sprintf("%03d", $project['id']) . "/CTC-REP/" . bulanRomawi(date('n
                         </div>
                     </div>
 
-                    <!-- Ringkasan Informasi Proyek Card -->
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50/90 border-l-4 border-emerald-800 p-3.5 rounded-r-lg mb-5 font-sans shadow-sm">
-                        <div>
-                            <span class="text-slate-500 font-bold uppercase block text-[9.5px]">Nama Proyek</span>
-                            <span class="font-bold text-slate-900 text-[11.5px] block mt-0.5 leading-snug"><?= htmlspecialchars($project['nama_projek']) ?></span>
+                    <!-- Ringkasan Informasi Proyek & Finansial Card -->
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5 bg-slate-50/90 border-l-4 border-emerald-800 p-3 rounded-r-lg mb-4 font-sans shadow-sm">
+                        <div class="sm:col-span-1">
+                            <span class="text-slate-500 font-bold uppercase block text-[9px]">Nama Proyek</span>
+                            <span class="font-bold text-slate-900 text-[11px] block mt-0.5 leading-tight truncate" title="<?= htmlspecialchars($project['nama_projek']) ?>"><?= htmlspecialchars($project['nama_projek']) ?></span>
                         </div>
                         <div>
-                            <span class="text-slate-500 font-bold uppercase block text-[9.5px]">Klien</span>
-                            <span class="font-semibold text-slate-800 text-[11px] block mt-0.5"><?= htmlspecialchars($project['klien']) ?></span>
+                            <span class="text-slate-500 font-bold uppercase block text-[9px]">Mitra Klien</span>
+                            <span class="font-semibold text-slate-800 text-[10.5px] block mt-0.5 truncate"><?= htmlspecialchars($project['klien']) ?></span>
                         </div>
                         <div>
-                            <span class="text-slate-500 font-bold uppercase block text-[9.5px]">Total Budget</span>
-                            <span class="font-bold text-emerald-900 text-[11px] block mt-0.5">Rp <?= number_format($project['budget'] ?? 0, 0, ',', '.') ?></span>
+                            <span class="text-slate-500 font-bold uppercase block text-[9px]">Nilai Pekerjaan (DPP)</span>
+                            <span class="font-bold text-slate-900 text-[10.5px] block mt-0.5">Rp <?= number_format($dpp_val, 0, ',', '.') ?></span>
                         </div>
                         <div>
-                            <span class="text-slate-500 font-bold uppercase block text-[9.5px]">Status &amp; Deadline</span>
-                            <span class="font-bold text-slate-800 text-[11px] block mt-0.5">
-                                <?= htmlspecialchars($project['status']) ?> (<?= !empty($project['deadline']) ? date('d M Y', strtotime($project['deadline'])) : '-' ?>)
-                            </span>
+                            <span class="text-amber-600 font-bold uppercase block text-[9px]">PPN (<?= number_format($persen_pajak, 1) ?>%)</span>
+                            <span class="font-bold text-amber-700 text-[10.5px] block mt-0.5">Rp <?= number_format($nominal_pajak, 0, ',', '.') ?></span>
+                        </div>
+                        <div>
+                            <span class="text-emerald-800 font-bold uppercase block text-[9px]">Total (Inc. Pajak)</span>
+                            <span class="font-black text-emerald-800 text-[10.5px] block mt-0.5">Rp <?= number_format($total_inc_pajak, 0, ',', '.') ?></span>
                         </div>
                     </div>
 
@@ -287,15 +365,21 @@ $noLaporan = sprintf("%03d", $project['id']) . "/CTC-REP/" . bulanRomawi(date('n
                                     </tr>
                                 <?php else: ?>
                                     <?php $no = 1; foreach ($tasks as $t): ?>
+                                        <?php 
+                                            // Ambil list nama karyawan jika ada multi-assignee
+                                            $picNames = !empty($taskAssigneesMap[$t['id']]) 
+                                                ? implode(', ', $taskAssigneesMap[$t['id']]) 
+                                                : ($t['nama_karyawan'] ?? 'Unassigned');
+                                        ?>
                                         <tr class="bg-white hover:bg-slate-50 transition-colors">
                                             <td class="border border-slate-300 p-2 text-center text-slate-500 font-semibold"><?= $no++ ?></td>
                                             <td class="border border-slate-300 p-2 font-bold text-slate-900 leading-tight">
                                                 <?= htmlspecialchars($t['nama_tugas']) ?>
-                                                <?php if (!empty($t['progress_notes'])): ?>
-                                                    <p class="text-[9.5px] text-slate-500 font-normal italic mt-0.5">Note: <?= htmlspecialchars($t['progress_notes']) ?></p>
+                                                <?php if (!empty($t['revision_notes'])): ?>
+                                                    <p class="text-[9.5px] text-amber-700 font-normal italic mt-0.5">Catatan Revisi: <?= htmlspecialchars($t['revision_notes']) ?></p>
                                                 <?php endif; ?>
                                             </td>
-                                            <td class="border border-slate-300 p-2 text-slate-700 font-medium"><?= htmlspecialchars($t['nama_karyawan'] ?? 'Unassigned') ?></td>
+                                            <td class="border border-slate-300 p-2 text-slate-700 font-medium"><?= htmlspecialchars($picNames) ?></td>
                                             <td class="border border-slate-300 p-2 text-center font-bold uppercase text-[9px] text-slate-700"><?= htmlspecialchars($t['prioritas']) ?></td>
                                             <td class="border border-slate-300 p-2 text-center font-bold text-[9px] uppercase">
                                                 <?php 

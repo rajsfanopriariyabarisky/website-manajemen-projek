@@ -14,6 +14,30 @@ if (strtolower($_SESSION['role'] ?? '') !== 'admin') {
     exit;
 }
 
+// Auto-Migration Schema
+try {
+    $pdo->exec("ALTER TABLE projects ADD COLUMN persen_pajak DECIMAL(5,2) DEFAULT 11.00 AFTER budget");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE projects ADD COLUMN nominal_pajak DECIMAL(15,2) DEFAULT 0.00 AFTER persen_pajak");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE projects ADD COLUMN total_nilai DECIMAL(15,2) DEFAULT 0.00 AFTER nominal_pajak");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE projects ADD COLUMN requirement_id INT NULL AFTER client_token");
+} catch (Exception $e) {}
+
+try {
+    $pdo->exec("ALTER TABLE contracts ADD COLUMN persen_pajak DECIMAL(5,2) DEFAULT 11.00 AFTER nilai_kontrak");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE contracts ADD COLUMN nominal_pajak DECIMAL(15,2) DEFAULT 0.00 AFTER persen_pajak");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE contracts ADD COLUMN total_kontrak DECIMAL(15,2) DEFAULT 0.00 AFTER nominal_pajak");
+} catch (Exception $e) {}
+
 $id = intval($_GET['id'] ?? 0);
 if (!$id) {
     header("Location: index.php");
@@ -29,14 +53,18 @@ function logProjectActivity($pdo, $project_id, $user_id, $nama_user, $aktivitas,
     $stmt->execute([$project_id, $user_id, $nama_user, $aktivitas, $tipe]);
 }
 
-// 1. Handle Update Data Proyek & SINKRONISASI BIDIREKSIONAL KE KEBUTUHAN KLIEN
+// 1. Handle Update Data Proyek & SINKRONISASI BIDIREKSIONAL KE KEBUTUHAN KLIEN & KONTRAK SPK
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_project'])) {
-    $nama_projek  = trim($_POST['nama_projek']);
-    $klien        = trim($_POST['klien']);
-    $budget       = $_POST['budget'] ?? 0;
-    $status       = $_POST['status'];
-    $deadline     = $_POST['deadline'];
-    $kategori_rab = $_POST['kategori_rab'] ?? 'Website';
+    $nama_projek   = trim($_POST['nama_projek']);
+    $klien         = trim($_POST['klien']);
+    $budget        = floatval(str_replace(['.', ','], ['', '.'], $_POST['budget'] ?? 0)); // DPP
+    $persen_pajak  = floatval($_POST['persen_pajak'] ?? 11.00);
+    $nominal_pajak = round(($budget * $persen_pajak) / 100, 2);
+    $total_nilai   = $budget + $nominal_pajak;
+
+    $status        = $_POST['status'];
+    $deadline      = $_POST['deadline'];
+    $kategori_rab  = $_POST['kategori_rab'] ?? 'Website';
 
     // Olah Custom RAB jika kategori RAB = Custom
     $rab_custom_json = null;
@@ -60,9 +88,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_project'])) {
         $rab_custom_json = json_encode($custom_items);
     }
 
-    if (!empty($nama_projek) && !empty($klien)) {
-        $stmtUp = $pdo->prepare("UPDATE projects SET nama_projek = ?, klien = ?, budget = ?, status = ?, deadline = ?, kategori_rab = ?, rab_custom_data = ? WHERE id = ?");
-        $stmtUp->execute([$nama_projek, $klien, $budget, $status, $deadline, $kategori_rab, $rab_custom_json, $id]);
+    if (!empty($nama_projek) && !empty($klien) && $budget > 0) {
+        // Update Data Proyek Utama
+        $stmtUp = $pdo->prepare("
+            UPDATE projects 
+            SET nama_projek = ?, klien = ?, budget = ?, persen_pajak = ?, nominal_pajak = ?, total_nilai = ?, status = ?, deadline = ?, kategori_rab = ?, rab_custom_data = ? 
+            WHERE id = ?
+        ");
+        $stmtUp->execute([$nama_projek, $klien, $budget, $persen_pajak, $nominal_pajak, $total_nilai, $status, $deadline, $kategori_rab, $rab_custom_json, $id]);
+
+        // Auto-Sync Data ke Draf Kontrak SPK jika sudah ada
+        $stmtCheckContract = $pdo->prepare("SELECT id FROM contracts WHERE project_id = ?");
+        $stmtCheckContract->execute([$id]);
+        $contractId = $stmtCheckContract->fetchColumn();
+
+        if ($contractId) {
+            $stmtUpContract = $pdo->prepare("
+                UPDATE contracts 
+                SET nilai_kontrak = ?, persen_pajak = ?, nominal_pajak = ?, total_kontrak = ?, tanggal_selesai = ? 
+                WHERE project_id = ?
+            ");
+            $stmtUpContract->execute([$budget, $persen_pajak, $nominal_pajak, $total_nilai, $deadline, $id]);
+        }
 
         // Cek jika proyek terhubung ke Kebutuhan Klien (requirement_id)
         $stmtGetReq = $pdo->prepare("SELECT requirement_id FROM projects WHERE id = ?");
@@ -77,19 +124,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_project'])) {
             }
         }
 
-        logProjectActivity($pdo, $id, $current_user_id, $current_user_nama, "Memperbarui konfigurasi proyek, status '$status' & Kategori RAB '$kategori_rab'", 'info');
+        logProjectActivity($pdo, $id, $current_user_id, $current_user_nama, "Memperbarui konfigurasi proyek, DPP 'Rp " . number_format($budget, 0, ',', '.') . "', status '$status' & Kategori RAB '$kategori_rab'", 'info');
 
         header("Location: detail.php?id=" . $id . "&msg=project_updated");
         exit;
     }
 }
 
-// Fetch Detail Proyek & Kontrak Terkait
+// Fetch Detail Proyek, Kontrak (SPK), & Proposal (SPH) Terkait
 $stmt = $pdo->prepare("
-    SELECT p.*, c.id AS linked_contract_id 
+    SELECT p.*, 
+           c.id AS linked_contract_id,
+           c.nilai_kontrak AS dpp_kontrak,
+           c.persen_pajak AS contract_persen_pajak,
+           c.nominal_pajak AS contract_nominal_pajak,
+           c.total_kontrak AS contract_total_inc_pajak,
+           pr.id AS linked_proposal_id,
+           pr.persen_pajak AS proposal_persen_pajak,
+           pr.nominal_pajak AS proposal_nominal_pajak,
+           pr.total_penawaran AS proposal_total
     FROM projects p 
     LEFT JOIN contracts c ON c.project_id = p.id 
+    LEFT JOIN client_requirements cr ON p.requirement_id = cr.id
+    LEFT JOIN proposals pr ON (
+        (p.klien IS NOT NULL AND p.klien != '' AND pr.client_name LIKE CONCAT('%', p.klien, '%')) OR
+        (pr.title LIKE CONCAT('%', p.nama_projek, '%')) OR
+        (cr.client_email IS NOT NULL AND pr.client_email = cr.client_email)
+    )
     WHERE p.id = ?
+    ORDER BY pr.id DESC
+    LIMIT 1
 ");
 $stmt->execute([$id]);
 $project = $stmt->fetch();
@@ -97,6 +161,41 @@ $project = $stmt->fetch();
 if (!$project) {
     header("Location: index.php");
     exit;
+}
+
+// Perhitungan Finansial Berbasis Pajak
+$dpp_val = (!empty($project['dpp_kontrak']) && (float)$project['dpp_kontrak'] > 0) 
+    ? (float)$project['dpp_kontrak'] 
+    : (float)$project['budget'];
+
+if (isset($project['contract_persen_pajak']) && (float)$project['contract_persen_pajak'] > 0) {
+    $persen_pajak = (float)$project['contract_persen_pajak'];
+} elseif (isset($project['persen_pajak']) && (float)$project['persen_pajak'] > 0) {
+    $persen_pajak = (float)$project['persen_pajak'];
+} elseif (isset($project['proposal_persen_pajak']) && (float)$project['proposal_persen_pajak'] > 0) {
+    $persen_pajak = (float)$project['proposal_persen_pajak'];
+} else {
+    $persen_pajak = 11.0;
+}
+
+if (!empty($project['contract_nominal_pajak']) && (float)$project['contract_nominal_pajak'] > 0) {
+    $nominal_pajak = (float)$project['contract_nominal_pajak'];
+} elseif (!empty($project['nominal_pajak']) && (float)$project['nominal_pajak'] > 0) {
+    $nominal_pajak = (float)$project['nominal_pajak'];
+} elseif (!empty($project['proposal_nominal_pajak']) && (float)$project['proposal_nominal_pajak'] > 0) {
+    $nominal_pajak = (float)$project['proposal_nominal_pajak'];
+} else {
+    $nominal_pajak = round(($dpp_val * $persen_pajak) / 100);
+}
+
+if (!empty($project['contract_total_inc_pajak']) && (float)$project['contract_total_inc_pajak'] > 0) {
+    $total_inc_pajak = (float)$project['contract_total_inc_pajak'];
+} elseif (!empty($project['total_nilai']) && (float)$project['total_nilai'] > 0) {
+    $total_inc_pajak = (float)$project['total_nilai'];
+} elseif (!empty($project['proposal_total']) && (float)$project['proposal_total'] > 0) {
+    $total_inc_pajak = (float)$project['proposal_total'];
+} else {
+    $total_inc_pajak = $dpp_val + $nominal_pajak;
 }
 
 // 2. Handle Tambah Task Baru
@@ -149,7 +248,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qc_action'])) {
 
         logProjectActivity($pdo, $id, $current_user_id, $current_user_nama, "Menyetujui (Approved) pengerjaan modul '$taskTitle'", 'success');
 
-        // Notif Auto ke Chatbox (bubble hijau khusus, tampil sama di dua sisi)
         $pdo->prepare("INSERT INTO task_chats (task_id, sender_id, sender_name, sender_role, message) VALUES (?, ?, ?, 'admin', '✅ Modul ini telah disetujui (Approved) oleh Project Manager.')")->execute([$task_id, $current_user_id, $current_user_nama]);
 
         header("Location: detail.php?id=" . $id . "&msg=approved");
@@ -160,7 +258,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qc_action'])) {
 
         logProjectActivity($pdo, $id, $current_user_id, $current_user_nama, "Mengirimkan catatan instruksi revisi pada modul '$taskTitle'", 'warning');
 
-        // Notif Auto ke Chatbox (bubble AMBER khusus di dua sisi -> beda dari chat biasa)
         $pesanRevisi = "⚠️ *Instruksi Revisi dari PM:*\n" . $revision_notes;
         $pdo->prepare("INSERT INTO task_chats (task_id, sender_id, sender_name, sender_role, message) VALUES (?, ?, ?, 'admin', ?)")->execute([$task_id, $current_user_id, $current_user_nama, $pesanRevisi]);
 
@@ -200,7 +297,7 @@ foreach ($rawAssignees as $ra) {
     $taskAssigneesMap[$ra['task_id']][] = $ra;
 }
 
-// Mapping File Deliverables (FITUR BARU UNTUK BACA UPLOAD FILE KARYAWAN)
+// Mapping File Deliverables
 $taskFilesMap = [];
 $stmtFiles = $pdo->prepare("SELECT * FROM project_files WHERE project_id = ? AND task_id IS NOT NULL");
 $stmtFiles->execute([$id]);
@@ -217,7 +314,7 @@ foreach ($rawUnread as $ru) {
     $unreadChatsMap[$ru['task_id']] = $ru['unread_count'];
 }
 
-// Nama modul untuk judul chatbox (anti error quote & XSS)
+// Nama modul untuk judul chatbox
 $taskNameMap = [];
 foreach ($allTasks as $tk) {
     $taskNameMap[(int) $tk['id']] = $tk['nama_tugas'];
@@ -277,25 +374,18 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     .overdue-row { background-color: rgba(254, 242, 242, 0.75) !important; }
     .overdue-row:hover { background-color: rgba(254, 226, 226, 0.95) !important; }
 
-    /* =====================================================================
-     * CHAT BUBBLE — WARNA KONSISTEN ADMIN & KARYAWAN
-     * ===================================================================== */
     .chat-bubble { max-width: 85%; padding: 9px 13px; border-radius: 14px; font-size: 13px; line-height: 1.5; word-wrap: break-word; }
     .chat-bubble-self   { background-color: #059669; color: #ffffff; border-bottom-right-radius: 3px; }
     .chat-bubble-other  { background-color: #ffffff; color: #1e293b; border: 1px solid #e2e8f0; border-bottom-left-radius: 3px; }
-    /* Pesan revisi (prefix ⚠️) -> AMBER, beda dari chat biasa, sama di dua sisi */
     .chat-bubble-revision { background-color: #fef3c7 !important; color: #92400e !important; border: 1px solid #f59e0b !important; border-bottom-left-radius: 3px; }
-    /* Pesan approval sistem (prefix ✅) -> hijau muda */
     .chat-bubble-success  { background-color: #d1fae5 !important; color: #065f46 !important; border: 1px solid #34d399 !important; border-bottom-left-radius: 3px; }
 
-    /* Animasi pop-in ala WhatsApp */
     @keyframes chatPop {
         from { opacity: 0; transform: translateY(12px) scale(0.8); }
         to   { opacity: 1; transform: translateY(0) scale(1); }
     }
     .chat-pop { animation: chatPop 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
-    /* Toast notifikasi */
     @keyframes toastIn  { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
     @keyframes toastOut { to   { opacity: 0; transform: translateX(24px); } }
     .toast-pop  { animation: toastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
@@ -317,7 +407,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     <!-- Alert Notifications -->
     <?php if (isset($_GET['msg']) && $_GET['msg'] === 'project_updated'): ?>
         <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
-            <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i> Konfigurasi & status proyek berhasil diperbarui! Sinkronisasi status kebutuhan klien di-update secara otomatis.
+            <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i> Konfigurasi & status proyek berhasil diperbarui!
         </div>
     <?php elseif (isset($_GET['msg']) && $_GET['msg'] === 'task_added'): ?>
         <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
@@ -364,8 +454,22 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                 <div class="text-xs sm:text-sm text-slate-500 flex items-center gap-3 flex-wrap font-normal">
                     <span>Mitra Klien: <strong class="text-slate-800 font-semibold"><?= htmlspecialchars($project['klien']) ?></strong></span>
-                    <span class="text-slate-300">•</span>
-                    <span>Nilai Kontrak Workload: <strong class="text-emerald-700 font-bold font-mono text-sm">Rp <?= number_format($project['budget'], 0, ',', '.') ?></strong></span>
+                </div>
+
+                <!-- CARD RINCIAN FINANSIAL BERBASIS PAJAK -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200/80 text-xs mt-2">
+                    <div>
+                        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">DPP (Nilai Pekerjaan)</span>
+                        <span class="font-mono font-bold text-slate-900 text-xs sm:text-sm">Rp <?= number_format($dpp_val, 0, ',', '.') ?></span>
+                    </div>
+                    <div>
+                        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">PPN (<?= number_format($persen_pajak, 1) ?>%)</span>
+                        <span class="font-mono font-semibold text-amber-600 text-xs sm:text-sm">Rp <?= number_format($nominal_pajak, 0, ',', '.') ?></span>
+                    </div>
+                    <div>
+                        <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">Total Nilai (Inc. Pajak)</span>
+                        <span class="font-mono font-bold text-emerald-700 text-xs sm:text-sm">Rp <?= number_format($total_inc_pajak, 0, ',', '.') ?></span>
+                    </div>
                 </div>
             </div>
 
@@ -382,23 +486,29 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 </div>
             </div>
 
+            <!-- ACTION SHORTCUT BUTTONS -->
             <div class="flex items-center gap-2 shrink-0 flex-wrap">
                 <button onclick="openEditProjectModal()" class="btn-press px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300/80 rounded-xl text-xs font-semibold transition shadow-2xs flex items-center justify-center gap-2">
                     <i class="fa-regular fa-pen-to-square"></i> Konfigurasi
                 </button>
-                <a href="../proposals/print_proposal.php?project_id=<?= $id ?>" target="_blank" class="btn-press px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center justify-center gap-2">
+                <a href="../proposals/print_proposal.php?project_id=<?= $id ?>" target="_blank" class="btn-press px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center justify-center gap-2">
                     <i class="fa-solid fa-file-signature"></i> Proposal SPH
                 </a>
                 <?php if (!empty($project['linked_contract_id'])): ?>
-                    <a href="../contracts/print_pdf.php?id=<?= $project['linked_contract_id'] ?>" target="_blank" class="btn-press px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center justify-center gap-2">
+                    <a href="../contracts/print_pdf.php?id=<?= $project['linked_contract_id'] ?>" target="_blank" class="btn-press px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center justify-center gap-2">
                         <i class="fa-solid fa-file-contract"></i> Kontrak SPK
                     </a>
                 <?php else: ?>
-                    <a href="../contracts/generate.php?project_id=<?= $id ?>" class="btn-press px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center justify-center gap-2">
+                    <a href="../contracts/generate.php?project_id=<?= $id ?>" class="btn-press px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center justify-center gap-2">
                         <i class="fa-solid fa-plus text-[10px]"></i> SPK Baru
                     </a>
                 <?php endif; ?>
-                <a href="print_report.php?id=<?= $id ?>" target="_blank" class="btn-press px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center justify-center gap-2">
+
+                <a href="../invoices/detail.php?project_id=<?= $id ?>" class="btn-press px-3.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-receipt"></i> Billing Invoice
+                </a>
+
+                <a href="print_report.php?id=<?= $id ?>" target="_blank" class="btn-press px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center justify-center gap-2">
                     <i class="fa-solid fa-print"></i> Laporan PDF
                 </a>
             </div>
@@ -689,13 +799,10 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     </div>
 </main>
 
-<!-- ========================================== -->
 <!-- MODAL CHATBOX REAL-TIME -->
-<!-- ========================================== -->
 <div id="chatModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4">
     <div class="bg-white rounded-2xl w-full max-w-lg h-[80vh] max-h-[640px] flex flex-col shadow-2xl overflow-hidden relative">
 
-        <!-- Chat Header -->
         <div class="bg-emerald-600 px-4 sm:px-5 py-3.5 flex justify-between items-center shrink-0 shadow-sm z-10">
             <div class="min-w-0">
                 <h3 class="font-bold text-white text-sm flex items-center gap-2 truncate">
@@ -704,7 +811,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 </h3>
                 <p class="text-emerald-200 text-[10px] mt-0.5"><i class="fa-solid fa-circle text-[8px] text-emerald-400"></i> Real-time aktif • tersinkron dengan tim</p>
             </div>
-            <button type="button" onclick="openDeleteConfirm()" id="chatDeleteBtn" title="Hapus seluruh riwayat chat modul ini (bersihkan database)" class="btn-press shrink-0 mr-1.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-red-500 text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition focus:outline-none">
+            <button type="button" onclick="openDeleteConfirm()" id="chatDeleteBtn" title="Hapus seluruh riwayat chat modul ini" class="btn-press shrink-0 mr-1.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-red-500 text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition focus:outline-none">
                 <i class="fa-solid fa-trash-can text-[10px]"></i><span class="hidden sm:inline">Hapus Chat</span>
             </button>
             <button onclick="closeChatModal()" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition focus:outline-none shrink-0">
@@ -712,7 +819,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             </button>
         </div>
 
-        <!-- Chat Body / Messages Area -->
         <div class="relative flex-1 min-h-0 bg-[#eef2f5]">
             <div class="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
                 <img src="../../assets/images/logo2.png" alt="CTC Watermark" class="w-[280px] h-auto object-contain opacity-[0.05] mix-blend-multiply select-none" onerror="this.onerror=null; this.src='../../assets/img/logo2.png';">
@@ -723,7 +829,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             </button>
         </div>
 
-        <!-- Chat Input Footer -->
         <div class="p-3 bg-white border-t border-slate-200 shrink-0">
             <form id="chatForm" onsubmit="submitTaskChat(event)" class="flex gap-2 items-center">
                 <input type="hidden" id="chatTaskId">
@@ -736,14 +841,14 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     </div>
 </div>
 
-<!-- MODAL KONFIRMASI HAPUS CHAT (CUSTOM — ADMIN ONLY) -->
+<!-- MODAL KONFIRMASI HAPUS CHAT -->
 <div id="deleteChatConfirmModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl w-full max-w-xs p-5 sm:p-6 shadow-2xl relative animate-fade-in text-center border border-slate-200">
+    <div class="bg-white rounded-2xl w-full max-w-xs p-5 sm:p-6 shadow-2xl relative text-center border border-slate-200">
         <div class="w-12 h-12 mx-auto mb-3 rounded-2xl bg-red-50 border border-red-100 text-red-500 flex items-center justify-center text-lg">
             <i class="fa-solid fa-trash-can"></i>
         </div>
         <h3 class="font-bold text-slate-900 text-sm mb-1">Hapus Riwayat Chat?</h3>
-        <p class="text-xs text-slate-500 font-normal mb-4 leading-relaxed">Seluruh pesan pada modul ini akan dihapus <strong class="text-slate-700 font-semibold">permanen</strong> dari database. Tindakan ini tidak dapat dibatalkan.</p>
+        <p class="text-xs text-slate-500 font-normal mb-4 leading-relaxed">Seluruh pesan pada modul ini akan dihapus <strong class="text-slate-700 font-semibold">permanen</strong> dari database.</p>
         <div class="flex gap-2">
             <button type="button" onclick="closeDeleteConfirm()" class="btn-press flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition">Batal</button>
             <button type="button" onclick="performDeleteChat()" id="deleteChatConfirmBtn" class="btn-press flex-1 py-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl text-xs shadow-xs flex items-center justify-center gap-1.5 transition">
@@ -756,12 +861,12 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 <!-- Toast Container -->
 <div id="toastWrap" class="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 w-72 max-w-[calc(100vw-2rem)] pointer-events-none"></div>
 
-<!-- MODAL EDIT DETAIL PROYEK & KATEGORI RAB -->
+<!-- MODAL EDIT DETAIL PROYEK, PAJAK & KATEGORI RAB -->
 <div id="editProjectModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
-    <div class="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-2xl relative my-8 text-xs sm:text-sm">
+    <div class="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative my-8 text-xs sm:text-sm">
         <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
             <h3 class="font-bold text-slate-900 text-base flex items-center gap-2">
-                <i class="fa-regular fa-pen-to-square text-amber-500"></i> Edit Detail & Status Proyek
+                <i class="fa-regular fa-pen-to-square text-amber-500"></i> Edit Detail & Setting Pajak Proyek
             </h3>
             <button onclick="closeEditProjectModal()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition focus:outline-none">
                 <i class="fa-solid fa-xmark text-xs"></i>
@@ -772,22 +877,66 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             <input type="hidden" name="update_project" value="1">
 
             <div>
-                <label class="block text-xs font-medium text-slate-700 mb-1.5">Status Proyek <span class="text-red-500">*</span></label>
-                <select name="status" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
-                    <option value="In Progress" <?= $project['status'] === 'In Progress' ? 'selected' : '' ?>>In Progress (Sedang Berjalan)</option>
-                    <option value="On Hold" <?= $project['status'] === 'On Hold' ? 'selected' : '' ?>>On Hold (Ditunda / Proposal Sent)</option>
-                    <option value="Completed" <?= $project['status'] === 'Completed' ? 'selected' : '' ?>>Completed (Selesai)</option>
-                </select>
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Nama Proyek <span class="text-red-500">*</span></label>
+                <input type="text" name="nama_projek" required value="<?= htmlspecialchars($project['nama_projek']) ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-normal focus:outline-none placeholder:text-slate-400">
             </div>
 
             <div>
-                <label class="block text-xs font-medium text-slate-700 mb-1.5">Kategori & Template RAB <span class="text-red-500">*</span></label>
-                <select name="kategori_rab" id="editKategoriRabSelect" onchange="toggleEditCustomRabSection()" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
-                    <option value="Website" <?= ($project['kategori_rab'] ?? '') === 'Website' ? 'selected' : '' ?>>RAB Website (Auto-Calculate)</option>
-                    <option value="IoT" <?= ($project['kategori_rab'] ?? '') === 'IoT' ? 'selected' : '' ?>>RAB IoT Hardware & Cloud (Auto-Calculate)</option>
-                    <option value="Mobile" <?= ($project['kategori_rab'] ?? '') === 'Mobile' ? 'selected' : '' ?>>RAB Mobile App Android/iOS (Auto-Calculate)</option>
-                    <option value="Custom" <?= ($project['kategori_rab'] ?? '') === 'Custom' ? 'selected' : '' ?>>Custom RAB (Input Manual Komponen & % Persen)</option>
-                </select>
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Nama Klien / Perusahaan <span class="text-red-500">*</span></label>
+                <input type="text" name="klien" required value="<?= htmlspecialchars($project['klien']) ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-normal focus:outline-none placeholder:text-slate-400">
+            </div>
+
+            <!-- Budget (DPP) & Pengaturan Pajak (PPN) -->
+            <div class="grid grid-cols-3 gap-3">
+                <div class="col-span-2">
+                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Nilai Pekerjaan / DPP (Rp) <span class="text-red-500">*</span></label>
+                    <input type="number" name="budget" id="editBudgetInput" value="<?= $dpp_val ?>" oninput="calculateTaxPreviewEdit()" required class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-mono font-semibold focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Tarif PPN (%)</label>
+                    <div class="flex items-center bg-white border border-slate-300 rounded-xl px-2.5 py-2">
+                        <input type="number" name="persen_pajak" id="editPersenPajakInput" value="<?= $persen_pajak ?>" step="0.1" min="0" max="100" oninput="calculateTaxPreviewEdit()" class="w-full text-xs font-mono font-bold focus:outline-none text-slate-800">
+                        <span class="text-xs font-bold text-slate-400 ml-0.5">%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Card Summary Pajak Modal Edit -->
+            <div class="bg-slate-50 border border-slate-200/80 p-3 rounded-xl grid grid-cols-3 gap-2 text-xs">
+                <div>
+                    <span class="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Subtotal (DPP)</span>
+                    <span class="font-mono font-bold text-slate-900 text-xs" id="editPreviewDpp">Rp 0</span>
+                </div>
+                <div>
+                    <span class="text-[9px] font-bold uppercase tracking-wider text-amber-600 block">PPN (<span id="editPreviewPajakPct">11.0%</span>)</span>
+                    <span class="font-mono font-semibold text-amber-600 text-xs" id="editPreviewNominalPajak">Rp 0</span>
+                </div>
+                <div>
+                    <span class="text-[9px] font-bold uppercase tracking-wider text-emerald-700 block">Total Inc. Pajak</span>
+                    <span class="font-mono font-bold text-emerald-700 text-xs" id="editPreviewTotalNilai">Rp 0</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Status Proyek <span class="text-red-500">*</span></label>
+                    <select name="status" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
+                        <option value="On Hold" <?= $project['status'] === 'On Hold' ? 'selected' : '' ?>>On Hold (Ditunda / Proposal Sent)</option>
+                        <option value="In Progress" <?= $project['status'] === 'In Progress' ? 'selected' : '' ?>>In Progress (Sedang Berjalan / Deal)</option>
+                        <option value="Completed" <?= $project['status'] === 'Completed' ? 'selected' : '' ?>>Completed (Selesai)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Kategori & Template RAB <span class="text-red-500">*</span></label>
+                    <select name="kategori_rab" id="editKategoriRabSelect" onchange="toggleEditCustomRabSection()" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none">
+                        <option value="Website" <?= ($project['kategori_rab'] ?? '') === 'Website' ? 'selected' : '' ?>>RAB Website (Auto-Calculate)</option>
+                        <option value="IoT" <?= ($project['kategori_rab'] ?? '') === 'IoT' ? 'selected' : '' ?>>RAB IoT Hardware & Cloud (Auto-Calculate)</option>
+                        <option value="Mobile" <?= ($project['kategori_rab'] ?? '') === 'Mobile' ? 'selected' : '' ?>>RAB Mobile App Android/iOS (Auto-Calculate)</option>
+                        <option value="Custom" <?= ($project['kategori_rab'] ?? '') === 'Custom' ? 'selected' : '' ?>>Custom RAB (Input Manual Komponen & % Persen)</option>
+                    </select>
+                </div>
             </div>
 
             <!-- SECTION DYNAMIC CUSTOM RAB (UNTUK EDITING) -->
@@ -841,31 +990,14 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             </div>
 
             <div>
-                <label class="block text-xs font-medium text-slate-700 mb-1.5">Nama Proyek <span class="text-red-500">*</span></label>
-                <input type="text" name="nama_projek" required value="<?= htmlspecialchars($project['nama_projek']) ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-normal focus:outline-none placeholder:text-slate-400">
-            </div>
-
-            <div>
-                <label class="block text-xs font-medium text-slate-700 mb-1.5">Nama Klien <span class="text-red-500">*</span></label>
-                <input type="text" name="klien" required value="<?= htmlspecialchars($project['klien']) ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-normal focus:outline-none placeholder:text-slate-400">
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Budget Proyek (Rp)</label>
-                    <input type="number" name="budget" value="<?= $project['budget'] ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-mono font-semibold focus:outline-none">
-                </div>
-
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1.5">Target Deadline <span class="text-red-500">*</span></label>
-                    <input type="date" name="deadline" required value="<?= $project['deadline'] ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-semibold focus:outline-none">
-                </div>
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Target Deadline <span class="text-red-500">*</span></label>
+                <input type="date" name="deadline" required value="<?= $project['deadline'] ?>" class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-semibold focus:outline-none">
             </div>
 
             <div class="flex justify-end gap-2 pt-2">
                 <button type="button" onclick="closeEditProjectModal()" class="btn-press px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs">Batal</button>
                 <button type="submit" class="btn-press px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs shadow-xs flex items-center gap-1.5">
-                    <i class="fa-solid fa-floppy-disk text-xs"></i> Simpan Perubahan
+                    <i class="fa-solid fa-floppy-disk text-xs"></i> Simpan & Auto-Sync SPK
                 </button>
             </div>
         </form>
@@ -898,9 +1030,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 </div>
 
 <script>
-/* =====================================================================
- * KONFIGURASI CHAT — SATU API UNTUK ADMIN & KARYAWAN
- * ===================================================================== */
 const CHAT_API   = '../../api_task_chat.php';
 const READER     = 'admin';
 const SELF_ROLE  = 'admin';
@@ -917,7 +1046,6 @@ let newMsgCount       = 0;
 const chatBody  = document.getElementById('chatBody');
 const jumpBtn   = document.getElementById('jumpLatestBtn');
 
-/* ---------- Utils ---------- */
 function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, s => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -925,7 +1053,6 @@ function escapeHtml(str) {
 }
 function nl2br(str) { return escapeHtml(str).replace(/\n/g, '<br>'); }
 
-/* ---------- Toast ---------- */
 function showToast(title, subtitle) {
     const wrap = document.getElementById('toastWrap');
     const el = document.createElement('div');
@@ -943,12 +1070,10 @@ function showToast(title, subtitle) {
     }, 4500);
 }
 
-/* ---------- Bubble ---------- */
 function renderChatBubble(c, animate) {
     const isSelf = c.sender_role === SELF_ROLE;
     const m = (c.message || '').trim();
 
-    // Warna khusus: revisi = AMBER, approval sistem = hijau muda (konsisten dua sisi)
     let bubble = isSelf ? 'chat-bubble-self' : 'chat-bubble-other';
     if (/^(⚠️|❗|🔴)/.test(m))      bubble = 'chat-bubble-revision';
     else if (/^✅/.test(m))          bubble = 'chat-bubble-success';
@@ -964,7 +1089,6 @@ function renderChatBubble(c, animate) {
         + '</div>';
 }
 
-/* ---------- Scroll & Jump-to-latest ---------- */
 function isNearBottom() {
     return chatBody.scrollHeight - chatBody.clientHeight - chatBody.scrollTop < 80;
 }
@@ -987,7 +1111,6 @@ function showJumpBtn() {
 }
 chatBody.addEventListener('scroll', () => { if (isNearBottom()) hideJumpBtn(); });
 
-/* ---------- Append satu pesan ---------- */
 function appendTaskChat(c, animate) {
     if (!c || c.id <= lastChatId) return false;
 
@@ -1013,7 +1136,6 @@ function showEmptyChat() {
         + 'Belum ada obrolan di modul ini. Mulai diskusi dengan tim!</div>';
 }
 
-/* ---------- Fetch incremental (ringan, anti-lag) ---------- */
 function fetchTaskChats() {
     if (!currentChatTaskId) return;
 
@@ -1022,7 +1144,6 @@ function fetchTaskChats() {
         .then(data => {
             if (!data.success) return;
 
-            // Deteksi real-time: chat dihapus di sisi lain -> bersihkan layar tanpa refresh
             const totalNow = parseInt(data.total, 10) || 0;
             if (totalNow === 0 && lastChatId > 0) {
                 lastChatId = 0;
@@ -1033,7 +1154,6 @@ function fetchTaskChats() {
             }
 
             if (data.messages && data.messages.length > 0) {
-                // Riwayat pertama tanpa animasi, pesan baru ber-animasi pop
                 data.messages.forEach(c => appendTaskChat(c, chatHistoryLoaded));
                 chatHistoryLoaded = true;
             } else if (!chatHistoryLoaded) {
@@ -1046,7 +1166,6 @@ function fetchTaskChats() {
         .catch(() => {});
 }
 
-/* ---------- Modal ---------- */
 function openChatModal(taskId) {
     currentChatTaskId   = taskId;
     lastChatId          = 0;
@@ -1070,11 +1189,9 @@ function closeChatModal() {
     document.body.classList.remove('overflow-hidden');
     if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
     currentChatTaskId = null;
-    // Tidak reload halaman — badge langsung dipoles oleh poll unread
     pollUnreadSummary();
 }
 
-/* ---------- Hapus seluruh chat modul (ADMIN ONLY, konfirmasi custom) ---------- */
 let deleteConfirmOpen = false;
 
 function openDeleteConfirm() {
@@ -1087,7 +1204,6 @@ function openDeleteConfirm() {
 function closeDeleteConfirm() {
     deleteConfirmOpen = false;
     document.getElementById('deleteChatConfirmModal').classList.add('hidden');
-    // Tetap kunci body selama chatbox utama masih terbuka
     if (!document.getElementById('chatModal').classList.contains('hidden')) {
         document.body.classList.add('overflow-hidden');
     } else {
@@ -1132,7 +1248,6 @@ function performDeleteChat() {
         });
 }
 
-/* ---------- Kirim pesan ---------- */
 function submitTaskChat(e) {
     e.preventDefault();
     if (sendingChat || !currentChatTaskId) return;
@@ -1167,9 +1282,6 @@ function submitTaskChat(e) {
         });
 }
 
-/* =====================================================================
- * BADGE UNREAD + TOAST PESAN BARU (GLOBAL, dua sisi sama)
- * ===================================================================== */
 function updateUnreadBadge(taskId, count) {
     const badge = document.getElementById('unreadBadge-' + taskId);
     if (!badge) return;
@@ -1201,7 +1313,6 @@ function pollUnreadSummary() {
                 total += info.count;
                 updateUnreadBadge(tid, info.count);
 
-                // Toast hanya untuk pesan yang benar-benar baru
                 if (unreadInitialized
                     && info.last_id > (lastSeenChatIds[tid] || 0)
                     && tid !== currentChatTaskId) {
@@ -1210,7 +1321,6 @@ function pollUnreadSummary() {
                 lastSeenChatIds[tid] = Math.max(lastSeenChatIds[tid] || 0, info.last_id);
             });
 
-            // Bersihkan badge task yang sudah tidak unread
             document.querySelectorAll('.unread-badge').forEach(b => {
                 const id = parseInt(b.id.replace('unreadBadge-', ''), 10);
                 if (!map[id]) updateUnreadBadge(id, 0);
@@ -1224,18 +1334,32 @@ function pollUnreadSummary() {
 
 setInterval(pollUnreadSummary, 8000);
 
-// Pesan sukses dari URL (QC / konfigurasi) -> tampilkan juga sebagai toast
 document.addEventListener('DOMContentLoaded', function() {
     const msg = new URLSearchParams(location.search).get('msg');
     if (msg === 'approved')       showToast('✅ Modul Approved', 'Status modul diperbarui menjadi Done.');
     if (msg === 'revision_sent')  showToast('⚠️ Instruksi revisi terkirim', 'Tim menerima catatan revisi di chatbox modul.');
 
     pollUnreadSummary();
+    calculateTaxPreviewEdit();
 });
 
-/* =====================================================================
- * JS LAINNYA (tidak diubah fungsinya)
- * ===================================================================== */
+function calculateTaxPreviewEdit() {
+    const budgetInput = document.getElementById('editBudgetInput');
+    const taxInput    = document.getElementById('editPersenPajakInput');
+    if (!budgetInput || !taxInput) return;
+
+    const budget = parseFloat(budgetInput.value) || 0;
+    const taxPct = parseFloat(taxInput.value) || 0;
+
+    const nominalPajak = Math.round((budget * taxPct) / 100);
+    const totalNilai   = budget + nominalPajak;
+
+    document.getElementById('editPreviewDpp').innerText          = 'Rp ' + budget.toLocaleString('id-ID');
+    document.getElementById('editPreviewPajakPct').innerText     = taxPct.toFixed(1) + '%';
+    document.getElementById('editPreviewNominalPajak').innerText = 'Rp ' + nominalPajak.toLocaleString('id-ID');
+    document.getElementById('editPreviewTotalNilai').innerText   = 'Rp ' + totalNilai.toLocaleString('id-ID');
+}
+
 function toggleEditCustomRabSection() {
     const val = document.getElementById('editKategoriRabSelect').value;
     const sec = document.getElementById('editCustomRabSection');
@@ -1320,7 +1444,10 @@ function filterUserList() {
 
 function openEditProjectModal() { 
     document.getElementById('editProjectModal').classList.remove('hidden');
-    calculateEditCustomPercentageTotal();
+    calculateTaxPreviewEdit();
+    if (document.getElementById('editKategoriRabSelect').value === 'Custom') {
+        calculateEditCustomPercentageTotal();
+    }
 }
 function closeEditProjectModal() { document.getElementById('editProjectModal').classList.add('hidden'); }
 

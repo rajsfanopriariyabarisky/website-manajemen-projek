@@ -1,14 +1,65 @@
 <?php
+session_start();
+date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../../config/database.php';
+
+// Auto-Migration Guard: Pastikan tabel proposals dan kolom project_id ada sebelum Query JOIN
+try {
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS `proposals` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `project_id` INT NULL,
+            `nomor_proposal` VARCHAR(100) NOT NULL,
+            `client_name` VARCHAR(250) NOT NULL,
+            `client_email` VARCHAR(250) NOT NULL,
+            `title` VARCHAR(250) NOT NULL,
+            `nilai_penawaran` DECIMAL(15,2) DEFAULT 0.00,
+            `persen_pajak` DECIMAL(5,2) DEFAULT 11.00,
+            `nominal_pajak` DECIMAL(15,2) DEFAULT 0.00,
+            `total_penawaran` DECIMAL(15,2) DEFAULT 0.00,
+            `estimasi_pengerjaan` VARCHAR(100) NULL,
+            `ringkasan_scope` TEXT NULL,
+            `status` ENUM('Draft', 'Sent', 'Accepted', 'Rejected') DEFAULT 'Draft',
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    ");
+
+    $checkCol = $pdo->query("SHOW COLUMNS FROM `proposals` LIKE 'project_id'")->fetch();
+    if (!$checkCol) {
+        $pdo->exec("ALTER TABLE `proposals` ADD COLUMN `project_id` INT NULL AFTER `id`");
+    }
+} catch (Exception $e) {
+    // Fail-safe jika ada exception skema non-kritis
+}
+
 require_once __DIR__ . '/../../includes/header.php';
 require_once __DIR__ . '/../../includes/sidebar.php';
 
-// Fetch Seluruh Proyek Terdaftar
+// Fetch Seluruh Proyek Terdaftar beserta data proposal terhubung (Prioritas FK project_id)
 $projects = $pdo->query("
     SELECT p.*, 
-           COUNT(c.id) as total_contracts
+           c.id AS linked_contract_id,
+           c.nilai_kontrak AS dpp_kontrak,
+           c.persen_pajak AS contract_persen_pajak,
+           c.nominal_pajak AS contract_nominal_pajak,
+           c.total_kontrak AS contract_total_inc_pajak,
+           pr.id AS linked_proposal_id,
+           pr.nomor_proposal,
+           pr.status AS proposal_status,
+           pr.persen_pajak AS proposal_persen_pajak,
+           pr.nominal_pajak AS proposal_nominal_pajak,
+           pr.total_penawaran AS proposal_total
     FROM projects p
-    LEFT JOIN contracts c ON p.id = c.project_id
+    LEFT JOIN contracts c ON c.project_id = p.id
+    LEFT JOIN client_requirements cr ON p.requirement_id = cr.id
+    LEFT JOIN proposals pr ON (
+        pr.project_id = p.id OR
+        (pr.project_id IS NULL AND (
+            (p.klien IS NOT NULL AND p.klien != '' AND pr.client_name LIKE CONCAT('%', p.klien, '%')) OR
+            (pr.title LIKE CONCAT('%', p.nama_projek, '%')) OR
+            (cr.client_email IS NOT NULL AND pr.client_email = cr.client_email)
+        ))
+    )
     GROUP BY p.id
     ORDER BY p.created_at DESC
 ")->fetchAll();
@@ -62,13 +113,25 @@ $projects = $pdo->query("
             <div class="flex items-center gap-2 mb-1">
                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span class="text-xs font-semibold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-0.5 rounded-full">
-                    MODUL PROPOSAL PENAWARAN
+                    PROPOSAL PENAWARAN (SPH)
                 </span>
             </div>
             <h1 class="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Surat Penawaran & Commercial Proposal</h1>
             <p class="text-xs sm:text-sm text-slate-500 font-normal mt-0.5">Otomatisasi pencetakan Surat Penawaran Proyek resmi PT. Cipta Teknologi Cendekia</p>
         </div>
+        <div>
+            <a href="create.php" class="btn-press inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-xs transition">
+                <i class="fa-solid fa-plus text-xs"></i> Susun SPH Baru
+            </a>
+        </div>
     </div>
+
+    <!-- Alert Notifications -->
+    <?php if (isset($_GET['msg']) && $_GET['msg'] === 'created'): ?>
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
+            <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i> Surat Penawaran Harga (SPH) baru berhasil diterbitkan!
+        </div>
+    <?php endif; ?>
 
     <!-- Live Search & Filter Bar -->
     <div class="bg-white border border-slate-200/90 rounded-2xl p-4 mb-6 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -103,6 +166,45 @@ $projects = $pdo->query("
             </div>
         <?php else: ?>
             <?php foreach ($projects as $p): ?>
+                <?php
+                    // Penentuan DPP (Priority: Kontrak > Proyek)
+                    $dpp_val = (!empty($p['dpp_kontrak']) && (float)$p['dpp_kontrak'] > 0)
+                        ? (float)$p['dpp_kontrak']
+                        : (float)$p['budget'];
+
+                    // Penentuan Pajak % (Priority: Kontrak > Proyek > Proposal > Default 11.0%)
+                    if (isset($p['contract_persen_pajak']) && (float)$p['contract_persen_pajak'] > 0) {
+                        $pct_pajak = (float)$p['contract_persen_pajak'];
+                    } elseif (isset($p['persen_pajak']) && (float)$p['persen_pajak'] > 0) {
+                        $pct_pajak = (float)$p['persen_pajak'];
+                    } elseif (isset($p['proposal_persen_pajak']) && (float)$p['proposal_persen_pajak'] > 0) {
+                        $pct_pajak = (float)$p['proposal_persen_pajak'];
+                    } else {
+                        $pct_pajak = 11.00;
+                    }
+
+                    // Penentuan Nominal Pajak
+                    if (!empty($p['contract_nominal_pajak']) && (float)$p['contract_nominal_pajak'] > 0) {
+                        $nom_pajak = (float)$p['contract_nominal_pajak'];
+                    } elseif (!empty($p['nominal_pajak']) && (float)$p['nominal_pajak'] > 0) {
+                        $nom_pajak = (float)$p['nominal_pajak'];
+                    } elseif (!empty($p['proposal_nominal_pajak']) && (float)$p['proposal_nominal_pajak'] > 0) {
+                        $nom_pajak = (float)$p['proposal_nominal_pajak'];
+                    } else {
+                        $nom_pajak = round(($dpp_val * $pct_pajak) / 100);
+                    }
+
+                    // Penentuan Total Inc Pajak
+                    if (!empty($p['contract_total_inc_pajak']) && (float)$p['contract_total_inc_pajak'] > 0) {
+                        $tot_penawaran = (float)$p['contract_total_inc_pajak'];
+                    } elseif (!empty($p['total_nilai']) && (float)$p['total_nilai'] > 0) {
+                        $tot_penawaran = (float)$p['total_nilai'];
+                    } elseif (!empty($p['proposal_total']) && (float)$p['proposal_total'] > 0) {
+                        $tot_penawaran = (float)$p['proposal_total'];
+                    } else {
+                        $tot_penawaran = $dpp_val + $nom_pajak;
+                    }
+                ?>
                 <div class="proposal-card bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col justify-between relative overflow-hidden"
                      data-search="<?= htmlspecialchars(strtolower($p['nama_projek'] . ' ' . $p['klien'])) ?>"
                      data-status="<?= htmlspecialchars($p['status']) ?>">
@@ -111,10 +213,10 @@ $projects = $pdo->query("
                         <!-- Header Status Badge & Tanggal -->
                         <div class="flex justify-between items-center mb-3">
                             <span class="px-2.5 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <i class="fa-solid fa-bolt mr-1 text-[9px]"></i> Generate Otomatis
+                                <i class="fa-solid fa-bolt mr-1 text-[9px]"></i> Generate SPH
                             </span>
                             <span class="text-xs text-slate-400 font-normal flex items-center gap-1">
-                                <i class="fa-regular fa-calendar text-xs"></i> <?= date('d M Y', strtotime($p['tanggal_mulai'])) ?>
+                                <i class="fa-regular fa-calendar text-xs"></i> <?= !empty($p['tanggal_mulai']) ? date('d M Y', strtotime($p['tanggal_mulai'])) : date('d M Y') ?>
                             </span>
                         </div>
 
@@ -127,27 +229,19 @@ $projects = $pdo->query("
                             <i class="fa-solid fa-building text-slate-400 text-xs"></i> Klien Target: <span class="font-semibold text-slate-800"><?= htmlspecialchars($p['klien']) ?></span>
                         </p>
 
-                        <!-- Box Metric Nilai Penawaran & Status -->
-                        <div class="bg-slate-50 border border-slate-200/70 rounded-xl p-3.5 grid grid-cols-2 gap-2 text-xs mb-5">
-                            <div>
-                                <span class="text-[10px] text-slate-400 font-medium block uppercase tracking-wider mb-0.5">Nilai Penawaran</span>
-                                <span class="font-bold text-emerald-700 text-xs sm:text-sm font-mono">
-                                    Rp <?= number_format($p['budget'], 0, ',', '.') ?>
-                                </span>
+                        <!-- Box Metric Nilai Penawaran & Status dengan Pajak -->
+                        <div class="bg-slate-50 border border-slate-200/70 rounded-xl p-3.5 space-y-2 text-xs mb-5">
+                            <div class="flex justify-between items-center border-b border-slate-200/60 pb-1.5">
+                                <span class="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Subtotal (DPP)</span>
+                                <span class="font-mono font-bold text-slate-800">Rp <?= number_format($dpp_val, 0, ',', '.') ?></span>
                             </div>
-                            <div>
-                                <span class="text-[10px] text-slate-400 font-medium block uppercase tracking-wider mb-0.5">Status Proyek</span>
-                                <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase inline-block border tracking-wider
-                                    <?php
-                                        switch($p['status']) {
-                                            case 'In Progress': echo 'bg-blue-50 text-blue-700 border-blue-200'; break;
-                                            case 'Completed': echo 'bg-emerald-50 text-emerald-700 border-emerald-200'; break;
-                                            case 'On Hold': echo 'bg-amber-50 text-amber-700 border-amber-200'; break;
-                                            default: echo 'bg-slate-100 text-slate-600 border-slate-200';
-                                        }
-                                    ?>">
-                                    <?= htmlspecialchars($p['status']) ?>
-                                </span>
+                            <div class="flex justify-between items-center border-b border-slate-200/60 pb-1.5">
+                                <span class="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Pajak (<?= number_format($pct_pajak, 1) ?>%)</span>
+                                <span class="font-mono font-bold text-amber-600">Rp <?= number_format($nom_pajak, 0, ',', '.') ?></span>
+                            </div>
+                            <div class="flex justify-between items-center pt-0.5">
+                                <span class="text-[10px] text-emerald-800 font-bold uppercase tracking-wider">Total Inc. Pajak</span>
+                                <span class="font-mono font-bold text-emerald-700 text-sm">Rp <?= number_format($tot_penawaran, 0, ',', '.') ?></span>
                             </div>
                         </div>
                     </div>
@@ -220,7 +314,6 @@ function renderPagination() {
 
     if (totalPages <= 1) return;
 
-    // Previous Button
     const prevBtn = document.createElement('button');
     prevBtn.innerHTML = '<i class="fa-solid fa-chevron-left text-xs"></i>';
     prevBtn.className = `btn-press px-2.5 py-1 rounded-lg font-semibold text-xs ${currentPage === 1 ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;
@@ -228,7 +321,6 @@ function renderPagination() {
     prevBtn.onclick = () => { if(currentPage > 1) { currentPage--; renderPagination(); } };
     controls.appendChild(prevBtn);
 
-    // Page Numbers (1, 2, 3...)
     for (let i = 1; i <= totalPages; i++) {
         const pageBtn = document.createElement('button');
         pageBtn.innerText = i;
@@ -237,7 +329,6 @@ function renderPagination() {
         controls.appendChild(pageBtn);
     }
 
-    // Next Button
     const nextBtn = document.createElement('button');
     nextBtn.innerHTML = '<i class="fa-solid fa-chevron-right text-xs"></i>';
     nextBtn.className = `btn-press px-2.5 py-1 rounded-lg font-semibold text-xs ${currentPage === totalPages ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`;

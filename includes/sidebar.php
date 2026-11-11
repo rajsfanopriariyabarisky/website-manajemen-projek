@@ -51,7 +51,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_change_password
 }
 ?>
 <style>
-    /* Custom Scrollbar Sidebar */
+    /* Custom Scrollbar Sidebar & Overflow Handling */
+    #mainSidebar {
+        overflow-x: hidden !important;
+    }
+    .sidebar-scroll {
+        overflow-x: hidden !important;
+    }
     .sidebar-scroll::-webkit-scrollbar { width: 4px; }
     .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
     .sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(52, 211, 153, 0.35); border-radius: 99px; }
@@ -87,6 +93,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_change_password
             width: 5rem !important; /* 80px */
             padding-left: 0.625rem !important;
             padding-right: 0.625rem !important;
+            overflow-x: hidden !important;
+        }
+        aside.is-collapsed .sidebar-scroll {
+            overflow-x: hidden !important;
+            padding-right: 0 !important;
         }
         aside.is-collapsed .sidebar-text-group,
         aside.is-collapsed .category-label,
@@ -141,10 +152,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_change_password
 
 <!-- MAIN SIDEBAR (Modern Deep Emerald) -->
 <aside id="mainSidebar" 
-       class="fixed md:sticky top-0 left-0 h-screen bg-gradient-to-b from-[#064e3b] via-[#043829] to-[#02241a] border-r border-emerald-800/60 p-4 flex flex-col justify-between text-white shadow-xl z-50 select-none transition-all duration-300 ease-in-out -translate-x-full md:translate-x-0 w-64 shrink-0">
+       class="fixed md:sticky top-0 left-0 h-screen bg-gradient-to-b from-[#064e3b] via-[#043829] to-[#02241a] border-r border-emerald-800/60 p-4 flex flex-col justify-between text-white shadow-xl z-50 select-none transition-all duration-300 ease-in-out -translate-x-full md:translate-x-0 w-64 shrink-0 overflow-x-hidden">
     
     <!-- TOP SECTION: Header Logo & Navigasi -->
-    <div class="flex flex-col h-full min-h-0">
+    <div class="flex flex-col h-full min-h-0 overflow-x-hidden">
         
         <!-- HEADER 1: Mode Buka (Expanded) & Mobile -->
         <div class="header-expanded flex items-center justify-between gap-2.5 px-3 py-2.5 mb-5 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-md shrink-0 shadow-sm">
@@ -181,8 +192,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_change_password
             </button>
         </div>
 
-        <!-- Area Menu Navigasi (Independent Scroll) -->
-        <div class="flex-1 overflow-y-auto sidebar-scroll pr-1 space-y-4">
+        <!-- Area Menu Navigasi (Independent Scroll & No Horizontal Overflow) -->
+        <div class="flex-1 overflow-y-auto sidebar-scroll pr-1 space-y-4 overflow-x-hidden">
             
             <!-- SEKSI 1: UTAMA -->
             <div>
@@ -200,25 +211,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_change_password
                 </a>
             </div>
 
-            <!-- SEKSI 2: DOKUMEN LEGAL & INISIASI PROYEK -->
+            <!-- SEKSI 2: DOKUMEN LEGAL & MITRA KLIEN -->
             <div>
-                <span class="category-label px-3 text-[10px] font-extrabold uppercase tracking-wider text-emerald-300/80 block mb-1.5">Dokumen Legal</span>
+                <span class="category-label px-3 text-[10px] font-extrabold uppercase tracking-wider text-emerald-300/80 block mb-1.5">Dokumen Legal & Mitra</span>
                 <div class="category-divider hidden"></div>
                 <div class="space-y-1">
+
+                    <!-- 1. MANAJEMEN AKUN KLIEN (NEW MODULE) -->
+                    <a href="<?= $baseUrl ?>/modules/clients/index.php" class="nav-item-link relative group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs border <?= strpos($currentScript, '/clients/') !== false ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 border-emerald-400/60 text-white font-bold shadow-lg shadow-emerald-950/40' : 'border-transparent text-emerald-100/90 hover:bg-white/10 hover:text-white font-semibold' ?>">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <i class="nav-icon fa-solid fa-users-gear w-4 text-center text-sm <?= strpos($currentScript, '/clients/') !== false ? 'text-white' : 'text-emerald-300' ?>"></i>
+                            <span class="sidebar-text-group truncate">Akun Klien Mitra</span>
+                        </div>
+                        <?php if (strpos($currentScript, '/clients/') !== false): ?>
+                            <span class="sidebar-text-group w-2 h-2 rounded-full bg-white shadow-xs animate-pulse"></span>
+                        <?php endif; ?>
+                        <div class="sidebar-tooltip hidden absolute left-full ml-3 px-3 py-1.5 bg-slate-900 border border-emerald-500/30 text-white text-xs font-semibold rounded-xl shadow-xl whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50">
+                            Manajemen Akun Klien Mitra
+                        </div>
+                    </a>
                     
-                    <!-- 1. KEBUTUHAN KLIEN -->
+                    <!-- 2. KEBUTUHAN KLIEN -->
                     <a href="<?= $baseUrl ?>/modules/requirements/index.php" class="nav-item-link relative group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs border <?= strpos($currentScript, '/requirements/') !== false ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 border-emerald-400/60 text-white font-bold shadow-lg shadow-emerald-950/40' : 'border-transparent text-emerald-100/90 hover:bg-white/10 hover:text-white font-semibold' ?>">
                         <div class="flex items-center gap-3 min-w-0">
                             <i class="nav-icon fa-solid fa-inbox w-4 text-center text-sm <?= strpos($currentScript, '/requirements/') !== false ? 'text-white' : 'text-emerald-300' ?>"></i>
                             <span class="sidebar-text-group truncate">Kebutuhan Klien</span>
                         </div>
-                        <div class="flex items-center gap-1.5">
+                        <div class="sidebar-text-group flex items-center gap-1.5">
                             <?php if ($pendingReqCount > 0): ?>
-                                <span class="sidebar-text-group px-2 py-0.5 text-[10px] font-extrabold bg-red-500 text-white rounded-full shadow-xs animate-pulse">
+                                <span class="px-2 py-0.5 text-[10px] font-extrabold bg-red-500 text-white rounded-full shadow-xs animate-pulse">
                                     <?= $pendingReqCount ?>
                                 </span>
                             <?php elseif (strpos($currentScript, '/requirements/') !== false): ?>
-                                <span class="sidebar-text-group w-2 h-2 rounded-full bg-white shadow-xs animate-pulse"></span>
+                                <span class="w-2 h-2 rounded-full bg-white shadow-xs animate-pulse"></span>
                             <?php endif; ?>
                         </div>
                         <div class="sidebar-tooltip hidden absolute left-full ml-3 px-3 py-1.5 bg-slate-900 border border-emerald-500/30 text-white text-xs font-semibold rounded-xl shadow-xl whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50">
@@ -226,7 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_change_password
                         </div>
                     </a>
 
-                    <!-- 2. SURAT PENAWARAN -->
+                    <!-- 3. SURAT PENAWARAN -->
                     <a href="<?= $baseUrl ?>/modules/proposals/index.php" class="nav-item-link relative group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs border <?= strpos($currentScript, '/proposals/') !== false ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 border-emerald-400/60 text-white font-bold shadow-lg shadow-emerald-950/40' : 'border-transparent text-emerald-100/90 hover:bg-white/10 hover:text-white font-semibold' ?>">
                         <div class="flex items-center gap-3 min-w-0">
                             <i class="nav-icon fa-solid fa-file-signature w-4 text-center text-sm <?= strpos($currentScript, '/proposals/') !== false ? 'text-white' : 'text-emerald-300' ?>"></i>
@@ -240,7 +265,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_change_password
                         </div>
                     </a>
 
-                    <!-- 3. CETAK KONTRAK PDF -->
+                    <!-- 4. CETAK KONTRAK PDF -->
                     <a href="<?= $baseUrl ?>/modules/contracts/index.php" class="nav-item-link relative group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs border <?= strpos($currentScript, '/contracts/') !== false ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 border-emerald-400/60 text-white font-bold shadow-lg shadow-emerald-950/40' : 'border-transparent text-emerald-100/90 hover:bg-white/10 hover:text-white font-semibold' ?>">
                         <div class="flex items-center gap-3 min-w-0">
                             <i class="nav-icon fa-solid fa-file-contract w-4 text-center text-sm <?= strpos($currentScript, '/contracts/') !== false ? 'text-white' : 'text-emerald-300' ?>"></i>
@@ -263,7 +288,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_change_password
                 <div class="category-divider hidden"></div>
                 <div class="space-y-1">
 
-                    <!-- 1. PROYEK & TIMELINE (Pusat Data Proyek Aktif) -->
+                    <!-- 1. PROYEK & TIMELINE -->
                     <a href="<?= $baseUrl ?>/modules/projects/index.php" class="nav-item-link relative group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs border <?= strpos($currentScript, '/projects/') !== false ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 border-emerald-400/60 text-white font-bold shadow-lg shadow-emerald-950/40' : 'border-transparent text-emerald-100/90 hover:bg-white/10 hover:text-white font-semibold' ?>">
                         <div class="flex items-center gap-3 min-w-0">
                             <i class="nav-icon fa-solid fa-folder-tree w-4 text-center text-sm <?= strpos($currentScript, '/projects/') !== false ? 'text-white' : 'text-emerald-300' ?>"></i>
@@ -277,7 +302,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_change_password
                         </div>
                     </a>
 
-                    <!-- 2. WORKLOAD & PRIORITY (Pembagian Tugas Modul Proyek) -->
+                    <!-- 2. WORKLOAD & PRIORITY -->
                     <a href="<?= $baseUrl ?>/modules/tasks/index.php" class="nav-item-link relative group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs border <?= strpos($currentScript, '/tasks/') !== false ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 border-emerald-400/60 text-white font-bold shadow-lg shadow-emerald-950/40' : 'border-transparent text-emerald-100/90 hover:bg-white/10 hover:text-white font-semibold' ?>">
                         <div class="flex items-center gap-3 min-w-0">
                             <i class="nav-icon fa-solid fa-list-check w-4 text-center text-sm <?= strpos($currentScript, '/tasks/') !== false ? 'text-white' : 'text-emerald-300' ?>"></i>
@@ -291,7 +316,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_change_password
                         </div>
                     </a>
 
-                    <!-- 3. MANAJEMEN TIM (Pengaturan SDM / User) -->
+                    <!-- 3. MANAJEMEN TIM INTERNAL -->
                     <a href="<?= $baseUrl ?>/modules/users/index.php" class="nav-item-link relative group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs border <?= strpos($currentScript, '/users/') !== false ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 border-emerald-400/60 text-white font-bold shadow-lg shadow-emerald-950/40' : 'border-transparent text-emerald-100/90 hover:bg-white/10 hover:text-white font-semibold' ?>">
                         <div class="flex items-center gap-3 min-w-0">
                             <i class="nav-icon fa-solid fa-users-gear w-4 text-center text-sm <?= strpos($currentScript, '/users/') !== false ? 'text-white' : 'text-emerald-300' ?>"></i>
@@ -301,20 +326,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_change_password
                             <span class="sidebar-text-group w-2 h-2 rounded-full bg-white shadow-xs animate-pulse"></span>
                         <?php endif; ?>
                         <div class="sidebar-tooltip hidden absolute left-full ml-3 px-3 py-1.5 bg-slate-900 border border-emerald-500/30 text-white text-xs font-semibold rounded-xl shadow-xl whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50">
-                            Manajemen Tim
+                            Manajemen Tim Internal
                         </div>
                     </a>
 
                 </div>
             </div>
 
-            <!-- SEKSI 4: KEUANGAN & BILLING -->
+            <!-- SEKSI 4: KEUANGAN & BILLING OPERASIONAL -->
             <div>
                 <span class="category-label px-3 text-[10px] font-extrabold uppercase tracking-wider text-emerald-300/80 block mb-1.5">Keuangan & Billing</span>
                 <div class="category-divider hidden"></div>
                 <div class="space-y-1">
                     
-                    <!-- 1. INVOICE & BILLING (Penagihan Termin / Dana Masuk) -->
+                    <!-- 1. INVOICE & BILLING -->
                     <a href="<?= $baseUrl ?>/modules/invoices/index.php" class="nav-item-link relative group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs border <?= strpos($currentScript, '/invoices/') !== false ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 border-emerald-400/60 text-white font-bold shadow-lg shadow-emerald-950/40' : 'border-transparent text-emerald-100/90 hover:bg-white/10 hover:text-white font-semibold' ?>">
                         <div class="flex items-center gap-3 min-w-0">
                             <i class="nav-icon fa-solid fa-file-invoice-dollar w-4 text-center text-sm <?= strpos($currentScript, '/invoices/') !== false ? 'text-white' : 'text-emerald-300' ?>"></i>
@@ -328,7 +353,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_change_password
                         </div>
                     </a>
 
-                    <!-- 2. TRACKING BIAYA (Pencatatan Biaya Operasional / Expenses) -->
+                    <!-- 2. TRACKING BIAYA -->
                     <a href="<?= $baseUrl ?>/modules/expenses/index.php" class="nav-item-link relative group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs border <?= strpos($currentScript, '/expenses/') !== false ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 border-emerald-400/60 text-white font-bold shadow-lg shadow-emerald-950/40' : 'border-transparent text-emerald-100/90 hover:bg-white/10 hover:text-white font-semibold' ?>">
                         <div class="flex items-center gap-3 min-w-0">
                             <i class="nav-icon fa-solid fa-wallet w-4 text-center text-sm <?= strpos($currentScript, '/expenses/') !== false ? 'text-white' : 'text-emerald-300' ?>"></i>
@@ -342,7 +367,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_change_password
                         </div>
                     </a>
 
-                    <!-- 3. LAPORAN KEUANGAN (Rekap Laba Rugi & Export Excel) -->
+                    <!-- 3. LAPORAN KEUANGAN -->
                     <a href="<?= $baseUrl ?>/modules/reports/index.php" class="nav-item-link relative group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs border <?= strpos($currentScript, '/reports/') !== false ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 border-emerald-400/60 text-white font-bold shadow-lg shadow-emerald-950/40' : 'border-transparent text-emerald-100/90 hover:bg-white/10 hover:text-white font-semibold' ?>">
                         <div class="flex items-center gap-3 min-w-0">
                             <i class="nav-icon fa-solid fa-chart-pie w-4 text-center text-sm <?= strpos($currentScript, '/reports/') !== false ? 'text-white' : 'text-emerald-300' ?>"></i>
@@ -359,11 +384,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_change_password
                 </div>
             </div>
 
+            <!-- SEKSI 5: PROGRAM SOSIAL & CSR (DEDICATED DISTINCT BLOCK) -->
+            <div class="pt-2">
+                <span class="category-label px-3 text-[10px] font-extrabold uppercase tracking-wider text-amber-300/90 block mb-1.5 flex items-center gap-1.5">
+                    <i class="fa-solid fa-heart-pulse text-amber-400 text-[10px]"></i>
+                    <span>Program Sosial & CSR</span>
+                </span>
+                <div class="category-divider hidden"></div>
+                <div>
+                    <!-- DANA SOSIAL (ALOKASI 10% PROYEK & CSR) -->
+                    <a href="<?= $baseUrl ?>/modules/sosials/index.php" class="nav-item-link relative group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs border transition-all duration-200 <?= strpos($currentScript, '/sosials/') !== false ? 'bg-gradient-to-r from-amber-500 to-emerald-600 border-amber-300/80 text-white font-bold shadow-lg shadow-amber-950/40' : 'bg-amber-950/30 hover:bg-amber-900/40 border-amber-500/40 text-amber-200 hover:text-white font-semibold' ?>">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <i class="nav-icon fa-solid fa-hand-holding-heart w-4 text-center text-sm <?= strpos($currentScript, '/sosials/') !== false ? 'text-white' : 'text-amber-400' ?>"></i>
+                            <span class="sidebar-text-group truncate">Dana Sosial (10%)</span>
+                        </div>
+                        <div class="sidebar-text-group flex items-center gap-1.5">
+                            <span class="px-1.5 py-0.5 text-[9px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-400/40 rounded-md shrink-0">
+                                10%
+                            </span>
+                            <?php if (strpos($currentScript, '/sosials/') !== false): ?>
+                                <span class="w-2 h-2 rounded-full bg-white shadow-xs animate-pulse"></span>
+                            <?php endif; ?>
+                        </div>
+                        <div class="sidebar-tooltip hidden absolute left-full ml-3 px-3 py-1.5 bg-slate-900 border border-amber-500/40 text-amber-300 text-xs font-semibold rounded-xl shadow-xl whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50">
+                            Dana Sosial Proyek (Alokasi 10%)
+                        </div>
+                    </a>
+                </div>
+            </div>
+
         </div>
     </div>
 
     <!-- BOTTOM SECTION: Profil User & Action Buttons -->
-    <div class="pt-3 mt-3 border-t border-white/15 shrink-0">
+    <div class="pt-3 mt-3 border-t border-white/15 shrink-0 overflow-x-hidden">
         
         <!-- PROFIL MODE BUKA -->
         <div class="user-expanded flex items-center justify-between p-2.5 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-md">

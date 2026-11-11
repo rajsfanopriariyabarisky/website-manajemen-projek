@@ -3,18 +3,28 @@ session_start();
 date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../../config/database.php';
 
-$id = $_GET['id'] ?? null;
+// Proteksi Halaman: Wajib Login
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../../login.php");
+    exit;
+}
+
+$id = intval($_GET['id'] ?? 0);
 if (!$id) {
     header("Location: index.php");
     exit;
 }
 
-// Fetch data detail kontrak
+// Fetch data detail kontrak & sinkronisasi fallback dari tabel projects
 $stmt = $pdo->prepare("
     SELECT c.*, 
            COALESCE(p.nama_projek, 'Kontrak Mandiri / Pengajuan') as nama_projek, 
            COALESCE(p.klien, '-') as klien,
-           p.requirement_id
+           p.requirement_id,
+           p.budget AS proj_budget,
+           p.persen_pajak AS proj_persen_pajak,
+           p.nominal_pajak AS proj_nominal_pajak,
+           p.total_nilai AS proj_total_nilai
     FROM contracts c
     LEFT JOIN projects p ON c.project_id = p.id
     WHERE c.id = ?
@@ -26,6 +36,12 @@ if (!$contract) {
     header("Location: index.php");
     exit;
 }
+
+// Hierarki presisi variabel nominal DPP, Pajak (Termasuk 0% PPN), dan Total Kontrak
+$nilaiKontrak = (isset($contract['nilai_kontrak']) && (float)$contract['nilai_kontrak'] > 0) ? (float)$contract['nilai_kontrak'] : (float)($contract['proj_budget'] ?? 0);
+$persenPajak  = (isset($contract['persen_pajak']) && $contract['persen_pajak'] !== '' && $contract['persen_pajak'] !== null) ? (float)$contract['persen_pajak'] : ((isset($contract['proj_persen_pajak']) && $contract['proj_persen_pajak'] !== '' && $contract['proj_persen_pajak'] !== null) ? (float)$contract['proj_persen_pajak'] : 11.00);
+$nominalPajak = (isset($contract['nominal_pajak']) && $contract['nominal_pajak'] !== '' && $contract['nominal_pajak'] !== null) ? (float)$contract['nominal_pajak'] : ((isset($contract['proj_nominal_pajak']) && $contract['proj_nominal_pajak'] !== '' && $contract['proj_nominal_pajak'] !== null) ? (float)$contract['proj_nominal_pajak'] : round(($nilaiKontrak * $persenPajak) / 100, 2));
+$totalKontrak = (isset($contract['total_kontrak']) && (float)$contract['total_kontrak'] > 0) ? (float)$contract['total_kontrak'] : ((isset($contract['proj_total_nilai']) && (float)$contract['proj_total_nilai'] > 0) ? (float)$contract['proj_total_nilai'] : ($nilaiKontrak + $nominalPajak));
 
 // ACTION: KIRIM KONTRAK KE CLIENT PORTAL & CHAT LOBBY
 if (isset($_GET['action']) && $_GET['action'] === 'send_contract') {
@@ -44,10 +60,17 @@ if (isset($_GET['action']) && $_GET['action'] === 'send_contract') {
     }
 
     if ($reqId) {
-        $msgContent = "[SYSTEM] Surat Perjanjian Kerja Sama (SPK) Resmi dengan Nomor Kontrak: [ " . $contract['nomor_kontrak'] . " ] telah diterbitkan oleh Tim PT. Cipta Teknologi Cendekia.\n\nDokumen Perjanjian Kerja resmi ini dapat Anda tinjau & unduh secara langsung kapan saja melalui tombol Kontrak SPK (PDF) di portal.";
+        $msgContent = "[SYSTEM] Surat Perjanjian Kerja Sama (SPK) Resmi Nomor Kontrak: [ " . $contract['nomor_kontrak'] . " ] telah diterbitkan oleh Tim PT. Cipta Teknologi Cendekia.\n\n" .
+                      "• Subtotal Kontrak (DPP): Rp " . number_format($nilaiKontrak, 0, ',', '.') . "\n" .
+                      "• Pajak (PPN " . number_format($persenPajak, 1) . "%): Rp " . number_format($nominalPajak, 0, ',', '.') . "\n" .
+                      "• Total Kontrak (Inc. Pajak): Rp " . number_format($totalKontrak, 0, ',', '.') . "\n\n" .
+                      "Dokumen Perjanjian Kerja resmi ini dapat Anda tinjau & unduh secara langsung melalui tombol Kontrak SPK (PDF) di portal.";
         
-        $stmtInsertChat = $pdo->prepare("INSERT INTO deal_chats (requirement_id, sender_type, sender_name, message, client_read, created_at) VALUES (?, 'system', 'System CTC', ?, 0, NOW())");
+        $stmtInsertChat = $pdo->prepare("INSERT INTO deal_chats (requirement_id, sender_type, sender_name, message, admin_read, client_read, created_at) VALUES (?, 'system', 'System CTC', ?, 1, 0, NOW())");
         $stmtInsertChat->execute([$reqId, $msgContent]);
+
+        // Auto update status requirement ke Proposal Sent jika belum Deal
+        $pdo->prepare("UPDATE client_requirements SET status = 'Proposal Sent' WHERE id = ? AND status = 'Under Review'")->execute([$reqId]);
 
         header("Location: print_pdf.php?id=" . $contract['id'] . "&msg=contract_sent");
         exit;
@@ -58,8 +81,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'send_contract') {
 }
 
 function terbilang($angka) {
+    $angka = (float)$angka;
     $satuan = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas"];
-    if ($angka < 12) return $satuan[$angka];
+    if ($angka < 12) return $satuan[(int)$angka];
     if ($angka < 20) return terbilang($angka - 10) . " Belas";
     if ($angka < 100) return terbilang(floor($angka / 10)) . " Puluh " . terbilang($angka % 10);
     if ($angka < 200) return "Seratus " . terbilang($angka - 100);
@@ -67,6 +91,7 @@ function terbilang($angka) {
     if ($angka < 2000) return "Seribu " . terbilang($angka - 1000);
     if ($angka < 1000000) return terbilang(floor($angka / 1000)) . " Ribu " . terbilang($angka % 1000);
     if ($angka < 1000000000) return terbilang(floor($angka / 1000000)) . " Juta " . terbilang($angka % 1000000);
+    if ($angka < 1000000000000) return terbilang(floor($angka / 1000000000)) . " Miliar " . terbilang(fmod($angka, 1000000000));
     return number_format($angka, 0, ',', '.');
 }
 
@@ -218,6 +243,10 @@ $tahunAngka = date('Y', $tglMulaiStamp);
             <div class="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2">
                 <i class="fa-solid fa-circle-check"></i> Dokumen Kontrak (SPK) berhasil dikirim ke Client Portal!
             </div>
+        <?php elseif (isset($_GET['msg']) && $_GET['msg'] === 'req_not_found'): ?>
+            <div class="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <i class="fa-solid fa-circle-exclamation"></i> Klien requirement terkait tidak ditemukan. Dokumen tetap dicetak.
+            </div>
         <?php endif; ?>
 
         <div class="flex items-center gap-3">
@@ -289,17 +318,44 @@ $tahunAngka = date('Y', $tglMulaiStamp);
 
                         <div>
                             <h4 class="font-bold text-center uppercase tracking-wide mb-1 text-[11px]">PASAL 3<br>NILAI KONTRAK &amp; SKEMA PEMBAYARAN</h4>
-                            <ol class="list-decimal pl-5 space-y-1 text-justify leading-relaxed">
-                                <li>Total Nilai Perjanjian Pekerjaan ini adalah sebesar <strong>Rp <?= number_format($contract['nilai_kontrak'], 0, ',', '.') ?>,-</strong> (<em><?= terbilang($contract['nilai_kontrak']) ?> Rupiah</em>), belum termasuk Pajak Pertambahan Nilai (PPN 11%).</li>
+                            <ol class="list-decimal pl-5 space-y-1.5 text-justify leading-relaxed">
+                                <li>Nilai Dasar Pengenaan Pajak (DPP) Perjanjian ini adalah sebesar <strong>Rp <?= number_format($nilaiKontrak, 0, ',', '.') ?>,-</strong> dengan penambahan Pajak Pertambahan Nilai (PPN <?= number_format($persenPajak, 1) ?>%) sebesar <strong>Rp <?= number_format($nominalPajak, 0, ',', '.') ?>,-</strong> sehingga Total Nilai Kontrak Keseluruhan (Inc. Pajak) menjadi <strong>Rp <?= number_format($totalKontrak, 0, ',', '.') ?>,-</strong> (<em><?= terbilang($totalKontrak) ?> Rupiah</em>).</li>
+                                
+                                <!-- Tabel Rincian Pajak SPK -->
+                                <li class="list-none my-1 font-sans">
+                                    <table class="w-full text-[10px] border-collapse border border-slate-300 bg-slate-50/80 my-1.5">
+                                        <thead>
+                                            <tr class="bg-slate-200/80 text-slate-800 font-bold border-b border-slate-300">
+                                                <th class="py-1 px-2 text-left">Komponen Nilai Kontrak</th>
+                                                <th class="py-1 px-2 text-right">Nominal (Rp)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-slate-200 font-mono">
+                                            <tr>
+                                                <td class="py-1 px-2 font-sans">Subtotal Pekerjaan (DPP)</td>
+                                                <td class="py-1 px-2 text-right font-semibold">Rp <?= number_format($nilaiKontrak, 0, ',', '.') ?></td>
+                                            </tr>
+                                            <tr>
+                                                <td class="py-1 px-2 font-sans">Pajak Pertambahan Nilai (PPN <?= number_format($persenPajak, 1) ?>%)</td>
+                                                <td class="py-1 px-2 text-right text-amber-700 font-semibold">Rp <?= number_format($nominalPajak, 0, ',', '.') ?></td>
+                                            </tr>
+                                            <tr class="bg-emerald-50 text-emerald-900 font-bold font-sans">
+                                                <td class="py-1 px-2">Total Kontrak (Inc. Pajak)</td>
+                                                <td class="py-1 px-2 text-right font-mono text-emerald-800">Rp <?= number_format($totalKontrak, 0, ',', '.') ?></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </li>
+
                                 <li>Pembayaran dilakukan secara bertahap melalui transfer bank ke rekening resmi PIHAK PERTAMA:
                                     <div class="mt-1 font-mono text-[10px] bg-slate-50 p-1.5 rounded border border-slate-200">
                                         Bank / Rekening : BCA / 686-0460155 &nbsp;|&nbsp; A.N : PT CIPTA TEKNOLOGI CENDEKIA
                                     </div>
                                 </li>
-                                <li>Tahapan pembayaran (<em>Termin</em>) disepakati sebagai berikut:
+                                <li>Tahapan pembayaran (<em>Termin</em>) disepakati berdasarkan total nilai kontrak sebagai berikut:
                                     <ul class="list-disc pl-5 mt-0.5">
-                                        <li><strong>Termin I (DP 50%):</strong> Sebesar Rp <?= number_format($contract['nilai_kontrak'] * 0.5, 0, ',', '.') ?>,- dibayarkan paling lambat 7 (tujuh) hari kerja setelah penandatanganan SPK.</li>
-                                        <li><strong>Termin II (Pelunasan 50%):</strong> Sebesar Rp <?= number_format($contract['nilai_kontrak'] * 0.5, 0, ',', '.') ?>,- dibayarkan setelah seluruh pekerjaan selesai dan ditandatanganinya Berita Acara Serah Terima (BAST).</li>
+                                        <li><strong>Termin I (DP 50%):</strong> Sebesar Rp <?= number_format($totalKontrak * 0.5, 0, ',', '.') ?>,- dibayarkan paling lambat 7 (tujuh) hari kerja setelah penandatanganan SPK.</li>
+                                        <li><strong>Termin II (Pelunasan 50%):</strong> Sebesar Rp <?= number_format($totalKontrak * 0.5, 0, ',', '.') ?>,- dibayarkan setelah seluruh pekerjaan selesai dan ditandatanganinya Berita Acara Serah Terima (BAST).</li>
                                     </ul>
                                 </li>
                             </ol>
@@ -357,7 +413,7 @@ $tahunAngka = date('Y', $tglMulaiStamp);
                     </div>
 
                     <p class="mb-5 leading-relaxed text-justify">
-                        Demikian Surat Perjanjian Kerja Sama ini dibuat dalam rangkap 2 (dua) bermeterai cukup dan mempunyai kekuatan hukum yang sama bagi masing-masing pihak setelah ditandatangani oleh wakil sah dari PARA PIHAK.
+                        Demikian Surat Perjanjian Kerja Sama ini dibuat dalam rangkap 2 (dua) bermeterai cukup dan mempunyai kekuatan hukum yang sama bagi masing-masing pihak setelah ditandatanganinya wakil sah dari PARA PIHAK.
                     </p>
 
                     <div class="font-sans">
@@ -463,7 +519,7 @@ $tahunAngka = date('Y', $tglMulaiStamp);
         try {
             await waitForImages();
             await processStampTransparency();
-            await new Promise(r => setTimeout(r, 250));
+            await new Promise(r => setTimeout(r, 200));
 
             const { jsPDF } = window.jspdf;
             const pdf = new jsPDF({
@@ -480,7 +536,7 @@ $tahunAngka = date('Y', $tglMulaiStamp);
             for (let i = 0; i < pages.length; i++) {
                 const page = pages[i];
                 const canvas = await html2canvas(page, {
-                    scale: 3,
+                    scale: 2,
                     useCORS: true,
                     allowTaint: false,
                     logging: false,
@@ -493,7 +549,7 @@ $tahunAngka = date('Y', $tglMulaiStamp);
                     y: 0
                 });
 
-                const imgData = canvas.toDataURL('image/jpeg', 0.98);
+                const imgData = canvas.toDataURL('image/jpeg', 0.96);
                 if (i > 0) pdf.addPage('a4', 'portrait');
                 pdf.addImage(imgData, 'JPEG', 0, 0, PAGE_W, PAGE_H, undefined, 'FAST');
             }

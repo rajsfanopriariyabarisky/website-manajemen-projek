@@ -9,6 +9,17 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
+// Auto-Migration Schema: Pastikan kolom pajak pada tabel invoices & projects siap
+try {
+    $pdo->exec("ALTER TABLE invoices ADD COLUMN persen_pajak DECIMAL(5,2) DEFAULT 0.00 AFTER jumlah_tagihan");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE invoices ADD COLUMN nominal_pajak DECIMAL(15,2) DEFAULT 0.00 AFTER persen_pajak");
+} catch (Exception $e) {}
+try {
+    $pdo->exec("ALTER TABLE invoices ADD COLUMN total_tagihan DECIMAL(15,2) DEFAULT 0.00 AFTER nominal_pajak");
+} catch (Exception $e) {}
+
 $project_id = $_GET['project_id'] ?? $_GET['id'] ?? null;
 
 if (!$project_id) {
@@ -28,6 +39,16 @@ if (!$project) {
 
 $error   = '';
 $success = '';
+
+// Helper Log Aktivitas
+function logProjectActivity($pdo, $project_id, $aktivitas, $tipe = 'info') {
+    $user_id   = $_SESSION['user_id'] ?? null;
+    $nama_user = $_SESSION['nama'] ?? $_SESSION['user_nama'] ?? 'System';
+    try {
+        $stmt = $pdo->prepare("INSERT INTO project_logs (project_id, user_id, nama_user, aktivitas, tipe, created_at) VALUES (?, ?, ?, ?, ?, NOW())");
+        $stmt->execute([$project_id, $user_id, $nama_user, $aktivitas, $tipe]);
+    } catch (Exception $e) {}
+}
 
 // Auto-Generate Nomor Invoice
 function getNextInvoiceNumber($pdo) {
@@ -80,47 +101,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_type']) && $_P
         $error = "Gagal! Proyek ini sudah memiliki invoice termin yang diterbitkan.";
     } else {
         $budget       = (float)$project['budget'];
+        $pct_pajak    = floatval($project['persen_pajak'] ?? 11.00);
         $startDate    = !empty($project['tanggal_mulai']) && $project['tanggal_mulai'] !== '0000-00-00' ? $project['tanggal_mulai'] : date('Y-m-d');
         $deadlineDate = !empty($project['deadline']) && $project['deadline'] !== '0000-00-00' ? $project['deadline'] : date('Y-m-d', strtotime('+30 days'));
+
+        $stmtIns = $pdo->prepare("INSERT INTO invoices 
+            (project_id, nomor_invoice, termin_ke, keterangan_termin, jumlah_tagihan, persen_pajak, nominal_pajak, total_tagihan, tanggal_tagihan, jatuh_tempo, status) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Unpaid')");
 
         if ($chosen_scheme === 'normal') {
             // Termin 1 (50%) & Termin 2 (50%)
             $t1_nomor  = getNextInvoiceNumber($pdo);
             $t1_amount = round($budget * 0.50, 2);
+            $t1_pajak  = round(($t1_amount * $pct_pajak) / 100, 2);
+            $t1_total  = $t1_amount + $t1_pajak;
             $t1_due    = date('Y-m-d', strtotime($startDate . ' +7 days'));
-
-            $stmtIns = $pdo->prepare("INSERT INTO invoices (project_id, nomor_invoice, termin_ke, keterangan_termin, jumlah_tagihan, tanggal_tagihan, jatuh_tempo, status) VALUES (?, ?, 1, 'Termin 1 (DP 50% Penandatanganan SPK)', ?, ?, ?, 'Unpaid')");
-            $stmtIns->execute([$project_id, $t1_nomor, $t1_amount, $startDate, $t1_due]);
+            $stmtIns->execute([$project_id, $t1_nomor, 1, 'Termin 1 (DP 50% Penandatanganan SPK)', $t1_amount, $pct_pajak, $t1_pajak, $t1_total, $startDate, $t1_due]);
 
             $t2_nomor  = getNextInvoiceNumber($pdo);
             $t2_amount = round($budget * 0.50, 2);
+            $t2_pajak  = round(($t2_amount * $pct_pajak) / 100, 2);
+            $t2_total  = $t2_amount + $t2_pajak;
+            $stmtIns->execute([$project_id, $t2_nomor, 2, 'Termin 2 (Pelunasan 50% BAST Selesai)', $t2_amount, $pct_pajak, $t2_pajak, $t2_total, $startDate, $deadlineDate]);
 
-            $stmtIns2 = $pdo->prepare("INSERT INTO invoices (project_id, nomor_invoice, termin_ke, keterangan_termin, jumlah_tagihan, tanggal_tagihan, jatuh_tempo, status) VALUES (?, ?, 2, 'Termin 2 (Pelunasan 50% BAST Selesai)', ?, ?, ?, 'Unpaid')");
-            $stmtIns2->execute([$project_id, $t2_nomor, $t2_amount, $startDate, $deadlineDate]);
+            logProjectActivity($pdo, $project_id, "Menerbitkan batch invoice skema normal (2 termin)", "success");
 
         } elseif ($chosen_scheme === 'alternatif') {
             // Termin 1 (30%), Termin 2 (20%), Termin 3 (50%)
             $t1_nomor  = getNextInvoiceNumber($pdo);
             $t1_amount = round($budget * 0.30, 2);
+            $t1_pajak  = round(($t1_amount * $pct_pajak) / 100, 2);
+            $t1_total  = $t1_amount + $t1_pajak;
             $t1_due    = date('Y-m-d', strtotime($startDate . ' +7 days'));
-
-            $stmtIns1 = $pdo->prepare("INSERT INTO invoices (project_id, nomor_invoice, termin_ke, keterangan_termin, jumlah_tagihan, tanggal_tagihan, jatuh_tempo, status) VALUES (?, ?, 1, 'Termin 1 (DP 30% Penandatanganan SPK)', ?, ?, ?, 'Unpaid')");
-            $stmtIns1->execute([$project_id, $t1_nomor, $t1_amount, $startDate, $t1_due]);
+            $stmtIns->execute([$project_id, $t1_nomor, 1, 'Termin 1 (DP 30% Penandatanganan SPK)', $t1_amount, $pct_pajak, $t1_pajak, $t1_total, $startDate, $t1_due]);
 
             $t2_nomor  = getNextInvoiceNumber($pdo);
             $t2_amount = round($budget * 0.20, 2);
+            $t2_pajak  = round(($t2_amount * $pct_pajak) / 100, 2);
+            $t2_total  = $t2_amount + $t2_pajak;
             $t2_date   = date('Y-m-d', strtotime($startDate . ' +7 days'));
             $t2_due    = date('Y-m-d', strtotime($startDate . ' +14 days'));
-
-            $stmtIns2 = $pdo->prepare("INSERT INTO invoices (project_id, nomor_invoice, termin_ke, keterangan_termin, jumlah_tagihan, tanggal_tagihan, jatuh_tempo, status) VALUES (?, ?, 2, 'Termin 2 (Angsuran 20% Progress Pengerjaan)', ?, ?, ?, 'Unpaid')");
-            $stmtIns2->execute([$project_id, $t2_nomor, $t2_amount, $t2_date, $t2_due]);
+            $stmtIns->execute([$project_id, $t2_nomor, 2, 'Termin 2 (Angsuran 20% Progress Pengerjaan)', $t2_amount, $pct_pajak, $t2_pajak, $t2_total, $t2_date, $t2_due]);
 
             $t3_nomor  = getNextInvoiceNumber($pdo);
             $t3_amount = round($budget * 0.50, 2);
+            $t3_pajak  = round(($t3_amount * $pct_pajak) / 100, 2);
+            $t3_total  = $t3_amount + $t3_pajak;
             $t3_date   = date('Y-m-d', strtotime($startDate . ' +14 days'));
+            $stmtIns->execute([$project_id, $t3_nomor, 3, 'Termin 3 (Pelunasan 50% BAST Selesai)', $t3_amount, $pct_pajak, $t3_pajak, $t3_total, $t3_date, $deadlineDate]);
 
-            $stmtIns3 = $pdo->prepare("INSERT INTO invoices (project_id, nomor_invoice, termin_ke, keterangan_termin, jumlah_tagihan, tanggal_tagihan, jatuh_tempo, status) VALUES (?, ?, 3, 'Termin 3 (Pelunasan 50% BAST Selesai)', ?, ?, ?, 'Unpaid')");
-            $stmtIns3->execute([$project_id, $t3_nomor, $t3_amount, $t3_date, $deadlineDate]);
+            logProjectActivity($pdo, $project_id, "Menerbitkan batch invoice skema alternatif (3 termin)", "success");
         }
 
         header("Location: detail.php?project_id=" . $project_id . "&msg=generated");
@@ -135,22 +165,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_single_invoice'])
     $nomor_invoice     = trim($_POST['nomor_invoice']);
     $keterangan_termin = trim($_POST['keterangan_termin']);
     $jumlah_tagihan    = (float)str_replace(['.', ','], '', $_POST['jumlah_tagihan']);
+    $pct_pajak         = floatval($project['persen_pajak'] ?? 11.00);
+    $nominal_pajak     = round(($jumlah_tagihan * $pct_pajak) / 100, 2);
+    $total_tagihan     = $jumlah_tagihan + $nominal_pajak;
+
     $tanggal_tagihan   = $_POST['tanggal_tagihan'];
     $jatuh_tempo       = $_POST['jatuh_tempo'];
     $status            = $_POST['status'];
 
-    // Prevent cross-scheme clash
     if ($locked_scheme && $locked_scheme !== $scheme_selected) {
         $error = "Gagal! Proyek ini telah terkunci menggunakan Skema " . strtoupper($locked_scheme) . ". Tidak dapat mencampur dengan skema lain.";
     } else {
-        // Check duplicate termin
         $stmtChk = $pdo->prepare("SELECT COUNT(*) FROM invoices WHERE project_id = ? AND termin_ke = ?");
         $stmtChk->execute([$project_id, $termin_ke]);
         if ($stmtChk->fetchColumn() > 0) {
             $error = "Gagal! Invoice untuk Termin " . $termin_ke . " sudah pernah diterbitkan.";
         } else {
-            $stmtIns = $pdo->prepare("INSERT INTO invoices (project_id, nomor_invoice, termin_ke, keterangan_termin, jumlah_tagihan, tanggal_tagihan, jatuh_tempo, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmtIns->execute([$project_id, $nomor_invoice, $termin_ke, $keterangan_termin, $jumlah_tagihan, $tanggal_tagihan, $jatuh_tempo, $status]);
+            $stmtIns = $pdo->prepare("INSERT INTO invoices 
+                (project_id, nomor_invoice, termin_ke, keterangan_termin, jumlah_tagihan, persen_pajak, nominal_pajak, total_tagihan, tanggal_tagihan, jatuh_tempo, status) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmtIns->execute([$project_id, $nomor_invoice, $termin_ke, $keterangan_termin, $jumlah_tagihan, $pct_pajak, $nominal_pajak, $total_tagihan, $tanggal_tagihan, $jatuh_tempo, $status]);
+
+            logProjectActivity($pdo, $project_id, "Menerbitkan invoice manual {$nomor_invoice} (Termin {$termin_ke})", "info");
 
             header("Location: detail.php?project_id=" . $project_id . "&msg=created");
             exit;
@@ -164,31 +200,42 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['inv_i
     $stmtDel = $pdo->prepare("DELETE FROM invoices WHERE id = ? AND project_id = ?");
     $stmtDel->execute([$inv_id, $project_id]);
 
+    logProjectActivity($pdo, $project_id, "Menghapus invoice ID: {$inv_id}", "warning");
+
     header("Location: detail.php?project_id=" . $project_id . "&msg=deleted");
     exit;
 }
 
-// Re-fetch Invoices & Calculate Project Specific Metrics
+// Re-fetch Invoices & Calculate Project Specific Metrics (DENGAN KALKULASI PAJAK PPN FULL)
 $stmtInv->execute([$project_id]);
 $invoices = $stmtInv->fetchAll();
 
 $total_budget   = (float)$project['budget'];
-$total_invoiced = 0;
-$total_paid     = 0;
+$pct_pajak_proj = floatval($project['persen_pajak'] ?? 11.00);
+$nom_pajak_proj = floatval($project['nominal_pajak'] ?? 0) > 0 ? floatval($project['nominal_pajak']) : round(($total_budget * $pct_pajak_proj) / 100, 2);
+$total_inc_tax  = floatval($project['total_nilai'] ?? 0) > 0 ? floatval($project['total_nilai']) : ($total_budget + $nom_pajak_proj);
+
+$total_invoiced_inc_tax = 0;
+$total_paid_inc_tax     = 0;
 
 foreach ($invoices as $inv) {
-    $total_invoiced += (float)$inv['jumlah_tagihan'];
+    $inv_pct_tax = floatval($inv['persen_pajak'] ?? $pct_pajak_proj);
+    $inv_nom_tax = floatval($inv['nominal_pajak'] ?? 0) > 0 ? floatval($inv['nominal_pajak']) : round(($inv['jumlah_tagihan'] * $inv_pct_tax) / 100, 2);
+    $inv_tot_tax = floatval($inv['total_tagihan'] ?? 0) > 0 ? floatval($inv['total_tagihan']) : ($inv['jumlah_tagihan'] + $inv_nom_tax);
+
+    $total_invoiced_inc_tax += $inv_tot_tax;
     if ($inv['status'] === 'Paid') {
-        $total_paid += (float)$inv['jumlah_tagihan'];
+        $total_paid_inc_tax += $inv_tot_tax;
     }
 }
 
-$total_unpaid = $total_budget - $total_paid;
+// PERBAIKAN LOGIKA: Sisa piutang dihitung dari Total Nilai Kontrak (DPP + PPN) dikurangi Total Terbayar (Inc. PPN)
+$total_unpaid = $total_inc_tax - $total_paid_inc_tax;
 if ($total_unpaid < 0) $total_unpaid = 0;
 
-if ($total_budget > 0 && $total_paid >= $total_budget) {
+if ($total_inc_tax > 0 && $total_paid_inc_tax >= ($total_inc_tax - 1)) {
     $project_payment_status = 'Lunas';
-} elseif ($total_paid > 0) {
+} elseif ($total_paid_inc_tax > 0) {
     $project_payment_status = 'Partially Paid';
 } else {
     $project_payment_status = 'Unpaid';
@@ -274,6 +321,12 @@ require_once __DIR__ . '/../../includes/sidebar.php';
         </div>
     <?php endif; ?>
 
+    <?php if (isset($_GET['msg']) && $_GET['msg'] === 'updated'): ?>
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
+            <i class="fa-solid fa-circle-check text-emerald-600 text-base shrink-0"></i> Status pembayaran invoice berhasil diperbarui!
+        </div>
+    <?php endif; ?>
+
     <?php if (isset($_GET['msg']) && $_GET['msg'] === 'deleted'): ?>
         <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-xs sm:text-sm font-medium mb-6 flex items-center gap-2.5 shadow-xs">
             <i class="fa-solid fa-trash-can text-red-500 text-base shrink-0"></i> Invoice berhasil dihapus dari sistem!
@@ -286,24 +339,30 @@ require_once __DIR__ . '/../../includes/sidebar.php';
         </div>
     <?php endif; ?>
 
-    <!-- Stat Counter Cards Proyek Ini -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <!-- Stat Counter Cards Proyek Ini (Sudah Disesuaikan Inc PPN) -->
+    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
         <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Total Nilai Kontrak Proyek</span>
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Subtotal DPP Proyek</span>
             <h3 class="text-xl md:text-2xl font-bold text-slate-900 font-mono">Rp <?= number_format($total_budget, 0, ',', '.') ?></h3>
-            <span class="text-xs text-slate-400 font-normal mt-1 block">Sesuai kesepakatan SPK</span>
+            <span class="text-xs text-slate-400 font-normal mt-1 block">Nilai dasar sebelum PPN</span>
         </div>
 
         <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs">
-            <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block mb-1">Total Sudah Dilunasi (Paid)</span>
-            <h3 class="text-xl md:text-2xl font-bold text-emerald-600 font-mono">Rp <?= number_format($total_paid, 0, ',', '.') ?></h3>
+            <span class="text-[10px] font-bold text-amber-600 uppercase tracking-wider block mb-1">Total Nilai Kontrak (Inc. PPN)</span>
+            <h3 class="text-xl md:text-2xl font-bold text-amber-600 font-mono">Rp <?= number_format($total_inc_tax, 0, ',', '.') ?></h3>
+            <span class="text-xs text-amber-700 font-medium mt-1 block">Terhitung PPN <?= number_format($pct_pajak_proj, 1) ?>%</span>
+        </div>
+
+        <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs">
+            <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block mb-1">Total Dilunasi (Inc. PPN)</span>
+            <h3 class="text-xl md:text-2xl font-bold text-emerald-600 font-mono">Rp <?= number_format($total_paid_inc_tax, 0, ',', '.') ?></h3>
             <span class="text-xs text-emerald-700 font-medium mt-1 flex items-center gap-1"><i class="fa-solid fa-circle-check text-[10px]"></i> Masuk kas perusahaan</span>
         </div>
 
         <div class="bg-white border border-slate-200/90 p-5 rounded-2xl shadow-xs">
-            <span class="text-[10px] font-bold text-amber-600 uppercase tracking-wider block mb-1">Sisa Piutang / Unpaid</span>
-            <h3 class="text-xl md:text-2xl font-bold text-amber-600 font-mono">Rp <?= number_format($total_unpaid, 0, ',', '.') ?></h3>
-            <span class="text-xs text-amber-700 font-medium mt-1 block">Belum diterima</span>
+            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Sisa Piutang / Unpaid (Inc. PPN)</span>
+            <h3 class="text-xl md:text-2xl font-bold text-slate-800 font-mono">Rp <?= number_format($total_unpaid, 0, ',', '.') ?></h3>
+            <span class="text-xs text-slate-400 font-medium mt-1 block">Belum diterima (Inc. PPN)</span>
         </div>
     </div>
 
@@ -332,14 +391,15 @@ require_once __DIR__ . '/../../includes/sidebar.php';
         </h3>
 
         <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[700px]">
+            <table class="w-full text-left text-xs sm:text-sm border-collapse min-w-[800px]">
                 <thead>
                     <tr class="bg-slate-50 text-slate-500 uppercase font-semibold text-xs tracking-wider border-b border-slate-200">
                         <th class="py-3.5 px-4">NO. INVOICE</th>
                         <th class="py-3.5 px-4">TERMIN & KETERANGAN</th>
                         <th class="py-3.5 px-4">TGL TAGIHAN</th>
                         <th class="py-3.5 px-4">JATUH TEMPO</th>
-                        <th class="py-3.5 px-4 text-right">JUMLAH TAGIHAN</th>
+                        <th class="py-3.5 px-4 text-right">JUMLAH TAGIHAN (DPP)</th>
+                        <th class="py-3.5 px-4 text-right">TOTAL INC. PPN</th>
                         <th class="py-3.5 px-4 text-center">STATUS BAYAR</th>
                         <th class="py-3.5 px-4 text-center">AKSI</th>
                     </tr>
@@ -347,7 +407,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 <tbody class="divide-y divide-slate-100">
                     <?php if (empty($invoices)): ?>
                         <tr>
-                            <td colspan="7" class="text-center py-10 text-slate-400 font-normal">
+                            <td colspan="8" class="text-center py-10 text-slate-400 font-normal">
                                 <div class="w-12 h-12 mx-auto mb-2 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center text-xl">
                                     <i class="fa-solid fa-file-invoice"></i>
                                 </div>
@@ -359,7 +419,10 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                         </tr>
                     <?php else: ?>
                         <?php foreach ($invoices as $inv): 
-                            $isOverdue = (strtotime($inv['jatuh_tempo']) < time()) && $inv['status'] !== 'Paid';
+                            $isOverdue   = (strtotime($inv['jatuh_tempo']) < time()) && $inv['status'] !== 'Paid';
+                            $inv_pct_tax = floatval($inv['persen_pajak'] ?? $pct_pajak_proj);
+                            $inv_nom_tax = floatval($inv['nominal_pajak'] ?? 0) > 0 ? floatval($inv['nominal_pajak']) : round(($inv['jumlah_tagihan'] * $inv_pct_tax) / 100, 2);
+                            $inv_tot_tax = floatval($inv['total_tagihan'] ?? 0) > 0 ? floatval($inv['total_tagihan']) : ($inv['jumlah_tagihan'] + $inv_nom_tax);
                         ?>
                             <tr class="hover:bg-slate-50/80 transition">
                                 <td class="py-3.5 px-4 font-mono font-bold text-slate-900 whitespace-nowrap"><?= htmlspecialchars($inv['nomor_invoice']) ?></td>
@@ -380,6 +443,10 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                 </td>
                                 <td class="py-3.5 px-4 text-right font-bold text-slate-900 font-mono whitespace-nowrap">
                                     Rp <?= number_format($inv['jumlah_tagihan'], 0, ',', '.') ?>
+                                </td>
+                                <td class="py-3.5 px-4 text-right font-bold text-emerald-700 font-mono whitespace-nowrap">
+                                    Rp <?= number_format($inv_tot_tax, 0, ',', '.') ?>
+                                    <span class="block text-[10px] font-sans text-amber-700 font-semibold">(Inc. PPN <?= number_format($inv_pct_tax, 1) ?>%)</span>
                                 </td>
                                 <td class="py-3.5 px-4 text-center">
                                     <form action="update_status.php" method="POST" class="inline-block">
@@ -519,7 +586,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             </div>
 
             <div>
-                <label class="block text-xs font-medium text-slate-700 mb-1.5">Jumlah Tagihan (Rp)</label>
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Jumlah Tagihan (DPP Rp)</label>
                 <input type="text" name="jumlah_tagihan" id="jumlah_tagihan" required class="input-glow w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-mono font-semibold focus:outline-none">
             </div>
 

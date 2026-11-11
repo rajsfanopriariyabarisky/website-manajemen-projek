@@ -1,5 +1,14 @@
 <?php
+session_start();
+date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../../config/database.php';
+
+// Proteksi Halaman: Wajib Login
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../../login.php");
+    exit;
+}
+
 require_once __DIR__ . '/../../includes/header.php';
 require_once __DIR__ . '/../../includes/sidebar.php';
 
@@ -78,7 +87,7 @@ $stmt = $pdo->prepare($query);
 $stmt->execute($params);
 $tasks = $stmt->fetchAll();
 
-// Fetch Data Proyek untuk Gantt Chart
+// Fetch Data Proyek untuk Gantt Chart Modal
 $projectsGanttRaw = $pdo->query("
     SELECT p.*, 
            COALESCE(c.durasi_bulan, 3) AS durasi_bulan
@@ -87,7 +96,6 @@ $projectsGanttRaw = $pdo->query("
     ORDER BY p.id DESC
 ")->fetchAll();
 
-// Query hanya kolom yang PASTI ADA di tabel tasks
 $allTasksStmt = $pdo->query("SELECT id, project_id, status, deadline FROM tasks");
 $allTasks = $allTasksStmt->fetchAll();
 
@@ -117,7 +125,7 @@ foreach ($projectsGanttRaw as $p) {
     $projectsGantt[] = $p;
 }
 
-// Master Karyawan & Stats
+// Master Karyawan & Stats Counter
 $users = $pdo->query("SELECT * FROM users ORDER BY nama ASC")->fetchAll();
 $totalTasks = $pdo->query("SELECT COUNT(*) FROM tasks")->fetchColumn();
 $urgentTasks = $pdo->query("SELECT COUNT(*) FROM tasks WHERE prioritas = 'Urgent' AND status != 'Done'")->fetchColumn();
@@ -179,7 +187,7 @@ function getPaginationUrl($pageNum) {
             <div class="flex items-center gap-2 mb-1">
                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span class="text-xs font-semibold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-0.5 rounded-full">
-                    MODUL 2 • WORKLOAD & PRIORITY HUB
+                    MONITORING WORKLOAD & PRIORITY HUB
                 </span>
             </div>
             <h1 class="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Workload & Priority Hub</h1>
@@ -619,6 +627,35 @@ function filterGanttProjects() {
     }
 }
 
+// ALGORITMA DYNAMICAL PROPORTIONAL ALLOCATION DI JAVASCRIPT
+function getPhaseWeeksJS(totalWeeks) {
+    if (totalWeeks === 4) {
+        return {
+            1: [1],
+            2: [2],
+            3: [3],
+            4: [3, 4],
+            5: [4]
+        };
+    }
+
+    const f1_end = Math.max(1, Math.round(totalWeeks * 0.15));
+    const f2_end = Math.max(f1_end + 1, Math.round(totalWeeks * 0.50));
+    const f3_end = Math.max(f2_end + 1, Math.round(totalWeeks * 0.75));
+    const f4_end = Math.max(f3_end + 1, totalWeeks - 1);
+    const f5_start = Math.min(totalWeeks, f4_end);
+
+    const range = (start, end) => Array.from({length: (end - start + 1)}, (_, i) => start + i);
+
+    return {
+        1: range(1, f1_end),
+        2: range(f1_end + 1, f2_end),
+        3: range(f2_end + 1, f3_end),
+        4: range(f3_end + 1, f4_end),
+        5: range(f5_start, totalWeeks)
+    };
+}
+
 function renderGanttChart() {
     const select = document.getElementById('ganttProjectSelect');
     if (!select || select.options.length === 0) return;
@@ -638,7 +675,7 @@ function renderGanttChart() {
 
     const totalMinggu = durasiBulan * 4;
 
-    // HITUNG MINGGU AKTIF SAAT INI (GARIS HIJAU)
+    // Hitung Minggu Aktif Saat Ini
     let currentWeek = -1;
     if (startDateStr) {
         const startDate = new Date(startDateStr);
@@ -650,31 +687,33 @@ function renderGanttChart() {
         }
     }
 
+    const calculatedWeeks = getPhaseWeeksJS(totalMinggu);
+
     const phases = [
         {
             fase: "Fase 1: Inisiasi & UI/UX Design",
             deskripsi: "Analisis kebutuhan, PM-AAS, desain UI/UX, dan arsitektur database.",
-            weeks: [1, 2]
+            weeks: calculatedWeeks[1]
         },
         {
             fase: "Fase 2: Core Development & API Integration",
             deskripsi: "Development Aplikasi, Core Logic & Integrasi API Sistem.",
-            weeks: Array.from({length: Math.max(1, Math.floor(totalMinggu * 0.35))}, (_, i) => i + 3)
+            weeks: calculatedWeeks[2]
         },
         {
             fase: "Fase 3: Algoritma & Modul Spesifik",
             deskripsi: "Implementasi Modul Spesifik, Algoritma, dan Fitur Khusus.",
-            weeks: Array.from({length: Math.max(1, Math.floor(totalMinggu * 0.25))}, (_, i) => i + Math.floor(totalMinggu * 0.5) + 1)
+            weeks: calculatedWeeks[3]
         },
         {
             fase: "Fase 4: Testing, QA & Bug Fixing",
             deskripsi: "Pengujian fungsi, integrasi Web Dashboard Admin, dan bug fixing.",
-            weeks: [totalMinggu - 1]
+            weeks: calculatedWeeks[4]
         },
         {
             fase: "Fase 5: UAT, Training & Deployment Go-Live",
             deskripsi: "UAT bersama Klien, Pelatihan, & Deployment Go-Live.",
-            weeks: [totalMinggu]
+            weeks: calculatedWeeks[5]
         }
     ];
 
@@ -722,7 +761,7 @@ function renderGanttChart() {
                         titleText = "Minggu M" + m + ": Semua Modul Selesai (Done)";
                     } else if (hasInProgress) {
                         blockBg = "bg-blue-600 animate-pulse"; 
-                        titleText = "Minggu M" + m + ": Sedang Dikerjakan (In Progress)";
+                        titleText = "Minggu M" + m + ": Sedang Dikerjakan (In Progress / Ready for Review)";
                     } else if (m < currentWeek) {
                         blockBg = "bg-amber-500"; 
                         titleText = "Minggu M" + m + ": Peringatan Keterlambatan!";

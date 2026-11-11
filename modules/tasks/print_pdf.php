@@ -1,7 +1,15 @@
 <?php
+session_start();
+date_default_timezone_set('Asia/Jakarta');
 require_once __DIR__ . '/../../config/database.php';
 
-$project_id = $_GET['project_id'] ?? null;
+// Proteksi Halaman: Wajib Login
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../../login.php");
+    exit;
+}
+
+$project_id = isset($_GET['project_id']) ? intval($_GET['project_id']) : 0;
 if (!$project_id) {
     header("Location: index.php");
     exit;
@@ -27,14 +35,13 @@ if (!$project) {
 $durasiBulan = max(1, (int)$project['durasi_bulan']);
 $totalMinggu = $durasiBulan * 4;
 
-// LOGIKA ADAPTIF: Jika durasi > 6 bulan (lebih dari 24 minggu), gunakan skala BULAN agar tabel rapi dan tidak terpotong
+// LOGIKA ADAPTIF: Gunakan skala BULAN untuk durasi > 6 bulan agar tampilan tetap rapi
 $useMonthlyMode = ($durasiBulan > 6);
 $totalColumns   = $useMonthlyMode ? $durasiBulan : $totalMinggu;
-$columnLabel    = $useMonthlyMode ? 'B' : 'M'; // 'B' = Bulan, 'M' = Minggu
+$columnLabel    = $useMonthlyMode ? 'B' : 'M';
 
-// Pembagian 5 Fase Universal Matriks (Disesuaikan dengan Mode Bulanan / Mingguan)
+// Algoritma Penentuan Minggu / Bulan Pengerjaan
 if ($useMonthlyMode) {
-    // Mode Durasi Panjang (Bulanan: B1 - B12)
     $phases = [
         [
             "fase" => "Fase 1: Inisiasi & UI/UX Design",
@@ -42,53 +49,74 @@ if ($useMonthlyMode) {
             "active_units" => [1]
         ],
         [
-            "fase" => "Fase 2: Core Development & API",
+            "fase" => "Fase 2: Core Development & API Integration",
             "deskripsi" => "Development Aplikasi, Core Logic & Integrasi API Sistem.",
-            "active_units" => range(2, max(2, (int)floor($durasiBulan * 0.4)))
+            "active_units" => range(2, max(2, (int)round($durasiBulan * 0.4)))
         ],
         [
             "fase" => "Fase 3: Algoritma & Modul Spesifik",
             "deskripsi" => "Implementasi Modul Spesifik, Algoritma, dan Fitur Khusus.",
-            "active_units" => range((int)floor($durasiBulan * 0.4) + 1, (int)floor($durasiBulan * 0.75))
+            "active_units" => range((int)round($durasiBulan * 0.4) + 1, (int)round($durasiBulan * 0.75))
         ],
         [
             "fase" => "Fase 4: Testing, QA & Bug Fixing",
             "deskripsi" => "Pengujian fungsi, integrasi Web Dashboard Admin, dan bug fixing.",
-            "active_units" => [$durasiBulan - 1]
+            "active_units" => range((int)round($durasiBulan * 0.75) + 1, $durasiBulan - 1)
         ],
         [
-            "fase" => "Fase 5: UAT, Training & Go-Live",
+            "fase" => "Fase 5: UAT, Training & Deployment Go-Live",
             "deskripsi" => "UAT bersama Klien, Pelatihan, & Deployment Go-Live.",
             "active_units" => [$durasiBulan]
         ]
     ];
 } else {
     // Mode Durasi Normal (Mingguan: M1 - M24)
+    function getPhaseWeeksPdf($durasiBulan) {
+        $totalWeeks = max(1, $durasiBulan * 4);
+        if ($totalWeeks == 4) {
+            return [1 => [1], 2 => [2], 3 => [3], 4 => [3, 4], 5 => [4]];
+        }
+        $f1_end = max(1, (int)round($totalWeeks * 0.15));
+        $f2_end = max($f1_end + 1, (int)round($totalWeeks * 0.50));
+        $f3_end = max($f2_end + 1, (int)round($totalWeeks * 0.75));
+        $f4_end = max($f3_end + 1, $totalWeeks - 1);
+        $f5_start = min($totalWeeks, $f4_end);
+
+        return [
+            1 => range(1, $f1_end),
+            2 => range($f1_end + 1, $f2_end),
+            3 => range($f2_end + 1, $f3_end),
+            4 => range($f3_end + 1, $f4_end),
+            5 => range($f5_start, $totalWeeks)
+        ];
+    }
+    $phaseWeeksMap = getPhaseWeeksPdf($durasiBulan);
+
     $phases = [
         [
             "fase" => "Fase 1: Inisiasi & UI/UX Design",
             "deskripsi" => "Analisis kebutuhan, PM-AAS, desain UI/UX, dan arsitektur database.",
-            "active_units" => [1, 2]
+            "active_units" => $phaseWeeksMap[1]
         ],
         [
             "fase" => "Fase 2: Core Development & API Integration",
             "deskripsi" => "Development Aplikasi, Core Logic & Integrasi API Sistem.",
-            "active_units" => range(3, max(3, (int)floor($totalMinggu * 0.35) + 2))
+            "active_units" => $phaseWeeksMap[2]
         ],
         [
             "fase" => "Fase 3: Algoritma & Modul Spesifik",
             "deskripsi" => "Implementasi Modul Spesifik, Algoritma, dan Fitur Khusus.",
-            "active_units" => range((int)floor($totalMinggu * 0.5) + 1, (int)floor($totalMinggu * 0.75))
+            "active_units" => $phaseWeeksMap[3]
         ],
         [
             "fase" => "Fase 4: Testing, QA & Bug Fixing",
             "deskripsi" => "Pengujian fungsi, integrasi Web Dashboard Admin, dan bug fixing.",
-            "active_units" => [$totalMinggu - 1]
+            "active_units" => $phaseWeeksMap[4]
         ],
         [
             "fase" => "Fase 5: UAT, Training & Deployment Go-Live",
             "deskripsi" => "UAT bersama Klien, Pelatihan, & Deployment Go-Live.",
-            "active_units" => [$totalMinggu]
+            "active_units" => $phaseWeeksMap[5]
         ]
     ];
 }
@@ -105,7 +133,6 @@ if ($useMonthlyMode) {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
-        /* ===== CETAK FULL-BLEED A4 LANDSCAPE TANPA MARGIN PUTIH ===== */
         @page {
             size: A4 landscape;
             margin: 0 !important;
@@ -134,7 +161,6 @@ if ($useMonthlyMode) {
             font-family: 'Times New Roman', Times, serif !important;
         }
 
-        /* Container Dokumen PDF */
         #ganttContainer {
             display: flex;
             flex-direction: column;
@@ -145,7 +171,6 @@ if ($useMonthlyMode) {
             background: #ffffff;
         }
 
-        /* Halaman A4 Presisi Full-Bleed Landscape */
         .page-a4-landscape {
             width: 297mm;
             height: 210mm;
@@ -158,7 +183,6 @@ if ($useMonthlyMode) {
             box-sizing: border-box;
         }
 
-        /* Stempel Basah Transparan */
         .stempel-img {
             mix-blend-mode: multiply;
             filter: contrast(115%);
@@ -223,7 +247,6 @@ if ($useMonthlyMode) {
     <div id="ganttContainer">
 
         <div class="page-a4-landscape">
-            <!-- Konten Utama Halaman Gantt Chart -->
             <div class="doc-font relative z-10 pt-[14mm] pb-[14mm] px-[18mm] h-full flex flex-col justify-between text-justify text-[11px] text-black">
                 <div>
                     <!-- Kop Surat Perusahaan (Sesuai Format Resmi CTC) -->
@@ -305,14 +328,12 @@ if ($useMonthlyMode) {
                 <div class="font-sans">
                     <div class="grid grid-cols-2 text-center gap-8">
 
-                        <!-- Sisi PT CTC: Stempel menimpa di atas nama Direktur -->
                         <div class="flex flex-col justify-between h-36 border border-emerald-200 bg-emerald-50/40 p-3 rounded-xl relative">
                             <div>
                                 <p class="font-bold text-slate-900 text-[10.5px]">DISIAPKAN OLEH</p>
                                 <p class="text-emerald-900 font-bold text-[10px]">PT. CIPTA TEKNOLOGI CENDEKIA</p>
                             </div>
 
-                            <!-- Area TTD + Stempel basah transparan -->
                             <div class="relative h-14 w-full flex items-center justify-center">
                                 <img src="../../assets/images/Stempel.png"
                                      alt="Stempel PT CTC"
@@ -327,7 +348,6 @@ if ($useMonthlyMode) {
                             </div>
                         </div>
 
-                        <!-- Sisi Klien -->
                         <div class="flex flex-col justify-between h-36 border border-dashed border-slate-300 p-3 rounded-xl bg-white/80">
                             <div>
                                 <p class="font-bold text-slate-900 text-[10.5px]">DISETUJUI OLEH KLIEN</p>
@@ -349,7 +369,6 @@ if ($useMonthlyMode) {
 
     </div>
 
-    <!-- ===== Script: Hapus background putih Stempel + Download PDF per-halaman full-bleed ===== -->
     <script>
     function waitForImages() {
         const imgs = Array.from(document.querySelectorAll('#ganttContainer img'));
@@ -426,7 +445,7 @@ if ($useMonthlyMode) {
             for (let i = 0; i < pages.length; i++) {
                 const page = pages[i];
                 const canvas = await html2canvas(page, {
-                    scale: 2, // Presisi tajam untuk A4 Landscape
+                    scale: 2,
                     useCORS: true,
                     allowTaint: true,
                     logging: false,
