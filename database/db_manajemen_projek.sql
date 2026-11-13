@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 28, 2026 at 01:07 PM
+-- Generation Time: Nov 13, 2026 at 03:07 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -31,6 +31,8 @@ CREATE TABLE `clients` (
   `id` int(11) NOT NULL,
   `nama` varchar(150) NOT NULL,
   `email` varchar(150) NOT NULL,
+  `phone` varchar(50) DEFAULT NULL,
+  `company_name` varchar(255) DEFAULT NULL,
   `password` varchar(255) NOT NULL,
   `is_verified` tinyint(1) NOT NULL DEFAULT 0,
   `otp_code` varchar(10) DEFAULT NULL,
@@ -39,13 +41,6 @@ CREATE TABLE `clients` (
   `reset_token_expiry` datetime DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `clients`
---
-
-INSERT INTO `clients` (`id`, `nama`, `email`, `password`, `is_verified`, `otp_code`, `otp_expiry`, `reset_token`, `reset_token_expiry`, `created_at`) VALUES
-(1, 'Valen Tanjung', 'ivalviary@gmail.com', '$2y$10$jBSI0ehLPa2HqEOwKTxy9OdqlmFDnpJLq6opXEHd82eZD1nitClbS', 1, NULL, NULL, NULL, NULL, '2026-10-26 10:22:04');
 
 -- --------------------------------------------------------
 
@@ -83,6 +78,9 @@ CREATE TABLE `contracts` (
   `tanggal_mulai` date NOT NULL,
   `tanggal_selesai` date NOT NULL,
   `nilai_kontrak` decimal(15,2) NOT NULL,
+  `persen_pajak` decimal(5,2) DEFAULT 0.00,
+  `nominal_pajak` decimal(15,2) DEFAULT 0.00,
+  `total_kontrak` decimal(15,2) DEFAULT 0.00,
   `file_pdf` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -133,6 +131,9 @@ CREATE TABLE `invoices` (
   `termin_ke` int(11) DEFAULT 1,
   `keterangan_termin` varchar(200) NOT NULL,
   `jumlah_tagihan` decimal(15,2) NOT NULL,
+  `persen_pajak` decimal(5,2) DEFAULT 0.00,
+  `nominal_pajak` decimal(15,2) DEFAULT 0.00,
+  `total_tagihan` decimal(15,2) DEFAULT 0.00,
   `tanggal_tagihan` date NOT NULL,
   `jatuh_tempo` date NOT NULL,
   `status` enum('Unpaid','Partially Paid','Paid') DEFAULT 'Unpaid',
@@ -150,6 +151,9 @@ CREATE TABLE `projects` (
   `nama_projek` varchar(150) NOT NULL,
   `klien` varchar(100) NOT NULL,
   `budget` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `persen_pajak` decimal(5,2) DEFAULT 11.00,
+  `nominal_pajak` decimal(15,2) DEFAULT 0.00,
+  `total_nilai` decimal(15,2) DEFAULT 0.00,
   `tanggal_mulai` date NOT NULL,
   `deadline` date NOT NULL,
   `status` enum('Planning','In Progress','Completed','On Hold') DEFAULT 'Planning',
@@ -202,11 +206,15 @@ CREATE TABLE `project_logs` (
 
 CREATE TABLE `proposals` (
   `id` int(11) NOT NULL,
+  `project_id` int(11) DEFAULT NULL,
   `nomor_proposal` varchar(100) NOT NULL,
   `client_name` varchar(250) NOT NULL,
   `client_email` varchar(250) NOT NULL,
   `title` varchar(250) NOT NULL,
   `nilai_penawaran` decimal(15,2) DEFAULT 0.00,
+  `persen_pajak` decimal(5,2) DEFAULT 0.00,
+  `nominal_pajak` decimal(15,2) DEFAULT 0.00,
+  `total_penawaran` decimal(15,2) DEFAULT 0.00,
   `estimasi_pengerjaan` varchar(100) DEFAULT NULL,
   `ringkasan_scope` text DEFAULT NULL,
   `status` enum('Draft','Sent','Accepted','Rejected') DEFAULT 'Sent',
@@ -286,12 +294,11 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `nama`, `email`, `password`, `role`, `jabatan`, `created_at`) VALUES
-(1, 'Pak Taufik', 'taufik@gmail.com', '$2y$10$6T9Gt5TbtK3JaQQK3jGHRu39tRoDocO0q1u07SsB6UkwkLhEl1UTm', 'admin', 'Project Manager', '2026-10-21 08:33:06'),
 (2, 'Febrian Valentino', 'febrian@gmail.com', '$2y$10$ZvpuyC4at2BG1hNkolk0U.8xOwoXsZWxXVyYLIJPOrdwhrnhWWt92', 'karyawan', 'Web Developer', '2026-10-21 08:33:36'),
 (3, 'Rajsfano Priariya B.', 'rajsfano@gmail.com', '$2y$10$aoiSx6ngIOaUAWmBTXNQ9OxJudxeuw6HNtizoElmhQSj4PtZNl77q', 'karyawan', 'UI Designer', '2026-10-21 08:33:56'),
 (4, 'Billianz Yusuf Hema S.', 'billianz@gmail.com', '$2y$10$6PcwVz3tSs7/xGXtLkYp1ONtccy0SkaMeQANmfgiD4ky0uL527AVK', 'karyawan', 'Backend Developer', '2026-10-21 08:34:21'),
 (5, 'Muhammad Fackhri', 'fackhri@gmail.com', '$2y$10$z26k7CXNwIGq7OtH6Fj8oeITpN656PsTiE77n1DzE6Uz1Cz8aem7G', 'karyawan', 'IT Consultant', '2026-10-21 08:34:59'),
-(6, 'Administrator', 'admin@gmail.com', '0192023a7bbd73250516f069df18b500', 'admin', 'Project Manager', '2026-10-21 08:53:09');
+(6, 'Administrator', 'admin@gmail.com', '$2y$10$xBEzS9no2sbh56yECjkMxuJbKal06UAnsbwCePB29WausC5aX4idy', 'admin', 'Project Manager', '2026-10-21 08:53:09');
 
 --
 -- Indexes for dumped tables
@@ -308,7 +315,8 @@ ALTER TABLE `clients`
 -- Indexes for table `client_requirements`
 --
 ALTER TABLE `client_requirements`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_req_client_id` (`client_id`);
 
 --
 -- Indexes for table `contracts`
@@ -344,7 +352,9 @@ ALTER TABLE `invoices`
 -- Indexes for table `projects`
 --
 ALTER TABLE `projects`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_proj_req_id` (`requirement_id`),
+  ADD KEY `idx_proj_client_token` (`client_token`);
 
 --
 -- Indexes for table `project_files`
@@ -364,7 +374,8 @@ ALTER TABLE `project_logs`
 -- Indexes for table `proposals`
 --
 ALTER TABLE `proposals`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `nomor_proposal` (`nomor_proposal`);
 
 --
 -- Indexes for table `tasks`
@@ -405,7 +416,7 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT for table `clients`
 --
 ALTER TABLE `clients`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `client_requirements`
@@ -417,25 +428,25 @@ ALTER TABLE `client_requirements`
 -- AUTO_INCREMENT for table `contracts`
 --
 ALTER TABLE `contracts`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT for table `deal_chats`
 --
 ALTER TABLE `deal_chats`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=61;
 
 --
 -- AUTO_INCREMENT for table `expenses`
 --
 ALTER TABLE `expenses`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `invoices`
 --
 ALTER TABLE `invoices`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `projects`
@@ -453,7 +464,7 @@ ALTER TABLE `project_files`
 -- AUTO_INCREMENT for table `project_logs`
 --
 ALTER TABLE `project_logs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
 
 --
 -- AUTO_INCREMENT for table `proposals`
@@ -465,7 +476,7 @@ ALTER TABLE `proposals`
 -- AUTO_INCREMENT for table `tasks`
 --
 ALTER TABLE `tasks`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `task_assignees`
@@ -477,7 +488,7 @@ ALTER TABLE `task_assignees`
 -- AUTO_INCREMENT for table `task_chats`
 --
 ALTER TABLE `task_chats`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `users`
@@ -540,6 +551,12 @@ ALTER TABLE `tasks`
 ALTER TABLE `task_assignees`
   ADD CONSTRAINT `task_assignees_ibfk_1` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `task_assignees_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `task_chats`
+--
+ALTER TABLE `task_chats`
+  ADD CONSTRAINT `fk_task_chats_task` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
